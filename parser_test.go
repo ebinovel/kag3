@@ -1,11 +1,13 @@
 package kag3
 
 import (
+	"os"
+	"path"
 	"reflect"
 	"testing"
 )
 
-func TestParser(t *testing.T) {
+func TestParserFirst(t *testing.T) {
 	first := `[wait time=200]
 *start|スタート
 [cm]
@@ -61,6 +63,21 @@ func TestParser(t *testing.T) {
 	t.Run("first", func(t *testing.T) {
 		if !reflect.DeepEqual(result, want) {
 			t.Errorf("result %+v, want %+v", result, want)
+		}
+	})
+}
+
+func TestParserSample(t *testing.T) {
+	sample, err := os.ReadFile(path.Join(".", "test", "scene1.ks"))
+	if err != nil {
+		t.Errorf("cannot read scenario.")
+	}
+
+	ks := &KS{}
+	t.Run("sample", func(t *testing.T) {
+		_, _, err := ks.ParseScenario(string(sample))
+		if err != nil {
+			t.Errorf("%+v", err)
 		}
 	})
 }
