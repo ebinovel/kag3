@@ -2,6 +2,7 @@ package kag3
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -177,7 +178,7 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	}
 
 	str := tmpStr
-	strs := strings.Split(str, " ")
+	strs := regexp.MustCompile(` +`).Split(str, -1)
 
 	tag.Name = strings.TrimSpace(strs[0])
 	tag.Line = lineNum
