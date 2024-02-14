@@ -6,11 +6,11 @@ Kirikiri Adventure Game Library for Go
 TODO: write.
 
 ## Requirements
-Go 1.16 or later
+Go 1.20 or later
 
 ## Installation
 ```
-go get github.com/raa0121/kag3
+go get github.com/ebinovel/kag3
 ```
 
 ## License
