@@ -6,15 +6,15 @@ import (
 	"strings"
 )
 
-func (ks *KS) LoadConfig() {
+func (ks *KS) LoadConfig(callback func()) {
+
 }
 
 func (ks *KS) compileConfig() {
 }
 
-func (ks *KS) ParseScenario(scenario string) ([]interface{}, map[string]LabelInfo, error) { // {{{
-	var result []interface{}
-	mapLabel := make(map[string]LabelInfo, 0)
+func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map[string]LabelInfo, err error) { // {{{
+	mapLabel = make(map[string]LabelInfo, 0)
 	isInComment := false
 	ks.isInScript = false
 
@@ -35,24 +35,7 @@ func (ks *KS) ParseScenario(scenario string) ([]interface{}, map[string]LabelInf
 		} else if isInComment || firstChar == ';' {
 			// nop
 		} else if firstChar == '#' {
-			tmpLine := strings.TrimSpace(strings.Replace(line, "#", "", 1))
-			charaName := ""
-			charaFace := ""
-			if len(strings.Split(tmpLine, ":")) > 1 {
-				lines := strings.Split(tmpLine, ":")
-				charaName, charaFace = lines[0], lines[1]
-			} else {
-				charaName = tmpLine
-			}
-			textObject := TextObject{
-				Line:      i,
-				Name:      "chara_ptext",
-				Chara: CharacterInfo{
-					Name: charaName,
-					Face: charaFace,
-				},
-			}
-			result = append(result, textObject)
+			result = append(result, characterPText(line, i))
 		} else if firstChar == '*' {
 			tmpLabel := strings.Split(line[1:], "|")
 			labelKey, labelVal := "", ""
@@ -215,8 +198,8 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 		}
 	}
 
+	tag.Pm = make(map[string]string)
 	for _, cc := range strs {
-		tag.Pm = make(map[string]string)
 		tmp := strings.Split(cc, "=")
 		key := strings.TrimSpace(tmp[0])
 		val := ""
@@ -255,6 +238,27 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	}
 	return tag
 } // }}}
+
+func characterPText(line string, lineCount int) TextObject {
+	tmpLine := strings.TrimSpace(strings.Replace(line, "#", "", 1))
+	charaName := ""
+	charaFace := ""
+	if len(strings.Split(tmpLine, ":")) > 1 {
+		lines := strings.Split(tmpLine, ":")
+		charaName, charaFace = lines[0], lines[1]
+	} else {
+		charaName = tmpLine
+	}
+	textObject := TextObject{
+		Line:      lineCount,
+		Name:      "chara_ptext",
+		Chara: &CharacterInfo{
+			Name: charaName,
+			Face: charaFace,
+		},
+	}
+	return textObject
+}
 
 func splice(a []string, start, deleteCount int) []string {
 	var result []string

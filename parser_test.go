@@ -1,7 +1,9 @@
 package kag3
 
 import (
+	"fmt"
 	"os"
+	"encoding/json"
 	"path"
 	"reflect"
 	"testing"
@@ -75,7 +77,9 @@ func TestParserSample(t *testing.T) {
 
 	ks := &KS{}
 	t.Run("sample", func(t *testing.T) {
-		_, _, err := ks.ParseScenario(string(sample))
+		r, _, err := ks.ParseScenario(string(sample))
+		j, err := json.MarshalIndent(r, "", "    ")
+		fmt.Println(string(j))
 		if err != nil {
 			t.Errorf("%+v", err)
 		}
