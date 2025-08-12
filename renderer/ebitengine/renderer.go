@@ -5,9 +5,11 @@ import (
 	"image/color"
 	_ "image/png"
 	"io/fs"
+	"slices"
 	"strconv"
 
 	"github.com/ebinovel/kag3"
+	"github.com/ebinovel/kag3/renderer/ebitengine/effects"
 	"github.com/eihigh/coro"
 	"github.com/hajimehoshi/ebiten/v2"
 
@@ -37,10 +39,10 @@ var (
 	c *coro.Coro
 	loop func(y coro.Yield)
 	isClicked func() bool
-	t, tick, oldTick int
+	t, tick, oldTick, bgTick int
 	charas map[string]*kag3.Character
 	viewCharas map[string]string
-	bgImage *ebiten.Image
+	bg *kag3.Background
 	textPosition *kag3.TextPosition
 	textStyle *kag3.TextStyle
 	beforeTextSize float64
@@ -52,24 +54,33 @@ func init() {
 	charas = make(map[string]*kag3.Character)
 	viewCharas = make(map[string]string)
 	textPosition = &kag3.TextPosition{}
+	bg = &kag3.Background{
+		Time: 3000,
+		IsWait: true,
+		IsCross: false,
+		Method: "crossfade",
+	}
 	isClicked = func () bool  {
 		return oldTick + 5 >= tick
 	}
 }
 
-func NewRenderer(scripts []interface{}, fontFace *text.GoTextFace, fses map[string]fs.FS) (r *Renderer, err error) {
+func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	r = &Renderer{
-		scripts: scripts,
-		fontFace: fontFace,
+		scripts: manager.Senario,
+		fontFace: manager.FontFace,
 		nameFontFace: &text.GoTextFace{
-			Source: fontFace.Source,
-			Size: fontFace.Size,
-			Language: fontFace.Language,
+			Source: manager.FontFace.Source,
+			Size: manager.FontFace.Size,
+			Language: manager.FontFace.Language,
 		},
-		fses: fses,
+		fses: manager.FSes,
 	}
 	r.initScript()
-	beforeTextSize = fontFace.Size
+	img := ebiten.NewImage(manager.Config.ScreenWidth, manager.Config.ScreenHeight)
+	img.Fill(color.Black)
+	bg.Image = img
+	beforeTextSize = manager.FontFace.Size
 	r.texts = make(map[int][]Text)
 	return
 }
@@ -127,12 +138,48 @@ func (r *Renderer) initScript() {
 				r.line = tagObject.Line
 				switch tagObject.Name {
 				case "bg":
-					bgImage, _, err = ebitenutil.NewImageFromFileSystem(
-						r.fses["images"],
-						tagObject.Pm["storage"],
-					)
-					if err != nil {
-						panic(err)
+					bgTick = t
+					for key, value := range tagObject.Pm {
+						switch key {
+						case "storage":
+							bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
+								r.fses["images"],
+								tagObject.Pm["storage"],
+							)
+							if err != nil {
+								panic(err)
+							}
+						case "time":
+							bg.Time, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "wait":
+							if value == "true" {
+								bg.IsWait = true
+							} else {
+								bg.IsWait = false
+							}
+						case "cross":
+							if value == "true" {
+								bg.IsCross = true
+							} else {
+								bg.IsCross = false
+							}
+						case "position":
+							switch value {
+							case "left", "center", "right", "top", "bottom":
+								bg.Position = value
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						case "method":
+							if slices.Contains(kag3.BackgroundMethod, value) {
+								bg.Method = value
+							} else {
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						}
 					}
 				case "chara_new":
 					charaImage, _, err := ebitenutil.NewImageFromFileSystem(
@@ -318,8 +365,20 @@ func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
 func (r *Renderer) Draw(screen *ebiten.Image) {
 	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
 	//_, h := text.Measure(r.text, fontFace, 0)
-	if bgImage != nil {
-		screen.DrawImage(bgImage, &ebiten.DrawImageOptions{})
+	if bg.Image != nil {
+		if bg.NextImage != nil {
+			switch bg.Method {
+			case "fadeIn":
+				e := effects.FadeIn{}
+				e.Draw(screen, bg, bgTick, t, bg.Time)
+			case "crossfade":
+				e := effects.CrossFade{}
+				e.Draw(screen, bg, bgTick, t, bg.Time)
+			case "slide", "slideInRight":
+				e := effects.SlideInRight{}
+				e.Draw(screen, bg, bgTick, t, bg.Time)
+			}
+		}
 	}
 	{
 		for _, chara := range viewCharas {

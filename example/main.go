@@ -1,68 +1,27 @@
 package main
 
 import (
-	"bytes"
 	"io/fs"
 
 	"github.com/ebinovel/kag3"
 	"github.com/ebinovel/kag3/renderer/ebitengine"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/text/language"
 )
 
-const (
-	screenWidth  = 1280
-	screenHeight = 720
-)
-
-type Game struct {}
+type Game struct {
+	manager *kag3.Manager
+}
 
 var (
 	renderer *ebitengine.Renderer
-	fontFace *text.GoTextFace
 )
 
 func init () {
 	resourcesInit()
-	script, err := fs.ReadFile(Senarios, "scene1.ks")
-	if err != nil {
-		panic(err)
-	}
-
-	b, err := fs.ReadFile(Fonts, "NotoSansJP-Regular.ttf")
-	if err != nil {
-		panic(err)
-	}
-	s, err := text.NewGoTextFaceSource(bytes.NewReader(b))
-	if err != nil {
-		panic(err)
-	}
-	fontFace = &text.GoTextFace{
-		Source: s,
-		Size: 28,
-		Language: language.Japanese,
-	}
-
-	ks := &kag3.KS{}
-	r, _, err := ks.ParseScenario(string(script))
-	if err != nil {
-		panic(err)
-	}
-	renderer, err = ebitengine.NewRenderer(r, fontFace, map[string]fs.FS{
-		"bgms": Bgms,
-		"fonts": Fonts,
-		"images": Images,
-		"senarios": Senarios,
-		"ses": Ses,
-	})
-	if err != nil {
-		panic(err)
-	}
 }
 
 func (g *Game) Layout(width, height int) (int, int) {
-	return screenWidth, screenHeight
+	return g.manager.Config.ScreenWidth, g.manager.Config.ScreenHeight
 }
 
 func (g *Game) Update() error {
@@ -75,8 +34,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func main() {
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	g := &Game{}
+	g := &Game{manager: &kag3.Manager{}}
+	g.manager.Init(map[string]fs.FS{
+		"resources": Embed,
+		"bgms": Bgms,
+		"fonts": Fonts,
+		"images": Images,
+		"senarios": Senarios,
+		"ses": Ses,
+	})
+	
+
+	var err error
+	err = g.manager.LoadScript("scene1.ks")
+	if err != nil {
+		panic(err)
+	}
+	renderer, err = ebitengine.NewRenderer(g.manager)
+	if err != nil {
+		panic(err)
+	}
+	ebiten.SetWindowSize(g.manager.Config.ScreenWidth, g.manager.Config.ScreenHeight)
+	ebiten.SetWindowTitle(g.manager.Config.Title)
 	if err := ebiten.RunGame(g); err != nil {
 		panic(err)
 	}

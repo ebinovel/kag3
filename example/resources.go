@@ -4,7 +4,6 @@ import (
 	"embed"
 	"io/fs"
 	"log"
-	"path"
 )
 
 //go:embed resources
@@ -25,23 +24,23 @@ func resourcesInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	Bgms, err = fs.Sub(rawEmbed, path.Join("resources", "bgms"))
+	Bgms, err = fs.Sub(Embed, "bgms")
 	if err != nil {
 		log.Fatal(err)
 	}
-	Fonts, err = fs.Sub(rawEmbed, path.Join("resources", "fonts"))
+	Fonts, err = fs.Sub(Embed, "fonts")
 	if err != nil {
 		log.Fatal(err)
 	}
-	Images, err = fs.Sub(rawEmbed, path.Join("resources", "images"))
+	Images, err = fs.Sub(Embed, "images")
 	if err != nil {
 		log.Fatal(err)
 	}
-	Senarios, err = fs.Sub(rawEmbed, path.Join("resources", "senarios"))
+	Senarios, err = fs.Sub(Embed, "senarios")
 	if err != nil {
 		log.Fatal(err)
 	}
-	Ses, err = fs.Sub(rawEmbed, path.Join("resources", "ses"))
+	Ses, err = fs.Sub(Embed, "ses")
 	if err != nil {
 		log.Fatal(err)
 	}

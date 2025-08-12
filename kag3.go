@@ -44,6 +44,16 @@ type CharacterInfo struct {
 	Face string
 }
 
+type Background struct {
+	Image     *ebiten.Image
+	NextImage *ebiten.Image
+	Time      int
+	IsWait    bool
+	IsCross   bool
+	Position  string
+	Method    string
+}
+
 type Character struct {
 	Name  string
 	JName string
@@ -82,4 +92,47 @@ type TextStyle struct {
 	IsItaric bool
 	Edge *color.RGBA
 	Shadow *color.RGBA
+}
+
+var BackgroundMethod = []string{
+	"crossfade",
+	"explode",
+	"slide",
+	"blind",
+	"bounce",
+	"clip",
+	"drop",
+	"fold",
+	"puff",
+	"scale",
+	"shake",
+	"size",
+	"fadeIn",
+	"fadeInDown",
+	"fadeInLeft",
+	"fadeInRight",
+	"fadeInUp",
+	"lightSpeedIn",
+	"rotateIn",
+	"rotateInDownLeft",
+	"rotateInDownRight",
+	"rotateInUpLeft",
+	"rotateInUpRight",
+	"zoomIn",
+	"zoomInDown",
+	"zoomInLeft",
+	"zoomInRight",
+	"zoomInUp",
+	"slideInDown",
+	"slideInLeft",
+	"slideInRight",
+	"slideInUp",
+	"bounceIn ",
+	"bounceInDown",
+	"bounceInLeft",
+	"bounceInRight",
+	"bounceInUp",
+	"rollIn",
+	"vanishIn",
+	"puffIn",
 }
