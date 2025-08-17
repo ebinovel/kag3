@@ -1,8 +1,10 @@
 package ebitengine
 
 import (
+	"bytes"
 	"fmt"
 	"image/color"
+	_ "image/jpeg"
 	_ "image/png"
 	"io/fs"
 	"slices"
@@ -12,8 +14,8 @@ import (
 	"github.com/ebinovel/kag3/renderer/ebitengine/effects"
 	"github.com/eihigh/coro"
 	"github.com/hajimehoshi/ebiten/v2"
-
-	//"github.com/hajimehoshi/ebiten/v2/colorm"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -24,8 +26,26 @@ type Text struct {
 	TextStyle *kag3.TextStyle
 }
 
+type CharaShow struct {
+	Time int
+	Layer int
+	Zindex int
+	Depth string
+	Page string
+	Wait bool
+	Face string
+	Storage string
+	Reflect bool
+	Width int
+	Height int
+	Left int
+	Top int
+}
+
 type Renderer struct {
-	scripts []interface{}
+	manager *kag3.Manager
+	scripts []any
+	labels map[string]kag3.LabelInfo
 	fontFace *text.GoTextFace
 	nameFontFace *text.GoTextFace
 	fses map[string]fs.FS
@@ -36,24 +56,31 @@ type Renderer struct {
 var (
 	isFirst bool
 	isWait bool
-	c *coro.Coro
 	loop func(y coro.Yield)
 	isClicked func() bool
-	t, tick, oldTick, bgTick int
+	t, tick, oldTick, bgTick, charaTick int
 	charas map[string]*kag3.Character
-	viewCharas map[string]string
+	viewCharas map[string]*CharaShow
 	bg *kag3.Background
 	textPosition *kag3.TextPosition
 	textStyle *kag3.TextStyle
 	beforeTextSize float64
 	textGlyphs []text.Glyph
 	charaName string
+	buttons []*kag3.Button
+	glinks []*kag3.GLink
+	links []*kag3.Link
+	isJump bool
+	isJumped func() bool
+	jumpIndex int
+	audioContext *audio.Context
 )
 
 func init() {
 	charas = make(map[string]*kag3.Character)
-	viewCharas = make(map[string]string)
+	viewCharas = make(map[string]*CharaShow)
 	textPosition = &kag3.TextPosition{}
+	audioContext = audio.NewContext(44100)
 	bg = &kag3.Background{
 		Time: 3000,
 		IsWait: true,
@@ -63,11 +90,16 @@ func init() {
 	isClicked = func () bool  {
 		return oldTick + 5 >= tick
 	}
+	isJumped = func() bool {
+		return isJump
+	}
 }
 
 func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	r = &Renderer{
+		manager: manager,
 		scripts: manager.Senario,
+		labels: manager.Labels,
 		fontFace: manager.FontFace,
 		nameFontFace: &text.GoTextFace{
 			Source: manager.FontFace.Source,
@@ -101,50 +133,138 @@ func (r *Renderer) Update() {
 			isWait = false
 			oldTick = tick
 	}
+	for i, link := range links {
+		mX, mY := ebiten.CursorPosition()
+		for j, t := range link.Texts {
+			x, y := textPosition.Left, textPosition.Top
+			w, h := text.Measure(t.Val, r.fontFace, 0)
+			marginLeft := x + textPosition.MarginLeft
+			marginTop := y + textPosition.MarginTop + int(h) * (i + j)
+			if isColision(mX, mY, marginLeft, marginTop, int(w), int(h)) {
+				//fmt.Println("isCollsion", mX, mY)
+				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+					if link.Storage != "" {
+						r.manager.LoadScript(link.Storage)
+						r.labels = r.manager.Labels
+						r.scripts = r.manager.Senario
+					}
+					if v, ok := r.labels[link.Target[1:]]; ok {
+						fmt.Printf("click label:%+v\n", v)
+						jumpIndex = v.Index
+						isJump = true
+					}
+				}
+			}
+		}
+	}
+	for _, glink := range glinks {
+		mX, mY := ebiten.CursorPosition()
+		if isColision(mX, mY, glink.X, glink.Y, glink.Width, glink.Height) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if glink.Storage != "" {
+					r.manager.LoadScript(glink.Storage)
+					r.labels = r.manager.Labels
+					r.scripts = r.manager.Senario
+				}
+				if v, ok := r.labels[glink.Target]; ok {
+					fmt.Printf("label:%+v\n", v)
+					jumpIndex = v.Index
+					isJump = true
+				}
+				if v, ok := r.labels[glink.Target[1:]]; ok {
+					fmt.Printf("label:%+v\n", v)
+					jumpIndex = v.Index
+					isJump = true
+				}
+			}
+		}
+	}
+	for _, button := range buttons {
+		mX, mY := ebiten.CursorPosition()
+		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				fmt.Println("click")
+				if button.Storage != "" {
+					fmt.Printf("button.Storage:%+v\n", button.Storage)
+					r.manager.LoadScript(button.Storage)
+					r.labels = r.manager.Labels
+					r.scripts = r.manager.Senario
+					if button.Target == "" {
+						jumpIndex = 0
+						isJump = true
+					}
+				}
+				if button.Role != "" {
+					switch button.Role {
+					case "save":
+					case "load":
+					case "title":
+					}
+				}
+				if v, ok := r.labels[button.Target]; ok {
+					fmt.Printf("label:%+v\n", v)
+					jumpIndex = v.Index
+					isJump = true
+				}
+			}
+		}
+	}
+	if isJump {
+		glinks = nil
+		buttons = nil
+		links = nil
+	}
 }
 
 func (r *Renderer) initScript() {
 	loop = func(y coro.Yield) {
 		var err error
-		for _, s := range r.scripts {
-			fmt.Printf("%+v\n", s)
-			switch s.(type) {
+		for i := 0; i < len(r.scripts); i++ {
+			if isJump {
+				i = jumpIndex
+				isJump = false
+			}
+			s := r.scripts[i]
+			fmt.Printf("Index:%d, %+v\n", i, s)
+			switch object := s.(type) {
 			case kag3.CharacterInfo:
 			case kag3.TextObject:
-				textObject := s.(kag3.TextObject)
-				r.line = textObject.Line
-				if textObject.Chara != nil {
-					fmt.Println(textObject.Chara)
-					charaName = textObject.Chara.Name
+				r.line = object.Line
+				if object.Chara != nil {
+					fmt.Println(object.Chara)
+					charaName = object.Chara.Name
 				}
-				if len(r.texts[textObject.Line]) == 0 {
-					r.texts[textObject.Line] = append(
-						r.texts[textObject.Line],
-						Text{Text: textObject.Val},
+				if len(r.texts[object.Line]) == 0 {
+					r.texts[object.Line] = append(
+						r.texts[object.Line],
+						Text{Text: object.Val},
 					)
 				} else {
-					if r.texts[textObject.Line][len(r.texts[textObject.Line])-1].Text == "" {
-						r.texts[textObject.Line][len(r.texts[textObject.Line])-1].Text = textObject.Val
+					if r.texts[object.Line][len(r.texts[object.Line])-1].Text == "" {
+						r.texts[object.Line][len(r.texts[object.Line])-1].Text = object.Val
 					} else {
-						r.texts[textObject.Line] = append(
-							r.texts[textObject.Line],
-							Text{Text: textObject.Val},
+						r.texts[object.Line] = append(
+							r.texts[object.Line],
+							Text{Text: object.Val},
 						)
 					}
 				}
 				y()
 			case kag3.TagObject:
-				tagObject := s.(kag3.TagObject)
-				r.line = tagObject.Line
-				switch tagObject.Name {
+				r.line = object.Line
+				switch object.Name {
 				case "bg":
 					bgTick = t
-					for key, value := range tagObject.Pm {
+					bg.IsWait = true
+					bg.Time = 3000
+					bg.IsCross = false
+					bg.IsEnd = false
+					for key, value := range object.Pm {
 						switch key {
 						case "storage":
 							bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
 								r.fses["images"],
-								tagObject.Pm["storage"],
+								object.Pm["storage"],
 							)
 							if err != nil {
 								panic(err)
@@ -155,16 +275,22 @@ func (r *Renderer) initScript() {
 								panic(err)
 							}
 						case "wait":
-							if value == "true" {
+							switch value {
+							case "true":
 								bg.IsWait = true
-							} else {
+							case "false":
 								bg.IsWait = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
 							}
 						case "cross":
-							if value == "true" {
+							switch value {
+							case "true":
 								bg.IsCross = true
-							} else {
+							case "false":
 								bg.IsCross = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
 							}
 						case "position":
 							switch value {
@@ -181,54 +307,437 @@ func (r *Renderer) initScript() {
 							}
 						}
 					}
+					if bg.IsWait {
+						y.Until(true, func() bool {
+							return bg.IsEnd
+						})
+					}
+				case "button":
+					button := &kag3.Button{}
+					for key, value := range object.Pm {
+						switch key {
+						case "graphic":
+							folder := "images"
+							if object.Pm["folder"] != "" {
+								folder = object.Pm["folder"]
+							}
+							button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(
+								r.fses[folder],
+								object.Pm["graphic"],
+							)
+							if err != nil {
+								panic(err)
+							}
+						case "storage":
+							button.Storage = value
+						case "target":
+							button.Target = value
+						case "name":
+							button.Name = value
+						case "x":
+							button.X, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "y":
+							button.Y, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "width":
+							button.Width, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "height":
+							button.Height, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "fix":
+							switch value {
+							case "true":
+								button.Fix = true
+							case "false":
+								button.Fix = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						case "role":
+							button.Role = value
+						case "hint":
+							button.Hint = value
+						case "clickse":
+							button.ClickSE = value
+						case "enterse":
+							button.EnterSE = value
+						case "leavese":
+							button.LeaveSE = value
+						case "activeimg":
+							button.ActiveImg = value
+						case "clickimg":
+							button.ClickImg = value
+						case "enterimg":
+							folder := "images"
+							if object.Pm["folder"] != "" {
+								folder = object.Pm["folder"]
+							}
+							button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(
+								r.fses[folder],
+								object.Pm["enterimg"],
+							)
+							if err != nil {
+								panic(err)
+							}
+						case "autoimg":
+							button.AutoImg = value
+						case "skipimg":
+							button.SkipImg = value
+						case "visible":
+							switch value {
+							case "true":
+								button.Visible = true
+							case "false":
+								button.Visible = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						case "auto_next":
+							switch value {
+							case "true":
+								button.AutoNext = true
+							case "false":
+								button.AutoNext = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						case "savesnap":
+							switch value {
+							case "true":
+								button.SaveSnap = true
+							case "false":
+								button.SaveSnap = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
+						case "keyforcus":
+							button.KeyForcus, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						}
+					}
+					if button.Width ==0 && button.Height == 0 {
+						button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
+					}
+					fmt.Printf("button: %+v\n", button)
+					buttons = append(buttons, button)
 				case "chara_new":
+					name := object.Pm["name"]
 					charaImage, _, err := ebitenutil.NewImageFromFileSystem(
 						r.fses["images"],
-						tagObject.Pm["storage"],
+						object.Pm["storage"],
 					)
 					if err != nil {
 						panic(err)
 					}
-					charas[tagObject.Pm["name"]] = &kag3.Character{
-						Name: tagObject.Pm["name"],
+					charas[name] = &kag3.Character{
+						Name: name,
 						Image: charaImage,
-						JName: tagObject.Pm["jname"],
+						JName: object.Pm["jname"],
 						Faces: make(map[string]string),
 					}
-					charas[tagObject.Pm["name"]].Faces["default"] = tagObject.Pm["storage"]
-					fmt.Printf("chara:%+v\n", charas)
+					charas[name].Faces["default"] = object.Pm["storage"]
 				case "chara_hide":
-					delete(viewCharas, tagObject.Pm["name"])
+					delete(viewCharas, object.Pm["name"])
 				case "chara_face":
-					charas[tagObject.Pm["name"]].Faces[tagObject.Pm["face"]] = tagObject.Pm["storage"]
-					fmt.Printf("chara:%+v\n", charas)
+					charas[object.Pm["name"]].Faces[object.Pm["face"]] = object.Pm["storage"]
 				case "chara_mod":
 					charaImage, _, err := ebitenutil.NewImageFromFileSystem(
 						r.fses["images"],
-						charas[tagObject.Pm["name"]].Faces[tagObject.Pm["face"]],
+						charas[object.Pm["name"]].Faces[object.Pm["face"]],
 					)
 					if err != nil {
 						panic(err)
 					}
-					charas[tagObject.Pm["name"]].Image = charaImage
+					charas[object.Pm["name"]].Image = charaImage
 				case "chara_show":
-					viewCharas[tagObject.Pm["name"]] = tagObject.Pm["name"]
+					charaTick = t
+					name := object.Pm["name"]
+					if _, ok := charas[name]; !ok {
+						panic(fmt.Errorf("そのキャラクターは登録されてません name=%s", name))
+					}
+					viewCharas[name] = &CharaShow{}
+					viewCharas[name].Wait = true
+					viewCharas[name].Time = 1000
+					for key, value := range object.Pm {
+						switch key {
+						case "time":
+							viewCharas[name].Time, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "zindex":
+							viewCharas[name].Zindex, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "depth":
+							viewCharas[name].Depth = value
+						case "page":
+							viewCharas[name].Page = value
+						case "wait":
+							if value == "true" {
+								viewCharas[name].Wait = true
+							} else {
+								viewCharas[name].Wait = false
+							}
+						case "face":
+							if v, ok := charas[name].Faces[value]; ok {
+								viewCharas[name].Face = v
+							}
+						case "storage":
+							charaImage, _, err := ebitenutil.NewImageFromFileSystem(
+								r.fses["images"],
+								object.Pm["storage"],
+							)
+							if err != nil {
+								panic(err)
+							}
+							charas[name].Image = charaImage
+						case "refrect":
+							if value == "true" {
+								viewCharas[name].Reflect = true
+							} else {
+								viewCharas[name].Reflect = false
+							}
+						case "width":
+							viewCharas[name].Width, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "height":
+							viewCharas[name].Height, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "left":
+							viewCharas[name].Left, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "top":
+							viewCharas[name].Top, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						}
+					}
+					if viewCharas[name].Wait {
+						y.Until(true, func() bool {
+							return float64(t - charaTick) / float64(viewCharas[name].Time * ebiten.TPS() / 1000) >= 1
+						})
+					}
+				case "cm":
 				case "font":
-					err = r.textStyle(tagObject)
+					err = r.textStyle(object)
 					if err != nil {
 						panic(err)
 					}
+				case "glink":
+					glink := &kag3.GLink{}
+					for key, value := range object.Pm {
+						switch key {
+						case "color":
+							var r, g, b int
+							r, g, b, err = parseColor(value)
+							if err != nil {
+								panic(err)
+							}
+							glink.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+						case "font_color":
+							glink.FontColor = value
+						case "storage":
+							glink.Storage = value
+						case "target":
+							glink.Target = value
+						case "name":
+							glink.Name = value
+						case "text":
+							glink.Text = value
+						case "x":
+							glink.X, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "y":
+							glink.Y, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "width":
+							glink.Width, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "height":
+							glink.Height, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "size":
+							glink.Size, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "face":
+							glink.Face = value
+						case "graphic":
+							glink.Graphic = value
+						case "enterimg":
+							glink.EnterImg = value
+						case "clickse":
+							glink.ClickSE = value
+						case "enterse":
+							glink.EnterSE = value
+						case "leavese":
+							glink.LeaveSE = value
+						}
+					}
+					if glink.Height == 0 {
+						_, h := text.Measure(glink.Text, r.fontFace, 0)
+						glink.Height = int(h) + 20
+					}
+					glinks = append(glinks, glink)
+				case "jump":
+					jump := &kag3.Jump{}
+					for key, value := range object.Pm {
+						switch key {
+						case "storage":
+							jump.Storage = value
+						case "target":
+							jump.Target = value
+						}
+					}
+					fmt.Printf("jump:%+v\n", jump)
+					if jump.Storage != "" {
+						r.manager.LoadScript(jump.Storage)
+						r.labels = r.manager.Labels
+						r.scripts = r.manager.Senario
+						if jump.Target == "" {
+							i = 0
+						}
+					} else {
+						if v, ok := r.labels[jump.Target]; ok {
+							fmt.Printf("label:%+v\n", v)
+							jumpIndex = v.Index
+							i = v.Index
+						}
+						if v, ok := r.labels[jump.Target[1:]]; ok {
+							fmt.Printf("label:%+v\n", v)
+							jumpIndex = v.Index
+							i = v.Index
+						}
+					}
+				case "l":
+					y.Until(true, isClicked)
+				case "link":
+					link := &kag3.Link{}
+					for key, value := range object.Pm {
+						switch key {
+						case "storage":
+							link.Storage = value
+						case "target":
+							link.Target = value
+						case "keyforcus":
+							link.KeyForcus, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						}
+					}
+					for {
+						if v, ok := r.scripts[i].(kag3.TagObject); ok {
+							if v.Name == "endlink" {
+								break
+							}
+						}
+						if v, ok := r.scripts[i].(kag3.TextObject); ok {
+							link.Texts = append(link.Texts, v)
+						}
+						i++
+					}
+					links = append(links, link)
+					fmt.Printf("links:%+v\n", links)
 				case "p":
 					y.Until(true, isClicked)
+				case "playbgm":
+					fmt.Println("playbgm")
+					bgm := &kag3.BGM{}
+					bgm.Volume = 100
+					var b []byte
+					var v *vorbis.Stream
+					b, err = fs.ReadFile(r.fses["bgms"], object.Pm["storage"])
+					if err != nil {
+						panic(err)
+					}
+					v, err = vorbis.DecodeF32(bytes.NewReader(b))
+					if err != nil {
+						panic(err)
+					}
+					bgm.Player, err = audioContext.NewPlayerF32(v)
+					if err != nil {
+						panic(err)
+					}
+					for key, value := range object.Pm {
+						switch key {
+						case "loop":
+							bgm.Loop = (value == "true")
+						case "sprite_time":
+							bgm.SpriteTime = value
+						case "volume":
+							bgm.Volume, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "pause":
+							bgm.Pause = (value == "true")
+						case "seek":
+							bgm.Seek, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						case "restart":
+							bgm.Restart = (value == "true")
+						case "time":
+							bgm.Time, err = strconv.Atoi(value)
+							if err != nil {
+								panic(err)
+							}
+						}
+					}
+					bgm.Player.SetVolume(float64(bgm.Volume / 100))
+					if bgm.Restart {
+						bgm.Player.Rewind()
+					}
+					if !bgm.Player.IsPlaying() {
+						bgm.Player.Rewind()
+						bgm.Player.Play()
+					}
 				case "ptext":
 
 				case "position":
-					err = r.position(tagObject)
+					err = r.position(object)
 					if err != nil {
 						panic(err)
 					}
+				case "r":
 				case "resetfont":
 					textStyle = nil
+				case "s":
+					y.Until(true, isJumped)
+				case "title":
+					ebiten.SetWindowTitle(object.Pm["name"])
 				}
 			}
 			y()
@@ -345,11 +854,12 @@ func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
 		case "color", "edge", "shadow":
 			var r, g, b int
 			r, g, b, err = parseColor(value)
-			if key == "color" {
+			switch key {
+			case "color":
 				textStyle.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-			} else if key == "edge" {
+			case "edge":
 				textStyle.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-			} else {
+			case "shadow":
 				textStyle.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 			}
 		case "bold":
@@ -364,30 +874,27 @@ func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
 
 func (r *Renderer) Draw(screen *ebiten.Image) {
 	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
-	//_, h := text.Measure(r.text, fontFace, 0)
 	if bg.Image != nil {
+		screen.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
 		if bg.NextImage != nil {
 			switch bg.Method {
 			case "fadeIn":
 				e := effects.FadeIn{}
-				e.Draw(screen, bg, bgTick, t, bg.Time)
+				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
 			case "crossfade":
 				e := effects.CrossFade{}
-				e.Draw(screen, bg, bgTick, t, bg.Time)
+				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
 			case "slide", "slideInRight":
 				e := effects.SlideInRight{}
-				e.Draw(screen, bg, bgTick, t, bg.Time)
+				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
 			}
 		}
 	}
-	{
-		for _, chara := range viewCharas {
-			charaOp := &ebiten.DrawImageOptions{}
-			charaLeft := (screenWidth - charas[chara].Image.Bounds().Dx()) / 2
-			charaTop := (screenHeight - charas[chara].Image.Bounds().Dy())
-			charaOp.GeoM.Translate(float64(charaLeft), float64(charaTop))
-			screen.DrawImage(charas[chara].Image, charaOp)
-		}
+	for name, chara := range viewCharas {
+		charaLeft := (screenWidth - charas[name].Image.Bounds().Dx()) / 2
+		charaTop := (screenHeight - charas[name].Image.Bounds().Dy())
+		e := &effects.FadeIn{}
+		e.Draw(screen, charas[name].Image, charaLeft, charaTop, charaTick, t, chara.Time)
 	}
 	if textPosition != nil && textPosition.Visible {
 		op := &ebiten.DrawImageOptions{}
@@ -410,6 +917,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		count := t / 5
 		multiCount := 0
 		multiWidth := 0.0
+		lastGlyphWidth := 0.0
 		if len(r.texts[r.line]) != 0 {
 			for _, v := range r.texts[r.line] {
 				if len(r.texts[r.line]) > 1 {
@@ -421,11 +929,8 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 				tOp := &text.DrawOptions{}
 				tOp.LineSpacing = r.fontFace.Size
 				w, _ := text.Measure(v.Text, r.fontFace, tOp.LineSpacing)
-				if multiCount > 1 {
-					fmt.Printf("text:%+v, width:%+v\n", v.Text, w)
-					multiWidth += w
-				}
-				maxWidth := float64(textPosition.Width - textPosition.MarginRight)
+				multiWidth += w
+				maxWidth := float64(textPosition.Width - textPosition.MarginLeft - textPosition.MarginRight)
 				if w > maxWidth {
 					rn := []rune(v.Text)
 					key := len(rn) - 1
@@ -439,12 +944,15 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 					}
 					v.Text = string(rn)
 				}
+				//fmt.Println(v.Text)
 				glyph := text.AppendGlyphs(
 					textGlyphs,
 					v.Text,
 					r.fontFace,
 					&tOp.LayoutOptions,
 				)
+				lastGlyph := glyph[len(glyph)-1]
+				lastGlyphWidth += lastGlyph.X + float64(lastGlyph.Image.Bounds().Dx())
 				if textStyle != nil {
 					if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
 						r.fontFace.Size = float64(textStyle.Size)
@@ -471,9 +979,12 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 				if count >= len(glyph) - 1 {
 					isWait = true
 					tOp.GeoM.Reset()
-					tOp.GeoM.Translate(marginLeft + multiWidth, marginTop)
+					tOp.GeoM.Translate(marginLeft + multiWidth - w, marginTop)
 					text.Draw(screen, v.Text, r.fontFace, tOp)
 				} else {
+					if multiCount > 1 {
+						marginLeft += lastGlyphWidth - glyph[len(glyph) - 1].X + float64(glyph[len(glyph) - 1].Image.Bounds().Dx())
+					}
 					for _, g := range glyph[:count] {
 						tOp.GeoM.Reset()
 						tOp.GeoM.Translate(marginLeft, marginTop)
@@ -482,15 +993,64 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 					}
 				}
 				textGlyphs = []text.Glyph{}
-				ebitenutil.DebugPrint(screen, fmt.Sprintf("w:%+v, maxWidth:%+v\n", w, maxWidth))
 			}
 		}
 	}
+	for i, link := range links {
+		for j, t := range link.Texts {
+			linkOp := &text.DrawOptions{}
+			x, y := float64(textPosition.Left), float64(textPosition.Top)
+			_, h := text.Measure(t.Val, r.fontFace, 0)
+			marginLeft := x + float64(textPosition.MarginLeft)
+			marginTop := y + float64(textPosition.MarginTop) + h * float64(i + j)
+			linkOp.GeoM.Translate(marginLeft, marginTop)
+			if textStyle != nil {
+				if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
+					r.fontFace.Size = float64(textStyle.Size)
+				}
+				if textStyle.Color != nil {
+					linkOp.ColorScale.ScaleWithColor(textStyle.Color)
+				}
+			}
+			if !isJump {
+				text.Draw(screen, t.Val, r.fontFace, linkOp)
+			}
+		}
+	}
+	for _, glink := range glinks {
+		backgroundOp := &ebiten.DrawImageOptions{}
+		backgroundOp.GeoM.Translate(float64(glink.X), float64(glink.Y))
+		img := ebiten.NewImage(glink.Width, glink.Height)
+		img.Fill(glink.Color)
+		screen.DrawImage(img, backgroundOp)
+		glinkOp := &text.DrawOptions{}
+		w, h := text.Measure(glink.Text, r.fontFace, 0)
+		glinkOp.GeoM.Translate(float64(glink.Width / 2 + glink.X) - (w / 2), float64(glink.Height / 2 + glink.Y) - (h / 2))
+		text.Draw(screen, glink.Text, r.fontFace, glinkOp)
+	}
+	for _, button := range buttons {
+		buttonOp := &ebiten.DrawImageOptions{}
+		buttonOp.GeoM.Translate(float64(button.X), float64(button.Y))
+
+		mX, mY := ebiten.CursorPosition()
+		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
+			screen.DrawImage(button.EnterImg, buttonOp)
+		} else {
+			screen.DrawImage(button.Graphic, buttonOp)
+		}
+	}
+	mx, my := ebiten.CursorPosition()
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("mouseX:%+v mouseY:%+v", mx, my))
 }
 
 func parseColor(value string) (r, g, b int, err error) {
-	if value == "red" {
+	switch value {
+	case "black":
+		return 255, 255, 255, nil
+	case "red":
 		return 255, 0, 0, nil
+	case "blue":
+		return 0, 0, 255, nil
 	}
 	runes := []rune(value)
 	rStr, gStr, bStr := string(runes[2:3]), string(runes[4:5]), string(runes[6:7])
@@ -507,4 +1067,8 @@ func parseColor(value string) (r, g, b int, err error) {
 		return
 	}
 	return
+}
+
+func isColision(mX, mY, x, y, width, height int) bool {
+	return mX >= x && mX <= x + width && mY >= y && mY <= y + height
 }

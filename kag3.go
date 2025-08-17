@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 )
 
 type KS struct {
@@ -34,7 +35,7 @@ type TagObject struct {
 
 type LabelInfo struct {
 	Line int
-	index int
+	Index int
 	Name string
 	Val string
 }
@@ -52,6 +53,42 @@ type Background struct {
 	IsCross   bool
 	Position  string
 	Method    string
+	IsEnd     bool
+}
+
+type BGM struct {
+	Storage string
+	Loop bool
+	SpriteTime string
+	Volume int
+	Pause bool
+	Seek int
+	Restart bool
+	Time int
+	Player *audio.Player
+}
+
+type Button struct {
+	Graphic *ebiten.Image
+	Storage string
+	Target string
+	Name string
+	X, Y, Width, Height int
+	Fix bool
+	Role string
+	Hint string
+	ClickSE string
+	EnterSE string
+	LeaveSE string
+	ActiveImg string
+	ClickImg string
+	EnterImg *ebiten.Image
+	AutoImg string
+	SkipImg string
+	Visible bool
+	AutoNext bool
+	SaveSnap bool
+	KeyForcus int
 }
 
 type Character struct {
@@ -59,6 +96,23 @@ type Character struct {
 	JName string
 	Faces map[string]string
 	Image *ebiten.Image
+}
+
+type Jump struct {
+	Storage string
+	Target string
+}
+
+type Macro struct {
+	Name string
+	Macro []any
+}
+
+type Link struct {
+	Storage string
+	Target string
+	KeyForcus int
+	Texts []TextObject
 }
 
 type TextPosition struct {
@@ -92,6 +146,27 @@ type TextStyle struct {
 	IsItaric bool
 	Edge *color.RGBA
 	Shadow *color.RGBA
+}
+
+type GLink struct {
+	Color *color.RGBA
+	FontColor string
+	Storage string
+	Target string
+	Name string
+	Text string
+	X, Y, Width, Height, Size int
+	Face string
+	Graphic string
+	EnterImg string
+	ClickSE string
+	EnterSE string
+	LeaveSE string
+	ClearMessage bool
+	Bold bool
+	Opacity uint8
+	Shadow string
+	AutoPos bool
 }
 
 var BackgroundMethod = []string{

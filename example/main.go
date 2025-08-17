@@ -46,7 +46,7 @@ func main() {
 	
 
 	var err error
-	err = g.manager.LoadScript("scene1.ks")
+	err = g.manager.LoadFirstScript()
 	if err != nil {
 		panic(err)
 	}
