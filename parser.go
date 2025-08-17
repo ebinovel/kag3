@@ -45,7 +45,7 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 			}
 			info := LabelInfo{
 				Line:  i,
-				index: len(result),
+				Index: len(result),
 				Name:  labelKey,
 				Val:   labelVal,
 			}

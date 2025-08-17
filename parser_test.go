@@ -37,7 +37,7 @@ func TestParserFirst(t *testing.T) {
 		Val: "スタート",
 		Info: LabelInfo{
 			Line: 1,
-			index: 1,
+			Index: 1,
 			Name: "start",
 			Val: "スタート",
 		},

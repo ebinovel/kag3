@@ -15,6 +15,7 @@ type Manager struct {
 	FSes map[string]fs.FS
 	parser *KS
 	Senario Senario
+	Labels map[string]LabelInfo
 	FontFace *text.GoTextFace
 }
 
@@ -27,6 +28,10 @@ func (m *Manager) Init(fses map[string]fs.FS) {
 	m.loadDefaultFont()
 }
 
+func (m *Manager) LoadFirstScript() error {
+	return m.LoadScript("first.ks")
+}
+
 func (m *Manager) LoadScript(file string) (err error) {
 	var script []byte
 	script, err = fs.ReadFile(m.FSes["senarios"], file)
@@ -34,7 +39,7 @@ func (m *Manager) LoadScript(file string) (err error) {
 		return
 	}
 
-	m.Senario, _, err = m.parser.ParseScenario(string(script))
+	m.Senario, m.Labels, err = m.parser.ParseScenario(string(script))
 	if err != nil {
 		return
 	}
