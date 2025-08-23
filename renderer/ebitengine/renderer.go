@@ -26,22 +26,6 @@ type Text struct {
 	TextStyle *kag3.TextStyle
 }
 
-type CharaShow struct {
-	Time int
-	Layer int
-	Zindex int
-	Depth string
-	Page string
-	Wait bool
-	Face string
-	Storage string
-	Reflect bool
-	Width int
-	Height int
-	Left int
-	Top int
-}
-
 type Renderer struct {
 	manager *kag3.Manager
 	scripts []any
@@ -58,9 +42,9 @@ var (
 	isWait bool
 	loop func(y coro.Yield)
 	isClicked func() bool
-	t, tick, oldTick, bgTick, charaTick int
+	t, tick, oldTick, bgTick, charaTick, bgmTick int
 	charas map[string]*kag3.Character
-	viewCharas map[string]*CharaShow
+	viewCharas []*kag3.CharaShow
 	bg *kag3.Background
 	textPosition *kag3.TextPosition
 	textStyle *kag3.TextStyle
@@ -68,6 +52,7 @@ var (
 	textGlyphs []text.Glyph
 	charaName string
 	buttons []*kag3.Button
+	imgs []*kag3.Image
 	glinks []*kag3.GLink
 	links []*kag3.Link
 	isJump bool
@@ -78,13 +63,11 @@ var (
 
 func init() {
 	charas = make(map[string]*kag3.Character)
-	viewCharas = make(map[string]*CharaShow)
 	textPosition = &kag3.TextPosition{}
 	audioContext = audio.NewContext(44100)
 	bg = &kag3.Background{
 		Time: 3000,
 		IsWait: true,
-		IsCross: false,
 		Method: "crossfade",
 	}
 	isClicked = func () bool  {
@@ -117,6 +100,10 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	return
 }
 
+func doNext() bool {
+	return inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
+}
+
 func (r *Renderer) Update() {
 	t++
 	if !isFirst {
@@ -128,10 +115,9 @@ func (r *Renderer) Update() {
 		}()
 		isFirst = true
 	}
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
-		inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			isWait = false
-			oldTick = tick
+	if doNext() {
+		isWait = false
+		oldTick = tick
 	}
 	for i, link := range links {
 		mX, mY := ebiten.CursorPosition()
@@ -254,21 +240,11 @@ func (r *Renderer) initScript() {
 				r.line = object.Line
 				switch object.Name {
 				case "bg":
+					fmt.Printf("bg:%+v\n", bg)
 					bgTick = t
-					bg.IsWait = true
-					bg.Time = 3000
-					bg.IsCross = false
-					bg.IsEnd = false
+					images := "images"
 					for key, value := range object.Pm {
 						switch key {
-						case "storage":
-							bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses["images"],
-								object.Pm["storage"],
-							)
-							if err != nil {
-								panic(err)
-							}
 						case "time":
 							bg.Time, err = strconv.Atoi(value)
 							if err != nil {
@@ -305,7 +281,25 @@ func (r *Renderer) initScript() {
 							} else {
 								panic(fmt.Errorf("未対応の値です %s", value))
 							}
+						case "system":
+							switch value {
+							case "true":
+								bg.IsSystem = true
+								images = "system/images"
+							case "false":
+								bg.IsSystem = false
+								images = "images"
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
 						}
+					}
+					bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
+						r.fses[images],
+						object.Pm["storage"],
+					)
+					if err != nil {
+						panic(err)
 					}
 					if bg.IsWait {
 						y.Until(true, func() bool {
@@ -313,125 +307,10 @@ func (r *Renderer) initScript() {
 						})
 					}
 				case "button":
-					button := &kag3.Button{}
-					for key, value := range object.Pm {
-						switch key {
-						case "graphic":
-							folder := "images"
-							if object.Pm["folder"] != "" {
-								folder = object.Pm["folder"]
-							}
-							button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses[folder],
-								object.Pm["graphic"],
-							)
-							if err != nil {
-								panic(err)
-							}
-						case "storage":
-							button.Storage = value
-						case "target":
-							button.Target = value
-						case "name":
-							button.Name = value
-						case "x":
-							button.X, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "y":
-							button.Y, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "width":
-							button.Width, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "height":
-							button.Height, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "fix":
-							switch value {
-							case "true":
-								button.Fix = true
-							case "false":
-								button.Fix = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "role":
-							button.Role = value
-						case "hint":
-							button.Hint = value
-						case "clickse":
-							button.ClickSE = value
-						case "enterse":
-							button.EnterSE = value
-						case "leavese":
-							button.LeaveSE = value
-						case "activeimg":
-							button.ActiveImg = value
-						case "clickimg":
-							button.ClickImg = value
-						case "enterimg":
-							folder := "images"
-							if object.Pm["folder"] != "" {
-								folder = object.Pm["folder"]
-							}
-							button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses[folder],
-								object.Pm["enterimg"],
-							)
-							if err != nil {
-								panic(err)
-							}
-						case "autoimg":
-							button.AutoImg = value
-						case "skipimg":
-							button.SkipImg = value
-						case "visible":
-							switch value {
-							case "true":
-								button.Visible = true
-							case "false":
-								button.Visible = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "auto_next":
-							switch value {
-							case "true":
-								button.AutoNext = true
-							case "false":
-								button.AutoNext = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "savesnap":
-							switch value {
-							case "true":
-								button.SaveSnap = true
-							case "false":
-								button.SaveSnap = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "keyforcus":
-							button.KeyForcus, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						}
+					err = r.button(object)
+					if err != nil {
+						panic(err)
 					}
-					if button.Width ==0 && button.Height == 0 {
-						button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
-					}
-					fmt.Printf("button: %+v\n", button)
-					buttons = append(buttons, button)
 				case "chara_new":
 					name := object.Pm["name"]
 					charaImage, _, err := ebitenutil.NewImageFromFileSystem(
@@ -449,7 +328,7 @@ func (r *Renderer) initScript() {
 					}
 					charas[name].Faces["default"] = object.Pm["storage"]
 				case "chara_hide":
-					delete(viewCharas, object.Pm["name"])
+					viewCharas = removeCharaShow(viewCharas, object.Pm["name"])
 				case "chara_face":
 					charas[object.Pm["name"]].Faces[object.Pm["face"]] = object.Pm["storage"]
 				case "chara_mod":
@@ -467,34 +346,39 @@ func (r *Renderer) initScript() {
 					if _, ok := charas[name]; !ok {
 						panic(fmt.Errorf("そのキャラクターは登録されてません name=%s", name))
 					}
-					viewCharas[name] = &CharaShow{}
-					viewCharas[name].Wait = true
-					viewCharas[name].Time = 1000
+					chara := &kag3.CharaShow{}
+					chara.Wait = true
+					chara.Time = 1000
 					for key, value := range object.Pm {
 						switch key {
+						case "name":
+							chara.Name = value
 						case "time":
-							viewCharas[name].Time, err = strconv.Atoi(value)
+							chara.Time, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "zindex":
-							viewCharas[name].Zindex, err = strconv.Atoi(value)
+							chara.Zindex, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "depth":
-							viewCharas[name].Depth = value
+							chara.Depth = value
 						case "page":
-							viewCharas[name].Page = value
+							chara.Page = value
 						case "wait":
-							if value == "true" {
-								viewCharas[name].Wait = true
-							} else {
-								viewCharas[name].Wait = false
+							switch value {
+							case "true":
+								chara.Wait = true
+							case "false":
+								chara.Wait = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
 							}
 						case "face":
 							if v, ok := charas[name].Faces[value]; ok {
-								viewCharas[name].Face = v
+								chara.Face = v
 							}
 						case "storage":
 							charaImage, _, err := ebitenutil.NewImageFromFileSystem(
@@ -506,36 +390,56 @@ func (r *Renderer) initScript() {
 							}
 							charas[name].Image = charaImage
 						case "refrect":
-							if value == "true" {
-								viewCharas[name].Reflect = true
-							} else {
-								viewCharas[name].Reflect = false
+							switch value {
+							case "true":
+								chara.Reflect = true
+							case "false":
+								chara.Reflect = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
 							}
 						case "width":
-							viewCharas[name].Width, err = strconv.Atoi(value)
+							chara.Width, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "height":
-							viewCharas[name].Height, err = strconv.Atoi(value)
+							chara.Height, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "left":
-							viewCharas[name].Left, err = strconv.Atoi(value)
+							chara.Left, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "top":
-							viewCharas[name].Top, err = strconv.Atoi(value)
+							chara.Top, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						}
 					}
-					if viewCharas[name].Wait {
+					herfWidth := charas[name].Image.Bounds().Dx() / 2
+					charaSpace := r.manager.Config.ScreenWidth / (len(viewCharas) + 2)
+					currentLeft := charaSpace
+					if chara.Left == 0 && chara.Top == 0 {
+						chara.Left = charaSpace - herfWidth
+						chara.Top = r.manager.Config.ScreenHeight - charas[name].Image.Bounds().Dy()
+					}
+					for _, c := range viewCharas {
+						currentLeft += charaSpace
+						left := currentLeft - (charas[c.Name].Image.Bounds().Dx() / 2)
+						c.NewLeft = left
+						c.IsSlide = true
+
+					}
+					viewCharas = append(viewCharas, chara)
+					fmt.Printf("viewCharas:%+v\n", chara)
+					fmt.Printf("viewCharas:%+v\n", viewCharas)
+					if chara.Wait {
 						y.Until(true, func() bool {
-							return float64(t - charaTick) / float64(viewCharas[name].Time * ebiten.TPS() / 1000) >= 1
+							return float64(t - charaTick) / float64(chara.Time * ebiten.TPS() / 1000) >= 1
 						})
 					}
 				case "cm":
@@ -609,6 +513,11 @@ func (r *Renderer) initScript() {
 						glink.Height = int(h) + 20
 					}
 					glinks = append(glinks, glink)
+				case "image":
+					err = r.image(object)
+					if err != nil {
+						panic(err)
+					}
 				case "jump":
 					jump := &kag3.Jump{}
 					for key, value := range object.Pm {
@@ -672,6 +581,7 @@ func (r *Renderer) initScript() {
 				case "p":
 					y.Until(true, isClicked)
 				case "playbgm":
+					bgmTick = t
 					fmt.Println("playbgm")
 					bgm := &kag3.BGM{}
 					bgm.Volume = 100
@@ -692,7 +602,14 @@ func (r *Renderer) initScript() {
 					for key, value := range object.Pm {
 						switch key {
 						case "loop":
-							bgm.Loop = (value == "true")
+							switch value {
+							case "true":
+								bgm.Loop = true
+							case "false":
+								bgm.Loop = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
 						case "sprite_time":
 							bgm.SpriteTime = value
 						case "volume":
@@ -701,14 +618,28 @@ func (r *Renderer) initScript() {
 								panic(err)
 							}
 						case "pause":
-							bgm.Pause = (value == "true")
+							switch value {
+							case "true":
+								bgm.Pause = true
+							case "false":
+								bgm.Pause = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
 						case "seek":
 							bgm.Seek, err = strconv.Atoi(value)
 							if err != nil {
 								panic(err)
 							}
 						case "restart":
-							bgm.Restart = (value == "true")
+							switch value {
+							case "true":
+								bgm.Restart = true
+							case "false":
+								bgm.Restart = false
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
 						case "time":
 							bgm.Time, err = strconv.Atoi(value)
 							if err != nil {
@@ -872,8 +803,225 @@ func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
 	return nil
 }
 
+func (r *Renderer) button(object kag3.TagObject) (err error) {
+	button := &kag3.Button{}
+	for key, value := range object.Pm {
+		switch key {
+		case "graphic":
+			folder := "images"
+			if object.Pm["folder"] != "" {
+				folder = object.Pm["folder"]
+			}
+			button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(
+				r.fses[folder],
+				object.Pm["graphic"],
+			)
+			if err != nil {
+				return
+			}
+		case "storage":
+			button.Storage = value
+		case "target":
+			button.Target = value
+		case "name":
+			button.Name = value
+		case "x":
+			button.X, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "y":
+			button.Y, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "width":
+			button.Width, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "height":
+			button.Height, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "fix":
+			switch value {
+			case "true":
+				button.Fix = true
+			case "false":
+				button.Fix = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "role":
+			button.Role = value
+		case "hint":
+			button.Hint = value
+		case "clickse":
+			button.ClickSE = value
+		case "enterse":
+			button.EnterSE = value
+		case "leavese":
+			button.LeaveSE = value
+		case "activeimg":
+			button.ActiveImg = value
+		case "clickimg":
+			button.ClickImg = value
+		case "enterimg":
+			folder := "images"
+			if object.Pm["folder"] != "" {
+				folder = object.Pm["folder"]
+			}
+			button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(
+				r.fses[folder],
+				object.Pm["enterimg"],
+			)
+			if err != nil {
+				return
+			}
+		case "autoimg":
+			button.AutoImg = value
+		case "skipimg":
+			button.SkipImg = value
+		case "visible":
+			switch value {
+			case "true":
+				button.Visible = true
+			case "false":
+				button.Visible = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "auto_next":
+			switch value {
+			case "true":
+				button.AutoNext = true
+			case "false":
+				button.AutoNext = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "savesnap":
+			switch value {
+			case "true":
+				button.SaveSnap = true
+			case "false":
+				button.SaveSnap = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "keyforcus":
+			button.KeyForcus, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		}
+	}
+	if button.Width ==0 && button.Height == 0 {
+		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
+	}
+	fmt.Printf("button: %+v\n", button)
+	buttons = append(buttons, button)
+	return nil
+}
+
+func (r *Renderer) image(object kag3.TagObject) (err error) {
+	img := &kag3.Image{}
+	for key, value := range object.Pm {
+		switch key {
+		case "layer":
+			img.Layer = value
+		case "page":
+			img.Page = value
+		case "left":
+			img.Left, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "top":
+			img.Top, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "x":
+			img.X, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "y":
+			img.Y, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "width":
+			img.Width, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "height":
+			img.Height, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "folder":
+			img.Folder = value
+		case "name":
+			img.Name = value
+		case "time":
+			img.Time, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "wait":
+			switch value {
+			case "true":
+				img.IsWait = true
+			case "false":
+				img.IsWait = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "zindex":
+			img.ZIndex, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "depth":
+			img.Depth = value
+		case "refrect":
+			switch value {
+			case "true":
+				img.Reflect = true
+			case "false":
+				img.Reflect = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "pos":
+			img.Depth = value
+		case "animimg":
+			switch value {
+			case "true":
+				img.AnimImg = true
+			case "false":
+				img.AnimImg = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		}
+	}
+	img.Image, _, err = ebitenutil.NewImageFromFileSystem(
+		r.fses["images"],
+		object.Pm["storage"],
+	)
+	if err != nil {
+		return
+	}
+	return nil
+}
+
 func (r *Renderer) Draw(screen *ebiten.Image) {
-	screenWidth, screenHeight := screen.Bounds().Dx(), screen.Bounds().Dy()
 	if bg.Image != nil {
 		screen.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
 		if bg.NextImage != nil {
@@ -890,11 +1038,14 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
-	for name, chara := range viewCharas {
-		charaLeft := (screenWidth - charas[name].Image.Bounds().Dx()) / 2
-		charaTop := (screenHeight - charas[name].Image.Bounds().Dy())
-		e := &effects.FadeIn{}
-		e.Draw(screen, charas[name].Image, charaLeft, charaTop, charaTick, t, chara.Time)
+	for _, chara := range viewCharas {
+		if chara.IsSlide {
+			e := &effects.SlideInLeft{}
+			e.Draw(screen, charas[chara.Name].Image, chara, charaTick, t, chara.Time)
+		} else {
+			e := &effects.FadeIn{}
+			e.Draw(screen, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time)
+		}
 	}
 	if textPosition != nil && textPosition.Visible {
 		op := &ebiten.DrawImageOptions{}
@@ -914,6 +1065,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 
 		marginLeft := x + float64(textPosition.MarginLeft)
 		marginTop := y + float64(textPosition.MarginTop)
+		//count := t / (r.manager.Config.ChSpeed * ebiten.TPS() / 1000)
 		count := t / 5
 		multiCount := 0
 		multiWidth := 0.0
@@ -976,7 +1128,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 				if !isWait {
 					count = count % len(glyph)
 				}
-				if count >= len(glyph) - 1 {
+				if (count >= len(glyph) - 1){
 					isWait = true
 					tOp.GeoM.Reset()
 					tOp.GeoM.Translate(marginLeft + multiWidth - w, marginTop)
@@ -1039,8 +1191,13 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 			screen.DrawImage(button.Graphic, buttonOp)
 		}
 	}
-	mx, my := ebiten.CursorPosition()
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("mouseX:%+v mouseY:%+v", mx, my))
+	for _, img := range imgs {
+		imgOp := &ebiten.DrawImageOptions{}
+		imgOp.GeoM.Translate(float64(img.X), float64(img.Y))
+		screen.DrawImage(img.Image, imgOp)
+	}
+	//mx, my := ebiten.CursorPosition()
+	//ebitenutil.DebugPrint(screen, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 }
 
 func parseColor(value string) (r, g, b int, err error) {
@@ -1071,4 +1228,20 @@ func parseColor(value string) (r, g, b int, err error) {
 
 func isColision(mX, mY, x, y, width, height int) bool {
 	return mX >= x && mX <= x + width && mY >= y && mY <= y + height
+}
+
+func removeCharaShow(slice []*kag3.CharaShow, deleteTarget string) (result []*kag3.CharaShow) {
+	if len(slice) == 1 {
+		if slice[0].Name != deleteTarget {
+			panic(fmt.Errorf("その名前のキャラクターはいません name=%s", deleteTarget))
+		} else {
+			return
+		}
+	}
+	for i, v := range slice {
+		if v.Name == deleteTarget {
+			result = append(result[:i], result[i+1:]...)
+		}
+	}
+	return
 }
