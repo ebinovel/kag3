@@ -54,6 +54,7 @@ type Background struct {
 	Position  string
 	Method    string
 	IsEnd     bool
+	IsSystem  bool
 }
 
 type BGM struct {
@@ -117,6 +118,28 @@ type CharaShow struct {
 	NewLeft int
 }
 
+type Image struct {
+	Image *ebiten.Image
+	Storage string
+	Layer string
+	Page string
+	Visible bool
+	Left int
+	Top int
+	X int
+	Y int
+	Width int
+	Height int
+	Folder string
+	Name string
+	Time int
+	IsWait bool
+	ZIndex int
+	Depth string
+	Reflect bool
+	Pos string
+	AnimImg bool
+}
 
 type Jump struct {
 	Storage string

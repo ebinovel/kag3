@@ -42,6 +42,7 @@ func main() {
 		"images": Images,
 		"senarios": Senarios,
 		"ses": Ses,
+		"system/images": kag3.Images,
 	})
 	
 

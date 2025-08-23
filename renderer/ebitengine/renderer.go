@@ -52,6 +52,7 @@ var (
 	textGlyphs []text.Glyph
 	charaName string
 	buttons []*kag3.Button
+	imgs []*kag3.Image
 	glinks []*kag3.GLink
 	links []*kag3.Link
 	isJump bool
@@ -67,7 +68,6 @@ func init() {
 	bg = &kag3.Background{
 		Time: 3000,
 		IsWait: true,
-		IsCross: false,
 		Method: "crossfade",
 	}
 	isClicked = func () bool  {
@@ -242,20 +242,9 @@ func (r *Renderer) initScript() {
 				case "bg":
 					fmt.Printf("bg:%+v\n", bg)
 					bgTick = t
-					bg.IsWait = true
-					bg.Time = 3000
-					bg.IsCross = false
-					bg.IsEnd = false
+					images := "images"
 					for key, value := range object.Pm {
 						switch key {
-						case "storage":
-							bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses["images"],
-								object.Pm["storage"],
-							)
-							if err != nil {
-								panic(err)
-							}
 						case "time":
 							bg.Time, err = strconv.Atoi(value)
 							if err != nil {
@@ -292,7 +281,25 @@ func (r *Renderer) initScript() {
 							} else {
 								panic(fmt.Errorf("未対応の値です %s", value))
 							}
+						case "system":
+							switch value {
+							case "true":
+								bg.IsSystem = true
+								images = "system/images"
+							case "false":
+								bg.IsSystem = false
+								images = "images"
+							default:
+								panic(fmt.Errorf("未対応の値です %s", value))
+							}
 						}
+					}
+					bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
+						r.fses[images],
+						object.Pm["storage"],
+					)
+					if err != nil {
+						panic(err)
 					}
 					if bg.IsWait {
 						y.Until(true, func() bool {
@@ -300,125 +307,10 @@ func (r *Renderer) initScript() {
 						})
 					}
 				case "button":
-					button := &kag3.Button{}
-					for key, value := range object.Pm {
-						switch key {
-						case "graphic":
-							folder := "images"
-							if object.Pm["folder"] != "" {
-								folder = object.Pm["folder"]
-							}
-							button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses[folder],
-								object.Pm["graphic"],
-							)
-							if err != nil {
-								panic(err)
-							}
-						case "storage":
-							button.Storage = value
-						case "target":
-							button.Target = value
-						case "name":
-							button.Name = value
-						case "x":
-							button.X, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "y":
-							button.Y, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "width":
-							button.Width, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "height":
-							button.Height, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						case "fix":
-							switch value {
-							case "true":
-								button.Fix = true
-							case "false":
-								button.Fix = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "role":
-							button.Role = value
-						case "hint":
-							button.Hint = value
-						case "clickse":
-							button.ClickSE = value
-						case "enterse":
-							button.EnterSE = value
-						case "leavese":
-							button.LeaveSE = value
-						case "activeimg":
-							button.ActiveImg = value
-						case "clickimg":
-							button.ClickImg = value
-						case "enterimg":
-							folder := "images"
-							if object.Pm["folder"] != "" {
-								folder = object.Pm["folder"]
-							}
-							button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(
-								r.fses[folder],
-								object.Pm["enterimg"],
-							)
-							if err != nil {
-								panic(err)
-							}
-						case "autoimg":
-							button.AutoImg = value
-						case "skipimg":
-							button.SkipImg = value
-						case "visible":
-							switch value {
-							case "true":
-								button.Visible = true
-							case "false":
-								button.Visible = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "auto_next":
-							switch value {
-							case "true":
-								button.AutoNext = true
-							case "false":
-								button.AutoNext = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "savesnap":
-							switch value {
-							case "true":
-								button.SaveSnap = true
-							case "false":
-								button.SaveSnap = false
-							default:
-								panic(fmt.Errorf("未対応の値です %s", value))
-							}
-						case "keyforcus":
-							button.KeyForcus, err = strconv.Atoi(value)
-							if err != nil {
-								panic(err)
-							}
-						}
+					err = r.button(object)
+					if err != nil {
+						panic(err)
 					}
-					if button.Width ==0 && button.Height == 0 {
-						button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
-					}
-					fmt.Printf("button: %+v\n", button)
-					buttons = append(buttons, button)
 				case "chara_new":
 					name := object.Pm["name"]
 					charaImage, _, err := ebitenutil.NewImageFromFileSystem(
@@ -621,6 +513,11 @@ func (r *Renderer) initScript() {
 						glink.Height = int(h) + 20
 					}
 					glinks = append(glinks, glink)
+				case "image":
+					err = r.image(object)
+					if err != nil {
+						panic(err)
+					}
 				case "jump":
 					jump := &kag3.Jump{}
 					for key, value := range object.Pm {
@@ -906,6 +803,224 @@ func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
 	return nil
 }
 
+func (r *Renderer) button(object kag3.TagObject) (err error) {
+	button := &kag3.Button{}
+	for key, value := range object.Pm {
+		switch key {
+		case "graphic":
+			folder := "images"
+			if object.Pm["folder"] != "" {
+				folder = object.Pm["folder"]
+			}
+			button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(
+				r.fses[folder],
+				object.Pm["graphic"],
+			)
+			if err != nil {
+				return
+			}
+		case "storage":
+			button.Storage = value
+		case "target":
+			button.Target = value
+		case "name":
+			button.Name = value
+		case "x":
+			button.X, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "y":
+			button.Y, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "width":
+			button.Width, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "height":
+			button.Height, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "fix":
+			switch value {
+			case "true":
+				button.Fix = true
+			case "false":
+				button.Fix = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "role":
+			button.Role = value
+		case "hint":
+			button.Hint = value
+		case "clickse":
+			button.ClickSE = value
+		case "enterse":
+			button.EnterSE = value
+		case "leavese":
+			button.LeaveSE = value
+		case "activeimg":
+			button.ActiveImg = value
+		case "clickimg":
+			button.ClickImg = value
+		case "enterimg":
+			folder := "images"
+			if object.Pm["folder"] != "" {
+				folder = object.Pm["folder"]
+			}
+			button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(
+				r.fses[folder],
+				object.Pm["enterimg"],
+			)
+			if err != nil {
+				return
+			}
+		case "autoimg":
+			button.AutoImg = value
+		case "skipimg":
+			button.SkipImg = value
+		case "visible":
+			switch value {
+			case "true":
+				button.Visible = true
+			case "false":
+				button.Visible = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "auto_next":
+			switch value {
+			case "true":
+				button.AutoNext = true
+			case "false":
+				button.AutoNext = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "savesnap":
+			switch value {
+			case "true":
+				button.SaveSnap = true
+			case "false":
+				button.SaveSnap = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "keyforcus":
+			button.KeyForcus, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		}
+	}
+	if button.Width ==0 && button.Height == 0 {
+		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
+	}
+	fmt.Printf("button: %+v\n", button)
+	buttons = append(buttons, button)
+	return nil
+}
+
+func (r *Renderer) image(object kag3.TagObject) (err error) {
+	img := &kag3.Image{}
+	for key, value := range object.Pm {
+		switch key {
+		case "layer":
+			img.Layer = value
+		case "page":
+			img.Page = value
+		case "left":
+			img.Left, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "top":
+			img.Top, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "x":
+			img.X, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "y":
+			img.Y, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "width":
+			img.Width, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "height":
+			img.Height, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "folder":
+			img.Folder = value
+		case "name":
+			img.Name = value
+		case "time":
+			img.Time, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "wait":
+			switch value {
+			case "true":
+				img.IsWait = true
+			case "false":
+				img.IsWait = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "zindex":
+			img.ZIndex, err = strconv.Atoi(value)
+			if err != nil {
+				return
+			}
+		case "depth":
+			img.Depth = value
+		case "refrect":
+			switch value {
+			case "true":
+				img.Reflect = true
+			case "false":
+				img.Reflect = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		case "pos":
+			img.Depth = value
+		case "animimg":
+			switch value {
+			case "true":
+				img.AnimImg = true
+			case "false":
+				img.AnimImg = false
+			default:
+				return fmt.Errorf("未対応の値です %s", value)
+			}
+		}
+	}
+	img.Image, _, err = ebitenutil.NewImageFromFileSystem(
+		r.fses["images"],
+		object.Pm["storage"],
+	)
+	if err != nil {
+		return
+	}
+	return nil
+}
+
 func (r *Renderer) Draw(screen *ebiten.Image) {
 	if bg.Image != nil {
 		screen.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
@@ -1075,6 +1190,11 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		} else {
 			screen.DrawImage(button.Graphic, buttonOp)
 		}
+	}
+	for _, img := range imgs {
+		imgOp := &ebiten.DrawImageOptions{}
+		imgOp.GeoM.Translate(float64(img.X), float64(img.Y))
+		screen.DrawImage(img.Image, imgOp)
 	}
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(screen, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
