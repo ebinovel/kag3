@@ -10,7 +10,7 @@
 [clearfix]
 [start_keyconfig]
 
-[bg storage="room.png" time="100"]
+[bg storage="room.jpg" time="100"]
 
 ;メニューボタンの表示
 @showmenubutton
@@ -150,7 +150,7 @@ AppStoreやGooglePlayに向けてアプリ化して販売することもでき�
 #あかね
 じゃあ、次に場面を移動してみるね[p]
 廊下に移動するよ[p]
-[bg  time="3000"  method="crossfade" storage="rouka.png"  ]
+[bg  time="3000"  method="crossfade" storage="rouka.jpg"  ]
 
 #
 お、廊下に移動したね。[p]
@@ -182,7 +182,7 @@ AppStoreやGooglePlayに向けてアプリ化して販売することもでき�
 ;メッセージを全画面に切り替え
 [position layer="message0" left=20 top=40 width=1200 height=660 page=fore visible=true ]
 
-どうかな? 物語をじっくり読ませたい場合はこの方式が便利ですね[l][r]
+どうかな？物語をじっくり読ませたい場合はこの方式が便利ですね[l][r]
 ティラノスクリプトは非常に強力で、柔軟な表現が可能です。[l][cm]
 
 [font size=40]文字のサイズを変更したり

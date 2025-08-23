@@ -98,6 +98,26 @@ type Character struct {
 	Image *ebiten.Image
 }
 
+type CharaShow struct {
+	Name string
+	Time int
+	Layer int
+	Zindex int
+	Depth string
+	Page string
+	Wait bool
+	Face string
+	Storage string
+	Reflect bool
+	Width int
+	Height int
+	Left int
+	Top int
+	IsSlide bool
+	NewLeft int
+}
+
+
 type Jump struct {
 	Storage string
 	Target string
