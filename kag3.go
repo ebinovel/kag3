@@ -30,7 +30,10 @@ type TagObject struct {
 	Line int
 	Pm map[string]string
 	Val string
-	ifCount int
+	// Body holds the raw JavaScript source for an [iscript] tag, captured
+	// between it and its matching [endscript].
+	Body string
+	IfCount int
 }
 
 type LabelInfo struct {

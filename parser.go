@@ -17,17 +17,38 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 	mapLabel = make(map[string]LabelInfo, 0)
 	isInComment := false
 	ks.isInScript = false
+	scriptTagIndex := -1
+	var scriptBuf []string
 
 	for i, s := range strings.Split(scenario, "\n") {
 		line := strings.TrimSpace(s)
 		if line == "" {
 			continue
 		}
+
+		// [iscript]...[endscript] bodies are raw JavaScript: buffer every
+		// line verbatim until the matching [endscript]/@endscript instead
+		// of running it through comment/tag/text parsing.
+		if ks.isInScript {
+			if name, body, ok := splitTagLine(line); ok && name == "endscript" {
+				endTag := ks.makeTag(body, i)
+				if scriptTagIndex >= 0 {
+					if pending, ok := result[scriptTagIndex].(TagObject); ok {
+						pending.Body = strings.Join(scriptBuf, "\n")
+						result[scriptTagIndex] = pending
+					}
+					scriptTagIndex = -1
+				}
+				result = append(result, endTag)
+				scriptBuf = nil
+			} else {
+				scriptBuf = append(scriptBuf, line)
+			}
+			continue
+		}
+
 		firstChar := line[0]
 
-		if (!strings.Contains(line, "endscript")) {
-			ks.isInScript = false
-		}
 		if isInComment && line == "*/" {
 			isInComment = false
 		} else if line == "/*" {
@@ -57,7 +78,7 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 			result = append(result, labelObject)
 
 			if _, ok := mapLabel[labelKey]; ok {
-				return nil, nil, fmt.Errorf(fmt.Sprintf("Warning line:%d ラベル名 '%s' は同一シナリオファイル内に重複してます", i, labelKey))
+				return nil, nil, fmt.Errorf("Warning line:%d ラベル名 '%s' は同一シナリオファイル内に重複してます", i, labelKey)
 			} else {
 				mapLabel[labelKey] = info
 			}
@@ -65,6 +86,10 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 			tmpTag := line[1:]
 			tagObject := ks.makeTag(tmpTag, i)
 			result = append(result, tagObject)
+			if tagObject.Name == "iscript" {
+				scriptTagIndex = len(result) - 1
+				scriptBuf = nil
+			}
 		} else {
 			if firstChar == '_' {
 				line = line[1:]
@@ -76,23 +101,28 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 			bracketsCount := 0
 			for _, c := range chars {
 				if isInTag {
-					if c == "]" && ks.isInScript == false {
+					if c == "]" {
 						bracketsCount--
 
 						if bracketsCount == 0 {
 							isInTag = false
-							result = append(result, ks.makeTag(tag, i))
+							newTag := ks.makeTag(tag, i)
+							result = append(result, newTag)
+							if newTag.Name == "iscript" {
+								scriptTagIndex = len(result) - 1
+								scriptBuf = nil
+							}
 							tag = ""
 						} else {
 							tag += c
 						}
-					} else if c == "[" && ks.isInScript == false {
+					} else if c == "[" {
 						bracketsCount++
 						tag += c
 					} else {
 						tag += c
 					}
-				} else if isInTag == false && c == "[" && ks.isInScript == false {
+				} else if isInTag == false && c == "[" {
 					bracketsCount++
 					if text != "" {
 						textObject := TextObject{
@@ -225,19 +255,40 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	if tag.Name == "endscript" {
 		ks.isInScript = false
 	}
-	tag.ifCount = 0
+	tag.IfCount = 0
 
 	switch tag.Name {
 	case "if":
 		ks.ifCount++
+		tag.IfCount = ks.ifCount
 	case "elsif", "else":
-		tag.ifCount = ks.ifCount
+		tag.IfCount = ks.ifCount
 	case "endif":
-		tag.ifCount = ks.ifCount
+		tag.IfCount = ks.ifCount
 		ks.ifCount--
 	}
 	return tag
 } // }}}
+
+// splitTagLine extracts a tag's name and raw body ("name arg=val ...") from
+// a line written as either "@name ..." or "[name ...]". ok is false if the
+// line isn't a bare tag line in one of those two forms.
+func splitTagLine(line string) (name, body string, ok bool) {
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(trimmed, "@"):
+		body = trimmed[1:]
+	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"):
+		body = trimmed[1 : len(trimmed)-1]
+	default:
+		return "", "", false
+	}
+	name = body
+	if idx := strings.IndexAny(body, " \t"); idx != -1 {
+		name = body[:idx]
+	}
+	return name, body, true
+}
 
 func characterPText(line string, lineCount int) TextObject {
 	tmpLine := strings.TrimSpace(strings.Replace(line, "#", "", 1))
