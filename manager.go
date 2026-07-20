@@ -18,6 +18,9 @@ type Manager struct {
 	Labels map[string]LabelInfo
 	FontFace *text.GoTextFace
 	Macros map[string]*Macro
+	// CurrentStorage is the filename last passed to LoadScript, i.e. what
+	// Senario/Labels currently reflect.
+	CurrentStorage string
 }
 
 func (m *Manager) Init(fses map[string]fs.FS) {
@@ -47,6 +50,7 @@ func (m *Manager) LoadScript(file string) (err error) {
 	}
 	m.Senario = extractMacros(m.Senario, m.Macros)
 	m.Labels = reindexLabels(m.Senario)
+	m.CurrentStorage = file
 	return nil
 }
 

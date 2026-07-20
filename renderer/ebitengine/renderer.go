@@ -26,16 +26,26 @@ type Text struct {
 }
 
 type Renderer struct {
-	manager      *kag3.Manager
-	scripts      []any
-	labels       map[string]kag3.LabelInfo
-	fontFace     *text.GoTextFace
-	nameFontFace *text.GoTextFace
-	fses         map[string]fs.FS
-	texts        map[int][]Text
-	line         int
-	Done         bool
-	vm           *VM
+	manager        *kag3.Manager
+	scripts        []any
+	labels         map[string]kag3.LabelInfo
+	fontFace       *text.GoTextFace
+	nameFontFace   *text.GoTextFace
+	fses           map[string]fs.FS
+	texts          map[int][]Text
+	line           int
+	Done           bool
+	vm             *VM
+	currentStorage string
+	callStack      []callFrame
+}
+
+// callFrame is a [call]'s return address: the storage it was called from
+// and the item index to resume at. Plain string+int so it can round-trip
+// through JSON once save/load exists.
+type callFrame struct {
+	Storage string
+	Index   int
 }
 
 var (
@@ -104,8 +114,9 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 			Size:     manager.FontFace.Size,
 			Language: manager.FontFace.Language,
 		},
-		fses: manager.FSes,
-		vm:   newVM(),
+		fses:           manager.FSes,
+		vm:             newVM(),
+		currentStorage: manager.CurrentStorage,
 	}
 	r.initScript()
 	img := ebiten.NewImage(manager.Config.ScreenWidth, manager.Config.ScreenHeight)
@@ -118,6 +129,19 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 
 func doNext() bool {
 	return inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
+}
+
+// loadScript loads a scenario file and re-points the renderer at it,
+// keeping currentStorage in sync so [call]/[return] can record and resume
+// call frames as plain (storage, index) pairs.
+func (r *Renderer) loadScript(name string) error {
+	if err := r.manager.LoadScript(name); err != nil {
+		return err
+	}
+	r.labels = r.manager.Labels
+	r.scripts = r.manager.Senario
+	r.currentStorage = name
+	return nil
 }
 
 func (r *Renderer) Update() {
@@ -154,9 +178,7 @@ func (r *Renderer) Update() {
 				//fmt.Println("isCollsion", mX, mY)
 				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 					if link.Storage != "" {
-						r.manager.LoadScript(link.Storage)
-						r.labels = r.manager.Labels
-						r.scripts = r.manager.Senario
+						r.loadScript(link.Storage)
 					}
 					if v, ok := r.labels[link.Target[1:]]; ok {
 						fmt.Printf("click label:%+v\n", v)
@@ -172,9 +194,7 @@ func (r *Renderer) Update() {
 		if isColision(mX, mY, glink.X, glink.Y, glink.Width, glink.Height) {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				if glink.Storage != "" {
-					r.manager.LoadScript(glink.Storage)
-					r.labels = r.manager.Labels
-					r.scripts = r.manager.Senario
+					r.loadScript(glink.Storage)
 				}
 				if v, ok := r.labels[glink.Target]; ok {
 					fmt.Printf("label:%+v\n", v)
@@ -197,9 +217,7 @@ func (r *Renderer) Update() {
 				fmt.Printf("labels:%+v\n", r.labels)
 				if button.Storage != "" {
 					fmt.Printf("button.Storage:%+v\n", button.Storage)
-					r.manager.LoadScript(button.Storage)
-					r.labels = r.manager.Labels
-					r.scripts = r.manager.Senario
+					r.loadScript(button.Storage)
 					if button.Target == "" {
 						jumpIndex = 0
 						isJump = true
@@ -217,10 +235,9 @@ func (r *Renderer) Update() {
 						fmt.Printf("button.Role:%s\n", button.Role)
 						ebiten.SetFullscreen(!ebiten.IsFullscreen())
 					case "title":
-						r.manager.LoadScript("title.ks")
-						r.labels = r.manager.Labels
-						r.scripts = r.manager.Senario
+						r.loadScript("title.ks")
 						r.texts = make(map[int][]Text)
+						r.callStack = nil
 						viewCharas = nil
 						charaName = ""
 						pendingRuby = ""
