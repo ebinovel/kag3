@@ -78,6 +78,20 @@ func (v *VM) PushMPFrame(pm map[string]string) (pop func()) {
 	}
 }
 
+// ClearF replaces "f" (the game-variable namespace) with a fresh empty
+// object, for [clearvar] with no name= attribute.
+func (v *VM) ClearF() {
+	v.f = v.rt.NewObject()
+	v.rt.Set("f", v.f)
+}
+
+// ClearSF replaces "sf" (the system-variable namespace) with a fresh empty
+// object, for [clearsysvar].
+func (v *VM) ClearSF() {
+	v.sf = v.rt.NewObject()
+	v.rt.Set("sf", v.sf)
+}
+
 // expandParams resolves Tyrano's "&expression" and "%name" / "%name|default"
 // syntax inside tag argument values before a handler sees them. Values
 // without either prefix pass through unchanged.
