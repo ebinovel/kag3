@@ -37,6 +37,16 @@ func (f *FadeIn) DrawBackground(screen *ebiten.Image, bg *kag3.Background, baseT
 
 type FadeOut struct {}
 
+func (f *FadeOut) Draw(screen, image *ebiten.Image, x, y, baseTick, tick, time int) {
+	op := &ebiten.DrawImageOptions{}
+	t := float64(tick - baseTick) / float64(time * ebiten.TPS() / 1000)
+	if t >= 1 {
+		op.ColorScale.ScaleAlpha(1 - float32(t))
+		op.GeoM.Translate(float64(x), float64(y))
+		screen.DrawImage(image, op)
+	}
+}
+
 func (f *FadeOut) DrawBackground(screen *ebiten.Image, bg *kag3.Background, baseTick, tick, time int) {
 	op := &ebiten.DrawImageOptions{}
 	nextOp := &ebiten.DrawImageOptions{}

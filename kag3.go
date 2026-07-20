@@ -116,6 +116,7 @@ type CharaShow struct {
 	Top int
 	IsSlide bool
 	NewLeft int
+	IsRemove bool
 }
 
 type Image struct {
@@ -156,6 +157,36 @@ type Link struct {
 	Target string
 	KeyForcus int
 	Texts []TextObject
+}
+
+type LayOpt struct {
+	Layer string
+	Page string
+	Visible bool
+	Left int
+	Top int
+	Opacity int
+}
+
+type PText struct {
+	Name string
+	Layer string
+	Page string
+	Text string
+	X int
+	Y int
+	Vertical bool
+	Size int
+	Face string
+	Color *color.RGBA
+	Bold bool
+	Edge *color.RGBA
+	Shadow *color.RGBA
+	Width int
+	Align string
+	Time int
+	Overwrite bool
+	Gradient string
 }
 
 type TextPosition struct {
@@ -253,4 +284,10 @@ var BackgroundMethod = []string{
 	"rollIn",
 	"vanishIn",
 	"puffIn",
+}
+
+func (c *CharaShow) Remove(deleteTarget string) {
+	if c.Name == deleteTarget {
+		c.IsRemove = true
+	}
 }
