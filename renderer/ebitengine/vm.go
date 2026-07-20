@@ -12,11 +12,11 @@ import (
 //
 // f/sf/tf live for the Renderer's lifetime (sf is the save-file namespace,
 // persisted across script loads once save/load exists). mp is swapped per
-// macro-call frame; until macro expansion exists it stays a single empty
-// object.
+// macro-call frame via mpStack, pushed/popped through PushMPFrame.
 type VM struct {
 	rt        *goja.Runtime
 	f, sf, tf *goja.Object
+	mpStack   []*goja.Object
 }
 
 func newVM() *VM {
@@ -55,6 +55,27 @@ func (v *VM) EvalString(src string) string {
 		return ""
 	}
 	return val.String()
+}
+
+// PushMPFrame creates a new "mp" object populated from pm and makes it the
+// active mp for subsequent evaluations, for the duration of a macro call.
+// The returned pop function restores the previous mp frame (or a fresh
+// empty one if none) and must be called once the macro body finishes.
+func (v *VM) PushMPFrame(pm map[string]string) (pop func()) {
+	frame := v.rt.NewObject()
+	for k, val := range pm {
+		frame.Set(k, val)
+	}
+	v.mpStack = append(v.mpStack, frame)
+	v.rt.Set("mp", frame)
+	return func() {
+		v.mpStack = v.mpStack[:len(v.mpStack)-1]
+		if n := len(v.mpStack); n > 0 {
+			v.rt.Set("mp", v.mpStack[n-1])
+		} else {
+			v.rt.Set("mp", v.rt.NewObject())
+		}
+	}
 }
 
 // expandParams resolves Tyrano's "&expression" and "%name" / "%name|default"

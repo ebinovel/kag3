@@ -52,3 +52,30 @@ func TestVMExpandParams(t *testing.T) {
 		t.Errorf("mp = %q, want default %q (no active mp frame)", out["mp"], "default_name")
 	}
 }
+
+func TestVMPushMPFrame(t *testing.T) {
+	v := newVM()
+	if got := v.EvalString("mp.name"); got != "undefined" {
+		t.Fatalf("mp.name before any frame = %q, want %q", got, "undefined")
+	}
+
+	popA := v.PushMPFrame(map[string]string{"name": "foo"})
+	if got := v.EvalString("mp.name"); got != "foo" {
+		t.Errorf("mp.name with frame A active = %q, want %q", got, "foo")
+	}
+
+	popB := v.PushMPFrame(map[string]string{"name": "bar"})
+	if got := v.EvalString("mp.name"); got != "bar" {
+		t.Errorf("mp.name with frame B active (nested) = %q, want %q", got, "bar")
+	}
+
+	popB()
+	if got := v.EvalString("mp.name"); got != "foo" {
+		t.Errorf("mp.name after popping frame B = %q, want restored %q", got, "foo")
+	}
+
+	popA()
+	if got := v.EvalString("mp.name"); got != "undefined" {
+		t.Errorf("mp.name after popping frame A = %q, want %q", got, "undefined")
+	}
+}

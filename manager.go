@@ -17,6 +17,7 @@ type Manager struct {
 	Senario Senario
 	Labels map[string]LabelInfo
 	FontFace *text.GoTextFace
+	Macros map[string]*Macro
 }
 
 func (m *Manager) Init(fses map[string]fs.FS) {
@@ -25,6 +26,7 @@ func (m *Manager) Init(fses map[string]fs.FS) {
 	m.Config = &Config{}
 	m.Config.LoadDefault()
 	m.Config.Load(m.FSes["resources"], "config.toml")
+	m.Macros = make(map[string]*Macro)
 	m.loadDefaultFont()
 }
 
@@ -43,6 +45,8 @@ func (m *Manager) LoadScript(file string) (err error) {
 	if err != nil {
 		return
 	}
+	m.Senario = extractMacros(m.Senario, m.Macros)
+	m.Labels = reindexLabels(m.Senario)
 	return nil
 }
 

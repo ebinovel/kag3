@@ -152,7 +152,7 @@ type Jump struct {
 
 type Macro struct {
 	Name string
-	Macro []any
+	Body []any
 }
 
 type Link struct {

@@ -277,72 +277,13 @@ func (r *Renderer) Update() {
 
 func (r *Renderer) initScript() {
 	loop = func(y coro.Yield) {
-		var err error
 		for i := 0; i < len(r.scripts); i++ {
 			if isJump {
 				i = jumpIndex
 				isJump = false
 			}
-			s := r.scripts[i]
-			fmt.Printf("Index:%d, %+v\n", i, s)
-			switch object := s.(type) {
-			case kag3.CharacterInfo:
-			case kag3.TextObject:
-				isNewLine := r.line != object.Line
-				r.line = object.Line
-				if isNewLine && len(object.Val) > 0 {
-					isWait = false
-					textStartT = t
-				}
-				if object.Chara != nil {
-					fmt.Println(object.Chara)
-					charaName = object.Chara.Name
-				}
-				if len(r.texts[object.Line]) == 0 {
-					r.texts[object.Line] = append(
-						r.texts[object.Line],
-						Text{Text: object.Val, Ruby: pendingRuby},
-					)
-					pendingRuby = ""
-				} else {
-					if r.texts[object.Line][len(r.texts[object.Line])-1].Text == "" {
-						r.texts[object.Line][len(r.texts[object.Line])-1].Text = object.Val
-						if pendingRuby != "" {
-							r.texts[object.Line][len(r.texts[object.Line])-1].Ruby = pendingRuby
-							pendingRuby = ""
-						}
-					} else {
-						r.texts[object.Line] = append(
-							r.texts[object.Line],
-							Text{Text: object.Val, Ruby: pendingRuby},
-						)
-						pendingRuby = ""
-					}
-				}
-				// タグを挟まない連続するテキスト行を1つに連結
-				if len(object.Val) > 0 {
-					for i+1 < len(r.scripts) {
-						next, ok := r.scripts[i+1].(kag3.TextObject)
-						if !ok || len(next.Val) == 0 {
-							break
-						}
-						i++
-						if next.Chara != nil {
-							charaName = next.Chara.Name
-						}
-						last := len(r.texts[object.Line]) - 1
-						r.texts[object.Line][last].Text += next.Val
-					}
-				}
-				if isNewLine && len(object.Val) > 0 {
-					y()
-					y.Until(false, func() bool { return isWait })
-				}
-			case kag3.TagObject:
-				r.line = object.Line
-				if err = dispatchTag(r, y, object, &i); err != nil {
-					panic(err)
-				}
+			if err := r.execItem(y, r.scripts, &i, 0); err != nil {
+				panic(err)
 			}
 			y()
 		}

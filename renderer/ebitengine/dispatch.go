@@ -28,14 +28,20 @@ func register(name string, h tagHandler) {
 	handlers[name] = h
 }
 
-// dispatchTag looks up and runs the handler for a tag. Unknown tags are
-// logged rather than silently dropped, so gaps are visible during staged
-// tag rollout.
-func dispatchTag(r *Renderer, y coro.Yield, tag kag3.TagObject, i *int) error {
+// dispatchTag looks up and runs the handler for a tag. If no built-in
+// handler is registered, a user-defined [macro] of the same name is tried
+// next. depth counts macro-expansion nesting (0 at the top level) and is
+// threaded through so expandMacro can enforce a recursion limit. Tags that
+// match neither are logged rather than silently dropped, so gaps are
+// visible during staged tag rollout.
+func dispatchTag(r *Renderer, y coro.Yield, tag kag3.TagObject, i *int, depth int) error {
 	tag.Pm = r.vm.expandParams(tag.Pm)
 	ctx := &tagCtx{r: r, y: y, tag: tag, i: i}
 	if h, ok := handlers[tag.Name]; ok {
 		return h(ctx)
+	}
+	if m, ok := r.manager.Macros[tag.Name]; ok {
+		return r.expandMacro(y, m, tag.Pm, depth+1)
 	}
 	log.Printf("未実装のタグです: %s (line %d)", tag.Name, tag.Line)
 	return nil
