@@ -1,0 +1,5 @@
+*.swp
+*.exe
+.idea/
+.claude/
+.DS_Store
