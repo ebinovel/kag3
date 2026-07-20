@@ -35,6 +35,7 @@ type Renderer struct {
 	texts        map[int][]Text
 	line         int
 	Done         bool
+	vm           *VM
 }
 
 var (
@@ -104,6 +105,7 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 			Language: manager.FontFace.Language,
 		},
 		fses: manager.FSes,
+		vm:   newVM(),
 	}
 	r.initScript()
 	img := ebiten.NewImage(manager.Config.ScreenWidth, manager.Config.ScreenHeight)

@@ -32,6 +32,7 @@ func register(name string, h tagHandler) {
 // logged rather than silently dropped, so gaps are visible during staged
 // tag rollout.
 func dispatchTag(r *Renderer, y coro.Yield, tag kag3.TagObject, i *int) error {
+	tag.Pm = r.vm.expandParams(tag.Pm)
 	ctx := &tagCtx{r: r, y: y, tag: tag, i: i}
 	if h, ok := handlers[tag.Name]; ok {
 		return h(ctx)
