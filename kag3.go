@@ -233,6 +233,9 @@ type TextPosition struct {
 	Vertical     bool
 	Visible      bool
 	Gradient     color.RGBA
+	// FilterColor is [position_filter]'s override for the message window's
+	// backing fill (nil means the renderer's built-in default).
+	FilterColor *color.RGBA
 }
 
 type TextStyle struct {

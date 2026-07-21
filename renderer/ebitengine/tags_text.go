@@ -23,6 +23,7 @@ func init() {
 func handleP(ctx *tagCtx) error {
 	r := ctx.r
 	ctx.y.Until(true, isTextEnded)
+	recordBacklog(r)
 	r.texts = make(map[int][]Text)
 	isWait = false
 	charaName = ""
@@ -48,6 +49,7 @@ func handleS(ctx *tagCtx) error {
 
 func handleCM(ctx *tagCtx) error {
 	r := ctx.r
+	recordBacklog(r)
 	r.texts = make(map[int][]Text)
 	isWait = false
 	charaName = ""
@@ -64,8 +66,11 @@ func handleFont(ctx *tagCtx) error {
 	return ctx.r.textStyle(ctx.tag)
 }
 
+// handleResetFont reverts to [deffont]'s configured default (nil, i.e. the
+// renderer's built-in look, if none was ever set) rather than always
+// clearing to nil — see tags_message.go.
 func handleResetFont(ctx *tagCtx) error {
-	textStyle = nil
+	textStyle = defaultTextStyle
 	return nil
 }
 

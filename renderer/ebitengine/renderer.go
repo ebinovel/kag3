@@ -6,6 +6,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io/fs"
+	"math"
 	"slices"
 	"strconv"
 
@@ -183,7 +184,7 @@ func (r *Renderer) Update() {
 	if !isWait {
 		autoStartT = t
 	}
-	if isAuto && isWait && t-autoStartT >= 3*ebiten.TPS() {
+	if isAuto && isWait && t-autoStartT >= autoWaitMs*ebiten.TPS()/1000 {
 		oldTick = tick
 	}
 	for i, link := range links {
@@ -838,6 +839,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 			drawCharaParts(buf, charas[chara.Name], chara.Left, chara.Top)
 		}
 	}
+	applyFukiPosition()
 	if textPosition != nil && textPosition.Visible {
 		op := &ebiten.DrawImageOptions{}
 		x, y := float64(textPosition.Left), float64(textPosition.Top)
@@ -846,14 +848,21 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 			op.ColorScale.SetA(float32(textPosition.Opacity))
 			buf.DrawImage(textPosition.FrameImage, op)
 		} else {
-			textPosition.BackImage.Fill(color.RGBA{0, 0, 0, 128})
+			if textPosition.FilterColor != nil {
+				textPosition.BackImage.Fill(*textPosition.FilterColor)
+			} else {
+				textPosition.BackImage.Fill(color.RGBA{0, 0, 0, 128})
+			}
 			buf.DrawImage(textPosition.BackImage, op)
 		}
 		drawPTexts(buf, r.nameFontFace)
 
 		marginLeft := x + float64(textPosition.MarginLeft)
 		marginTop := y + float64(textPosition.MarginTop)
-		count := (t - textStartT) / 5
+		count := math.MaxInt32
+		if !textNoWait {
+			count = (t - textStartT) / ticksPerChar()
+		}
 		isTextEnd = false
 		lineNums := make([]int, 0, len(r.texts))
 		for k := range r.texts {
