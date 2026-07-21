@@ -3,6 +3,7 @@ package ebitengine
 import (
 	"fmt"
 	"image/color"
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io/fs"

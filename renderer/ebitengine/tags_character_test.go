@@ -3,6 +3,8 @@ package ebitengine
 import (
 	"bytes"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"io/fs"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // tinyPNG encodes a minimal valid 1x1 PNG in memory so chara_layer-style
@@ -22,6 +25,32 @@ func tinyPNG(t *testing.T) []byte {
 		t.Fatalf("failed to encode test PNG: %v", err)
 	}
 	return buf.Bytes()
+}
+
+// tinyGIF encodes a minimal valid 1x1 GIF, for TestGIFImagesDecode below.
+func tinyGIF(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.White})
+	var buf bytes.Buffer
+	if err := gif.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("failed to encode test GIF: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// TestGIFImagesDecode covers a real reachable asset in the bundled example
+// project: config.ks's volume/speed slider buttons use
+// tf.btn_path_off = tf.img_path + 'c_btn.gif' as their graphic, and Go's
+// image.Decode (which ebitenutil.NewImageFromFileSystem uses under the
+// hood) only supports formats whose package has been blank-imported
+// somewhere — renderer.go registers jpeg/png but, until now, not gif,
+// so this would have failed with "image: unknown format" the moment that
+// button was drawn.
+func TestGIFImagesDecode(t *testing.T) {
+	mapFS := fstest.MapFS{"c_btn.gif": &fstest.MapFile{Data: tinyGIF(t)}}
+	if _, _, err := ebitenutil.NewImageFromFileSystem(mapFS, "c_btn.gif"); err != nil {
+		t.Errorf("decoding a .gif failed: %v (is image/gif blank-imported in renderer.go?)", err)
+	}
 }
 
 func newTestRendererWithImageFS(t *testing.T, files map[string][]byte) *Renderer {
