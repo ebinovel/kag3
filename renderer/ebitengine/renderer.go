@@ -284,6 +284,7 @@ func (r *Renderer) Update() {
 		buttons = nil
 		links = nil
 	}
+	stepAudioFades()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
 			break
