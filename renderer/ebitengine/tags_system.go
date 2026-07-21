@@ -12,6 +12,10 @@ func init() {
 	register("wt", handleWT)
 	register("wait_cancel", handleWaitCancel)
 	register("close", handleClose)
+	// hidemessage does the same thing [close] does here (hide the message
+	// window) — real Tyrano distinguishes "close a system dialog" from
+	// "hide the message layer", but kag3 doesn't have system dialogs yet.
+	register("hidemessage", handleClose)
 	register("sleepgame", handleCall)
 	register("awakegame", handleReturn)
 	register("breakgame", handleBreakGame)

@@ -11,61 +11,76 @@ import (
 
 func init() {
 	register("bg", handleBG)
+	register("bg2", handleBG2)
 }
 
 func handleBG(ctx *tagCtx) error {
+	return applyBGTag(ctx, bg, &bgTick)
+}
+
+// handleBG2 drives a second, independent background layer (bg2/bg2Tick),
+// composited on top of the main one in Draw. Same attributes and
+// transition machinery as [bg], just a separate slot — useful for things
+// like weather overlays layered over the main scene.
+func handleBG2(ctx *tagCtx) error {
+	return applyBGTag(ctx, bg2, &bg2Tick)
+}
+
+// applyBGTag implements [bg]/[bg2]: both take identical attributes and
+// only differ in which *kag3.Background/tick they drive.
+func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	r := ctx.r
 	object := ctx.tag
-	fmt.Printf("bg:%+v\n", bg)
-	bgTick = t
-	bg.IsEnd = false
+	fmt.Printf("bg:%+v\n", target)
+	*tick = t
+	target.IsEnd = false
 	images := "images"
 	for key, value := range object.Pm {
 		var err error
 		switch key {
 		case "time":
-			bg.Time, err = strconv.Atoi(value)
+			target.Time, err = strconv.Atoi(value)
 			if err != nil {
 				return err
 			}
 		case "wait":
 			switch value {
 			case "true":
-				bg.IsWait = true
+				target.IsWait = true
 			case "false":
-				bg.IsWait = false
+				target.IsWait = false
 			default:
 				return fmt.Errorf("未対応の値です %s", value)
 			}
 		case "cross":
 			switch value {
 			case "true":
-				bg.IsCross = true
+				target.IsCross = true
 			case "false":
-				bg.IsCross = false
+				target.IsCross = false
 			default:
 				return fmt.Errorf("未対応の値です %s", value)
 			}
 		case "position":
 			switch value {
 			case "left", "center", "right", "top", "bottom":
-				bg.Position = value
+				target.Position = value
 			default:
 				return fmt.Errorf("未対応の値です %s", value)
 			}
 		case "method":
 			if slices.Contains(kag3.BackgroundMethod, value) {
-				bg.Method = value
+				target.Method = value
 			} else {
 				return fmt.Errorf("未対応の値です %s", value)
 			}
 		case "system":
 			switch value {
 			case "true":
-				bg.IsSystem = true
+				target.IsSystem = true
 				images = "system/images"
 			case "false":
-				bg.IsSystem = false
+				target.IsSystem = false
 				images = "images"
 			default:
 				return fmt.Errorf("未対応の値です %s", value)
@@ -73,16 +88,16 @@ func handleBG(ctx *tagCtx) error {
 		}
 	}
 	var err error
-	bg.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
+	target.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
 		r.fses[images],
 		object.Pm["storage"],
 	)
 	if err != nil {
 		return err
 	}
-	if bg.IsWait {
+	if target.IsWait {
 		ctx.y.Until(true, func() bool {
-			return bg.IsEnd
+			return target.IsEnd
 		})
 	}
 	return nil

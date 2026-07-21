@@ -285,7 +285,7 @@ var BackgroundMethod = []string{
 	"slideInLeft",
 	"slideInRight",
 	"slideInUp",
-	"bounceIn ",
+	"bounceIn",
 	"bounceInDown",
 	"bounceInLeft",
 	"bounceInRight",

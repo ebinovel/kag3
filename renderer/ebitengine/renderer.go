@@ -57,6 +57,14 @@ var (
 	charas                                       map[string]*kag3.Character
 	viewCharas                                   []*kag3.CharaShow
 	bg                                           *kag3.Background
+	// bg2/bg2Tick drive a second background layer composited on top of bg
+	// (see [bg2] in tags_background.go), for things like weather overlays.
+	bg2                                           *kag3.Background
+	bg2Tick                                       int
+	// backImgs/backPtexts are a simplified fore/back "page" buffer:
+	// [backlay] snapshots imgs/ptexts into them, [trans] swaps them in.
+	backImgs                                      []*kag3.Image
+	backPtexts                                    map[string]*kag3.PText
 	textPosition                                 *kag3.TextPosition
 	textStyle                                    *kag3.TextStyle
 	beforeTextSize                               float64
@@ -96,6 +104,11 @@ func init() {
 	bg = &kag3.Background{
 		Time:   3000,
 		IsWait: true,
+		Method: "crossfade",
+	}
+	bg2 = &kag3.Background{
+		Time:   3000,
+		IsWait: false,
 		Method: "crossfade",
 	}
 	isClicked = func() bool {
@@ -753,16 +766,16 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	if bg.Image != nil {
 		screen.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
 		if bg.NextImage != nil {
-			switch bg.Method {
-			case "fadeIn":
-				e := effects.FadeIn{}
-				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
-			case "crossfade":
-				e := effects.CrossFade{}
-				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
-			case "slide", "slideInRight":
-				e := effects.SlideInRight{}
-				e.DrawBackground(screen, bg, bgTick, t, bg.Time)
+			if transition, ok := effects.Transitions[bg.Method]; ok {
+				transition.DrawBackground(screen, bg, bgTick, t, bg.Time)
+			}
+		}
+	}
+	if bg2.Image != nil {
+		screen.DrawImage(bg2.Image, &ebiten.DrawImageOptions{})
+		if bg2.NextImage != nil {
+			if transition, ok := effects.Transitions[bg2.Method]; ok {
+				transition.DrawBackground(screen, bg2, bg2Tick, t, bg2.Time)
 			}
 		}
 	}
