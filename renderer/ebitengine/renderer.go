@@ -172,6 +172,10 @@ func (r *Renderer) Update() {
 	// coroutine may be sitting blocked in an unrelated [s]/[wait] at the
 	// exact moment the user opens/closes one of these overlays.
 	wasModalActive := backlogViewing || menuOpen
+	// hoveringClickable drives [cursor]'s pointer-vs-default swap (see
+	// tags_sysdesign.go); recomputed fresh below wherever a link/glink/
+	// button already runs an isColision hit-test for its own purposes.
+	hoveringClickable = false
 	if !isFirst {
 		co = coro.New(loop)
 		isFirst = true
@@ -201,6 +205,7 @@ func (r *Renderer) Update() {
 			marginLeft := x + textPosition.MarginLeft
 			marginTop := y + textPosition.MarginTop + int(h)*(i+j)
 			if isColision(mX, mY, marginLeft, marginTop, int(w), int(h)) {
+				hoveringClickable = true
 				//fmt.Println("isCollsion", mX, mY)
 				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 					if link.Storage != "" {
@@ -218,6 +223,7 @@ func (r *Renderer) Update() {
 	for _, glink := range glinks {
 		mX, mY := ebiten.CursorPosition()
 		if isColision(mX, mY, glink.X, glink.Y, glink.Width, glink.Height) {
+			hoveringClickable = true
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				if glink.Storage != "" {
 					r.loadScript(glink.Storage)
@@ -238,6 +244,7 @@ func (r *Renderer) Update() {
 	for _, button := range buttons {
 		mX, mY := ebiten.CursorPosition()
 		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
+			hoveringClickable = true
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				fmt.Printf("click button:%+v\n", button)
 				fmt.Printf("labels:%+v\n", r.labels)
@@ -337,6 +344,8 @@ func (r *Renderer) Update() {
 	}
 	if menuOpen {
 		r.handleQuickMenuClick(screenW, screenH)
+	} else {
+		r.handleMenuButtonClick()
 	}
 	// Backlog has no per-item hit-test — any click dismisses it, except on
 	// the very frame that opened it (that click is the role="backlog"
@@ -860,6 +869,9 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		maskOp.ColorScale.ScaleAlpha(activeMask.Opacity)
 		screen.DrawImage(activeMask.Image, maskOp)
 	}
+	// Drawn directly to screen, not renderBuffer: the cursor must track the
+	// real mouse position 1:1, unaffected by camera pan/zoom or screen shake.
+	drawCursor(screen)
 }
 
 func (r *Renderer) drawScene(buf *ebiten.Image) {
@@ -1156,6 +1168,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 			}
 		}
 		textGlyphs = []text.Glyph{}
+		drawGlyph(buf)
 	}
 	for i, link := range links {
 		for j, t := range link.Texts {
@@ -1212,6 +1225,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	}
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
+	drawMenuButton(r, buf)
 	drawModal(r, buf)
 }
 

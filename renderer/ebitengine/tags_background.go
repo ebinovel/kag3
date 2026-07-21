@@ -95,6 +95,15 @@ func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	if err != nil {
 		return err
 	}
+	// [mode_effect enabled="false"] (tags_sysdesign.go) skips the animated
+	// crossfade/etc. entirely: swap straight to the new image instead of
+	// staging it as NextImage for drawScene's transition to animate.
+	if !effectsEnabled {
+		target.Image = target.NextImage
+		target.NextImage = nil
+		target.IsEnd = true
+		return nil
+	}
 	if target.IsWait {
 		ctx.y.Until(true, func() bool {
 			return target.IsEnd
