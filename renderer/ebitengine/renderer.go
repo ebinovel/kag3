@@ -304,6 +304,7 @@ func (r *Renderer) Update() {
 		links = nil
 	}
 	stepAudioFades()
+	stepAnimations()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
 			break
@@ -346,6 +347,9 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 	if charaNew {
 		chara.Wait = true
 		chara.Time = 1000
+		chara.Opacity = 255
+		chara.ScaleX = 1
+		chara.ScaleY = 1
 		for key, value := range object.Pm {
 			switch key {
 			case "name":
@@ -675,7 +679,7 @@ func (r *Renderer) button(object kag3.TagObject) (err error) {
 }
 
 func (r *Renderer) image(object kag3.TagObject) (err error) {
-	img := &kag3.Image{}
+	img := &kag3.Image{Opacity: 255, ScaleX: 1, ScaleY: 1}
 	for key, value := range object.Pm {
 		switch key {
 		case "layer":
@@ -762,38 +766,76 @@ func (r *Renderer) image(object kag3.TagObject) (err error) {
 	return nil
 }
 
+// renderBuffer is where drawScene actually renders each frame; Draw then
+// composites it onto the real screen with camera pan/zoom, screen-shake
+// offset, and an optional color filter applied — see [camera]/[quake]/
+// [filter] in tags_effects.go. mask (drawn separately, on top, unaffected
+// by shake/camera) is [mask]'s overlay.
+var renderBuffer *ebiten.Image
+
 func (r *Renderer) Draw(screen *ebiten.Image) {
+	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
+	if renderBuffer == nil || renderBuffer.Bounds().Dx() != w || renderBuffer.Bounds().Dy() != h {
+		renderBuffer = ebiten.NewImage(w, h)
+	}
+	renderBuffer.Clear()
+	r.drawScene(renderBuffer)
+
+	op := &ebiten.DrawImageOptions{}
+	cx, cy := float64(w)/2, float64(h)/2
+	op.GeoM.Translate(-cx, -cy)
+	op.GeoM.Scale(camera.Scale, camera.Scale)
+	op.GeoM.Translate(cx, cy)
+	op.GeoM.Translate(camera.X, camera.Y)
+	sx, sy := currentShakeOffset()
+	op.GeoM.Translate(sx, sy)
+	if activeFilter != nil {
+		op.ColorScale.ScaleWithColor(activeFilter.Tint)
+		op.ColorScale.ScaleAlpha(activeFilter.Alpha)
+	}
+	screen.DrawImage(renderBuffer, op)
+
+	if activeMask != nil {
+		maskOp := &ebiten.DrawImageOptions{}
+		maskOp.ColorScale.ScaleAlpha(activeMask.Opacity)
+		screen.DrawImage(activeMask.Image, maskOp)
+	}
+}
+
+func (r *Renderer) drawScene(buf *ebiten.Image) {
 	if bg.Image != nil {
-		screen.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
+		buf.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
 		if bg.NextImage != nil {
 			if transition, ok := effects.Transitions[bg.Method]; ok {
-				transition.DrawBackground(screen, bg, bgTick, t, bg.Time)
+				transition.DrawBackground(buf, bg, bgTick, t, bg.Time)
 			}
 		}
 	}
 	if bg2.Image != nil {
-		screen.DrawImage(bg2.Image, &ebiten.DrawImageOptions{})
+		buf.DrawImage(bg2.Image, &ebiten.DrawImageOptions{})
 		if bg2.NextImage != nil {
 			if transition, ok := effects.Transitions[bg2.Method]; ok {
-				transition.DrawBackground(screen, bg2, bg2Tick, t, bg2.Time)
+				transition.DrawBackground(buf, bg2, bg2Tick, t, bg2.Time)
 			}
 		}
 	}
 	for _, chara := range viewCharas {
 		if chara.IsSlide {
 			e := &effects.SlideInLeft{}
-			e.Draw(screen, charas[chara.Name].Image, chara, charaTick, t, chara.Time)
+			e.Draw(buf, charas[chara.Name].Image, chara, charaTick, t, chara.Time)
 		} else {
 			if chara.IsRemove {
 				e := &effects.FadeOut{}
-				e.Draw(screen, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time)
+				e.Draw(buf, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time,
+					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
 			} else {
 				e := &effects.FadeIn{}
-				e.Draw(screen, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time)
+				e.Draw(buf, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time,
+					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
 			}
 		}
 		if !chara.IsRemove {
-			drawCharaParts(screen, charas[chara.Name], chara.Left, chara.Top)
+			drawCharaParts(buf, charas[chara.Name], chara.Left, chara.Top)
 		}
 	}
 	if textPosition != nil && textPosition.Visible {
@@ -802,12 +844,12 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		op.GeoM.Translate(x, y)
 		if textPosition.FrameImage != nil {
 			op.ColorScale.SetA(float32(textPosition.Opacity))
-			screen.DrawImage(textPosition.FrameImage, op)
+			buf.DrawImage(textPosition.FrameImage, op)
 		} else {
 			textPosition.BackImage.Fill(color.RGBA{0, 0, 0, 128})
-			screen.DrawImage(textPosition.BackImage, op)
+			buf.DrawImage(textPosition.BackImage, op)
 		}
-		drawPTexts(screen, r.nameFontFace)
+		drawPTexts(buf, r.nameFontFace)
 
 		marginLeft := x + float64(textPosition.MarginLeft)
 		marginTop := y + float64(textPosition.MarginTop)
@@ -871,7 +913,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 					} else {
 						tOp.ColorScale.ScaleWithColor(color.White)
 					}
-					text.Draw(screen, string(rs.ch), r.fontFace, tOp)
+					text.Draw(buf, string(rs.ch), r.fontFace, tOp)
 				}
 				colIndex += (len(runes) + charsPerCol - 1) / charsPerCol
 			}
@@ -972,14 +1014,14 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 							if segShowCount >= segLen {
 								tOp.GeoM.Reset()
 								tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)
-								text.Draw(screen, vText, r.fontFace, tOp)
+								text.Draw(buf, vText, r.fontFace, tOp)
 								if v.Ruby != "" {
 									rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: beforeTextSize * 0.5, Language: r.fontFace.Language}
 									rubyW, _ := text.Measure(v.Ruby, rubyFace, 0)
 									rubyOp := &text.DrawOptions{}
 									rubyOp.GeoM.Translate(marginLeft+xOffset+(w-rubyW)/2, marginTop+rowY)
 									rubyOp.ColorScale.ScaleWithColor(color.White)
-									text.Draw(screen, v.Ruby, rubyFace, rubyOp)
+									text.Draw(buf, v.Ruby, rubyFace, rubyOp)
 								}
 							} else if segShowCount > 0 {
 								for _, g := range glyph[:segShowCount] {
@@ -988,7 +1030,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 									}
 									tOp.GeoM.Reset()
 									tOp.GeoM.Translate(marginLeft+xOffset+g.X, marginTop+rowY+rubyLineHeight+g.Y)
-									screen.DrawImage(g.Image, &tOp.DrawImageOptions)
+									buf.DrawImage(g.Image, &tOp.DrawImageOptions)
 								}
 							}
 							xOffset += w
@@ -1030,14 +1072,14 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 							tOp.ColorScale.ScaleWithColor(color.White)
 						}
 						tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)
-						text.Draw(screen, vText, r.fontFace, tOp)
+						text.Draw(buf, vText, r.fontFace, tOp)
 						if v.Ruby != "" {
 							rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: beforeTextSize * 0.5, Language: r.fontFace.Language}
 							rubyW, _ := text.Measure(v.Ruby, rubyFace, 0)
 							rubyOp := &text.DrawOptions{}
 							rubyOp.GeoM.Translate(marginLeft+xOffset+(w-rubyW)/2, marginTop+rowY)
 							rubyOp.ColorScale.ScaleWithColor(color.White)
-							text.Draw(screen, v.Ruby, rubyFace, rubyOp)
+							text.Draw(buf, v.Ruby, rubyFace, rubyOp)
 						}
 						xOffset += w
 					}
@@ -1064,7 +1106,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 				}
 			}
 			if !isJump {
-				text.Draw(screen, t.Val, r.fontFace, linkOp)
+				text.Draw(buf, t.Val, r.fontFace, linkOp)
 			}
 		}
 	}
@@ -1073,11 +1115,11 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		backgroundOp.GeoM.Translate(float64(glink.X), float64(glink.Y))
 		img := ebiten.NewImage(glink.Width, glink.Height)
 		img.Fill(glink.Color)
-		screen.DrawImage(img, backgroundOp)
+		buf.DrawImage(img, backgroundOp)
 		glinkOp := &text.DrawOptions{}
 		w, h := text.Measure(glink.Text, r.fontFace, 0)
 		glinkOp.GeoM.Translate(float64(glink.Width/2+glink.X)-(w/2), float64(glink.Height/2+glink.Y)-(h/2))
-		text.Draw(screen, glink.Text, r.fontFace, glinkOp)
+		text.Draw(buf, glink.Text, r.fontFace, glinkOp)
 	}
 	for _, button := range buttons {
 		buttonOp := &ebiten.DrawImageOptions{}
@@ -1085,24 +1127,44 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 
 		mX, mY := ebiten.CursorPosition()
 		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
-			screen.DrawImage(button.EnterImg, buttonOp)
+			buf.DrawImage(button.EnterImg, buttonOp)
 		} else {
-			screen.DrawImage(button.Graphic, buttonOp)
+			buf.DrawImage(button.Graphic, buttonOp)
 		}
 	}
 	for _, img := range imgs {
 		imgOp := &ebiten.DrawImageOptions{}
+		applyPivotedImageTransform(imgOp, img.Image, img.ScaleX, img.ScaleY, img.Rotation)
 		imgOp.GeoM.Translate(float64(img.X), float64(img.Y))
-		screen.DrawImage(img.Image, imgOp)
+		imgOp.ColorScale.ScaleAlpha(float32(img.Opacity / 255))
+		if blend, ok := layerBlend[img.Layer]; ok {
+			imgOp.Blend = blend
+		}
+		buf.DrawImage(img.Image, imgOp)
 	}
 	//mx, my := ebiten.CursorPosition()
-	//ebitenutil.DebugPrint(screen, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
+	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 }
 
 // drawCharaParts overlays a character's currently active differential
 // parts (see [chara_layer]/[chara_part]) on top of its base image, aligned
 // to the same origin. Layers are drawn in sorted-name order for
 // determinism since Tyrano-style z-index configuration isn't implemented.
+// applyPivotedImageTransform scales/rotates op around img's own center —
+// the same convention as effects.applyPivotedTransform, duplicated here
+// (unexported there) since [image]'s Opacity/ScaleX/ScaleY/Rotation are
+// applied directly in drawScene rather than through an effects.* type.
+func applyPivotedImageTransform(op *ebiten.DrawImageOptions, img *ebiten.Image, scaleX, scaleY, rotation float64) {
+	if scaleX == 1 && scaleY == 1 && rotation == 0 {
+		return
+	}
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
+	op.GeoM.Scale(scaleX, scaleY)
+	op.GeoM.Rotate(rotation)
+	op.GeoM.Translate(float64(w)/2, float64(h)/2)
+}
+
 func drawCharaParts(screen *ebiten.Image, c *kag3.Character, left, top int) {
 	if c == nil || len(c.ActivePart) == 0 {
 		return
