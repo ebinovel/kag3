@@ -1236,10 +1236,17 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 		buttonOp.GeoM.Translate(float64(button.X), float64(button.Y))
 
 		mX, mY := ebiten.CursorPosition()
-		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
-			buf.DrawImage(button.EnterImg, buttonOp)
-		} else {
-			buf.DrawImage(button.Graphic, buttonOp)
+		// A button with no enterimg= (e.g. config.ks's volume/speed slider
+		// buttons) just keeps showing its normal graphic on hover, rather
+		// than crash trying to draw a nil hover image. Graphic itself can
+		// also be nil (only enterimg= given, an unusual but not invalid
+		// script) — draw whichever of the two applies is actually set.
+		toDraw := button.Graphic
+		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) && button.EnterImg != nil {
+			toDraw = button.EnterImg
+		}
+		if toDraw != nil {
+			buf.DrawImage(toDraw, buttonOp)
 		}
 	}
 	for _, img := range imgs {
