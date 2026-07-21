@@ -92,6 +92,42 @@ func (v *VM) ClearSF() {
 	v.rt.Set("sf", v.sf)
 }
 
+// ExportF/ExportSF snapshot "f"/"sf" as plain Go maps so save/load (see
+// tags_save.go) can round-trip them through JSON. goja.Object.Export()
+// walks the whole object graph, so this only works for JSON-shaped data
+// (strings/numbers/bools/nested maps/slices) — a script that stashes a
+// function or other exotic value in f/sf will lose it on save, same
+// limitation as any other KAG engine's save file.
+func (v *VM) ExportF() map[string]interface{} {
+	m, _ := v.f.Export().(map[string]interface{})
+	return m
+}
+
+func (v *VM) ExportSF() map[string]interface{} {
+	m, _ := v.sf.Export().(map[string]interface{})
+	return m
+}
+
+// RestoreF/RestoreSF replace "f"/"sf" with a fresh object populated from a
+// previously-exported map, for [load]/[rollback].
+func (v *VM) RestoreF(vars map[string]interface{}) {
+	obj := v.rt.NewObject()
+	for k, val := range vars {
+		obj.Set(k, val)
+	}
+	v.f = obj
+	v.rt.Set("f", obj)
+}
+
+func (v *VM) RestoreSF(vars map[string]interface{}) {
+	obj := v.rt.NewObject()
+	for k, val := range vars {
+		obj.Set(k, val)
+	}
+	v.sf = obj
+	v.rt.Set("sf", obj)
+}
+
 // expandParams resolves Tyrano's "&expression" and "%name" / "%name|default"
 // syntax inside tag argument values before a handler sees them. Values
 // without either prefix pass through unchanged.

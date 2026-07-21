@@ -166,6 +166,12 @@ func (r *Renderer) loadScript(name string) error {
 
 func (r *Renderer) Update() {
 	t++
+	// wasModalActive/the check before the co.Next() loop below prevent a
+	// single click from both toggling backlogViewing/menuOpen *and* being
+	// read by doNext() as "advance the story" in the same frame — the tag
+	// coroutine may be sitting blocked in an unrelated [s]/[wait] at the
+	// exact moment the user opens/closes one of these overlays.
+	wasModalActive := backlogViewing || menuOpen
 	if !isFirst {
 		co = coro.New(loop)
 		isFirst = true
@@ -237,6 +243,16 @@ func (r *Renderer) Update() {
 				fmt.Printf("labels:%+v\n", r.labels)
 				if button.Storage != "" {
 					fmt.Printf("button.Storage:%+v\n", button.Storage)
+					// role="sleepgame" must record its return address
+					// (see [awakegame]/handleReturn in tags_flow.go) against
+					// the *old* storage/position, before loadScript below
+					// overwrites r.currentStorage.
+					if button.Role == "sleepgame" {
+						r.callStack = append(r.callStack, callFrame{
+							Storage: r.currentStorage,
+							Index:   currentScriptIndex,
+						})
+					}
 					r.loadScript(button.Storage)
 					if button.Target == "" {
 						jumpIndex = 0
@@ -246,26 +262,36 @@ func (r *Renderer) Update() {
 				if button.Role != "" {
 					switch button.Role {
 					case "save":
+						if err := r.saveSlot(manualSaveSlot); err != nil {
+							fmt.Printf("save failed: %v\n", err)
+						}
 					case "load":
+						if err := r.loadSlot(manualSaveSlot); err != nil {
+							fmt.Printf("load failed: %v\n", err)
+						}
 					case "quicksave":
+						if err := r.saveSlot(quickSaveSlot); err != nil {
+							fmt.Printf("quicksave failed: %v\n", err)
+						}
 					case "quickload":
+						if err := r.loadSlot(quickSaveSlot); err != nil {
+							fmt.Printf("quickload failed: %v\n", err)
+						}
 					case "backlog":
+						backlogViewing = !backlogViewing
+						if backlogViewing {
+							backlogOpenedFrame = t
+						}
 					case "menu":
+						menuOpen = !menuOpen
+						if menuOpen {
+							menuOpenedFrame = t
+						}
 					case "fullscreen":
 						fmt.Printf("button.Role:%s\n", button.Role)
 						ebiten.SetFullscreen(!ebiten.IsFullscreen())
 					case "title":
-						r.loadScript("title.ks")
-						r.texts = make(map[int][]Text)
-						r.callStack = nil
-						viewCharas = nil
-						charaName = ""
-						pendingRuby = ""
-						isWait = false
-						isSkip = false
-						isAuto = false
-						jumpIndex = 0
-						isJump = true
+						r.goToTitle()
 					case "skip":
 						isSkip = !isSkip
 						if isSkip {
@@ -280,7 +306,8 @@ func (r *Renderer) Update() {
 					case "window":
 						textPosition.Visible = !textPosition.Visible
 					case "sleepgame":
-						// storage loading already handled above
+						// storage load + return-frame push already handled
+						// above, before the switch.
 					}
 				}
 				if button.Target != "" {
@@ -304,6 +331,22 @@ func (r *Renderer) Update() {
 		buttons = nil
 		links = nil
 	}
+	screenW, screenH := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
+	if activeDialog != nil {
+		handleDialogClick(screenW, screenH)
+	}
+	if menuOpen {
+		r.handleQuickMenuClick(screenW, screenH)
+	}
+	// Backlog has no per-item hit-test — any click dismisses it, except on
+	// the very frame that opened it (that click is the role="backlog"
+	// button press itself, already handled above).
+	if backlogViewing && t != backlogOpenedFrame && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		backlogViewing = false
+	}
+	if wasModalActive || backlogViewing || menuOpen {
+		return
+	}
 	stepAudioFades()
 	stepAnimations()
 	for i := 0; i < 1000; i++ {
@@ -312,6 +355,22 @@ func (r *Renderer) Update() {
 		}
 		tick++
 	}
+}
+
+// goToTitle resets session state and jumps to title.ks, shared by button
+// role="title" and the quick-menu's title item (see tags_save.go).
+func (r *Renderer) goToTitle() {
+	r.loadScript("title.ks")
+	r.texts = make(map[int][]Text)
+	r.callStack = nil
+	viewCharas = nil
+	charaName = ""
+	pendingRuby = ""
+	isWait = false
+	isSkip = false
+	isAuto = false
+	jumpIndex = 0
+	isJump = true
 }
 
 func (r *Renderer) initScript() {
@@ -1153,6 +1212,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	}
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
+	drawModal(r, buf)
 }
 
 // drawCharaParts overlays a character's currently active differential

@@ -22,6 +22,14 @@ type tagHandler func(ctx *tagCtx) error
 
 var handlers = map[string]tagHandler{}
 
+// currentScriptIndex mirrors *i whenever a top-level (depth 0) tag is
+// dispatched, i.e. the position within r.scripts of whatever's currently
+// running. Button-role clicks (role="sleepgame", [checkpoint], save/load —
+// see tags_save.go) happen from Update(), outside the tag-execution
+// coroutine, so they have no *i of their own; this is how they read "where
+// are we right now" to build a resumable position.
+var currentScriptIndex int
+
 // register associates a tag name with its handler. Called from init() in
 // each tags_*.go file.
 func register(name string, h tagHandler) {
@@ -35,6 +43,9 @@ func register(name string, h tagHandler) {
 // match neither are logged rather than silently dropped, so gaps are
 // visible during staged tag rollout.
 func dispatchTag(r *Renderer, y coro.Yield, tag kag3.TagObject, i *int, depth int) error {
+	if depth == 0 {
+		currentScriptIndex = *i
+	}
 	tag.Pm = r.vm.expandParams(tag.Pm)
 	ctx := &tagCtx{r: r, y: y, tag: tag, i: i}
 	if h, ok := handlers[tag.Name]; ok {
