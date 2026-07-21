@@ -138,6 +138,8 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 		vm:             newVM(),
 		currentStorage: manager.CurrentStorage,
 	}
+	r.vm.SetConfig(manager.Config)
+	r.vm.SetMenuHooks(r)
 	r.initScript()
 	img := ebiten.NewImage(manager.Config.ScreenWidth, manager.Config.ScreenHeight)
 	img.Fill(color.Black)

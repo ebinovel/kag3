@@ -1,6 +1,10 @@
 package ebitengine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ebinovel/kag3"
+)
 
 func TestVMEvalBool(t *testing.T) {
 	v := newVM()
@@ -144,5 +148,98 @@ func TestBrowserShimReproducesConfigKsCrash(t *testing.T) {
 	// not panic and must be chainable.
 	if _, err := v.Eval(`$(".bgmvol_10").attr("src", "c_set.png").css("color", "red");`); err != nil {
 		t.Errorf("chained jQuery-style call failed: %v", err)
+	}
+}
+
+// TestSetConfigReproducesConfigKsCrash reproduces the crash reported right
+// after the previous ($/window) one: config.ks's bootstrap [iscript] reads
+// several TG.config.* fields — without SetConfig, TG.config is empty and
+// the very first line (`TG.config.autoRecordLabel = "true";`) throws
+// "ReferenceError: TG is not defined" if TG itself doesn't exist yet, or —
+// once TG exists but is empty — the parseInt(TG.config.defaultBgmVolume)
+// calls silently produce NaN, which would go on to crash a *different* tag
+// (e.g. [bgmopt volume="&tf.current_bgm_vol"], since strconv.Atoi("NaN")
+// errors and that error panics the whole coroutine — see execItem in
+// macro.go). SetConfig must make both not happen.
+func TestSetConfigReproducesConfigKsCrash(t *testing.T) {
+	v := newVM()
+	cfg := &kag3.Config{
+		DefaultBgmVolume:     80,
+		DefaultSeVolume:      70,
+		ChSpeed:              30,
+		AutoSpeed:            1300,
+		UnReadTextSkip:       true,
+		AlreadyReadTextColor: "0x87cefa",
+		AutoRecordLabel:      false,
+	}
+	v.SetConfig(cfg)
+
+	script := `
+TG.config.autoRecordLabel = "true";
+tf.current_bgm_vol = parseInt(TG.config.defaultBgmVolume);
+tf.current_se_vol = parseInt(TG.config.defaultSeVolume);
+tf.current_ch_speed = parseInt(TG.config.chSpeed);
+tf.current_auto_speed = parseInt(TG.config.autoSpeed);
+tf.text_skip = "ON";
+if (TG.config.unReadTextSkip != "true") {
+	tf.text_skip = "OFF";
+}
+tf.user_setting = TG.config.alreadyReadTextColor;
+if (tf.user_setting != 'default') {
+	TG.config.alreadyReadTextColor = 'default';
+}
+`
+	if _, err := v.Eval(script); err != nil {
+		t.Fatalf("config.ks-style bootstrap script failed: %v", err)
+	}
+	if got := v.EvalString("tf.current_bgm_vol"); got != "80" {
+		t.Errorf("tf.current_bgm_vol = %q, want %q (not NaN)", got, "80")
+	}
+	if got := v.EvalString("tf.current_ch_speed"); got != "30" {
+		t.Errorf("tf.current_ch_speed = %q, want %q (not NaN)", got, "30")
+	}
+	if got := v.EvalString("tf.text_skip"); got != "ON" {
+		t.Errorf("tf.text_skip = %q, want %q (UnReadTextSkip=true)", got, "ON")
+	}
+}
+
+// TestSetMenuHooksRoutesToRealSaveLoad covers TG.menu.doSave/loadGame/
+// getSaveData, wired to this engine's actual saveSlot/loadSlot — real
+// Tyrano's index (mp.index, 0-based) maps to this engine's 1-based slot
+// numbers.
+func TestSetMenuHooksRoutesToRealSaveLoad(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	lastSnapshot = nil // avoid the GPU-readback panic noted elsewhere in this suite
+	// bg is a package-level var another test may have left with a Storage
+	// path set; loadSlot's applySaveData would then try to reload it
+	// through r.fses, which this test never sets up (nil fs.FS panics
+	// rather than erroring), so start from a clean bg.
+	bg = &kag3.Background{}
+
+	r := newSaveTestRendererWithVars(t)
+	r.manager.Config = &kag3.Config{ConfigSaveSlotNum: 3}
+	r.vm.SetMenuHooks(r)
+
+	if _, err := r.vm.Eval("TG.menu.doSave(1);"); err != nil { // index 1 -> slot 2
+		t.Fatalf("TG.menu.doSave(1) failed: %v", err)
+	}
+	if !hasSaveSlot(r, 2) {
+		t.Error("expected TG.menu.doSave(1) to have written slot 2 (0-based index + 1)")
+	}
+
+	got, err := r.vm.Eval("TG.menu.getSaveData().data.length;")
+	if err != nil {
+		t.Fatalf("TG.menu.getSaveData() failed: %v", err)
+	}
+	if got.ToInteger() != 3 {
+		t.Errorf("getSaveData().data.length = %v, want 3 (ConfigSaveSlotNum)", got)
+	}
+
+	if _, err := r.vm.Eval("TG.menu.loadGame(1);"); err != nil {
+		t.Fatalf("TG.menu.loadGame(1) failed: %v", err)
+	}
+	if !isJump {
+		t.Error("expected TG.menu.loadGame(1) to have triggered a jump via loadSlot")
 	}
 }

@@ -1,9 +1,11 @@
 package ebitengine
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/dop251/goja"
+	"github.com/ebinovel/kag3"
 )
 
 // VM wraps a goja.Runtime and exposes the Tyrano-style global variable
@@ -76,7 +78,85 @@ var $ = (function() {
 	return function() { return stub(); };
 })();
 var window = { open: function() {} };
+var TG = { config: {}, menu: {} };
 `
+
+// SetConfig populates TG.config with the actual values from resources/
+// config.toml (via kag3.Config) rather than leaving TG.config an empty
+// object. This matters beyond just avoiding "reading a property of
+// undefined": config.ks's bootstrap [iscript] does e.g.
+// `tf.current_bgm_vol = parseInt(TG.config.defaultBgmVolume);` and later
+// feeds tf.current_bgm_vol into tag attributes like
+// [bgmopt volume="&tf.current_bgm_vol"] — an empty TG.config would make
+// that parseInt(undefined) => NaN, and a numeric tag attribute that fails
+// strconv.Atoi is a *second*, later crash (dispatchTag's error return
+// panics the whole coroutine — see execItem in macro.go). Booleans are
+// exposed as the strings "true"/"false", matching how these bundled
+// scripts compare them (e.g. `TG.config.unReadTextSkip != "true"`).
+func (v *VM) SetConfig(cfg *kag3.Config) {
+	config := v.rt.Get("TG").ToObject(v.rt).Get("config").ToObject(v.rt)
+	config.Set("defaultBgmVolume", cfg.DefaultBgmVolume)
+	config.Set("defaultSeVolume", cfg.DefaultSeVolume)
+	config.Set("chSpeed", cfg.ChSpeed)
+	config.Set("autoSpeed", cfg.AutoSpeed)
+	config.Set("unReadTextSkip", boolToJSString(cfg.UnReadTextSkip))
+	config.Set("alreadyReadTextColor", cfg.AlreadyReadTextColor)
+	config.Set("autoRecordLabel", boolToJSString(cfg.AutoRecordLabel))
+}
+
+func boolToJSString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// SetMenuHooks wires TG.menu.doSave/loadGame/getSaveData — real Tyrano's
+// own save/load API, called from the bundled (but in this example project,
+// never actually invoked) [setsave]/[loading]/[saveinfo] macros in
+// tyrano.ks — to this engine's actual save system (saveSlot/loadSlot/
+// saveSlotInfo in tags_save.go/tags_uiscreens.go), so that if a script ever
+// does call one of those macros it does something real instead of
+// throwing "TG.menu.doSave is not a function". index is 0-based, matching
+// real Tyrano's array-index convention (tf.array_save[mp.index]); this
+// engine's slots are 1-based (see manualSaveSlot etc.), hence the +1.
+func (v *VM) SetMenuHooks(r *Renderer) {
+	menu := v.rt.Get("TG").ToObject(v.rt).Get("menu").ToObject(v.rt)
+	menu.Set("doSave", func(call goja.FunctionCall) goja.Value {
+		slot := int(call.Argument(0).ToInteger()) + 1
+		if err := r.saveSlot(slot); err != nil {
+			fmt.Printf("TG.menu.doSave(%d): %v\n", slot-1, err)
+		}
+		return goja.Undefined()
+	})
+	menu.Set("loadGame", func(call goja.FunctionCall) goja.Value {
+		slot := int(call.Argument(0).ToInteger()) + 1
+		if err := r.loadSlot(slot); err != nil {
+			fmt.Printf("TG.menu.loadGame(%d): %v\n", slot-1, err)
+		}
+		return goja.Undefined()
+	})
+	menu.Set("getSaveData", func(call goja.FunctionCall) goja.Value {
+		n := 5
+		if r.manager != nil && r.manager.Config != nil && r.manager.Config.ConfigSaveSlotNum > 0 {
+			n = r.manager.Config.ConfigSaveSlotNum
+		}
+		data := make([]map[string]interface{}, n)
+		for i := 0; i < n; i++ {
+			slot := i + 1
+			exists, modTime := saveSlotInfo(r, slot)
+			entry := map[string]interface{}{"title": "", "save_date": ""}
+			if exists {
+				entry["title"] = fmt.Sprintf("スロット%d", slot)
+				entry["save_date"] = modTime.Format("2006/01/02 15:04:05")
+			}
+			data[i] = entry
+		}
+		result := v.rt.NewObject()
+		result.Set("data", data)
+		return result
+	})
+}
 
 // initSystemNamespace sets ns.system to a fresh object with a "backlog"
 // array, matching real Tyrano's own tf.system/sf.system — scripts (e.g. the
