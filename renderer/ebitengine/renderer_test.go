@@ -1,7 +1,9 @@
 package ebitengine
 
 import (
+	"io/fs"
 	"testing"
+	"testing/fstest"
 
 	"github.com/ebinovel/kag3"
 )
@@ -33,4 +35,141 @@ func TestDrawSceneButtonWithoutEnterImgDoesNotPanicOnHover(t *testing.T) {
 
 	buf := newTestImage(1280, 720)
 	r.drawScene(buf) // must not panic
+}
+
+func resetConfirmDialogState() {
+	activeDialog = nil
+	viewCharas = nil
+	backlog = nil
+}
+
+// TestConfirmGoToTitleOpensDialogInsteadOfActingImmediately covers real
+// Tyrano's "タイトルに戻ります。よろしいですか？" confirmation: role="title"
+// (and the quick-menu's "BACK TO TITLE") must not call goToTitle directly
+// anymore — clicking it should only open a dialog.
+func TestConfirmGoToTitleOpensDialogInsteadOfActingImmediately(t *testing.T) {
+	resetConfirmDialogState()
+	r := newTestRenderer()
+	r.currentStorage = "scene1.ks"
+	viewCharas = []*kag3.CharaShow{{Name: "akane"}} // something goToTitle would clear
+
+	confirmGoToTitle(r)
+
+	if activeDialog == nil {
+		t.Fatal("expected confirmGoToTitle to open a dialog")
+	}
+	if activeDialog.OnConfirm == nil {
+		t.Error("expected activeDialog.OnConfirm to be set (marks it as button-triggered — see anyModalActive)")
+	}
+	if r.currentStorage != "scene1.ks" || len(viewCharas) != 1 {
+		t.Error("expected confirmGoToTitle to not touch renderer state yet — only OK should")
+	}
+}
+
+// TestResolveButtonDialogRunsOnConfirmOnlyOnOK covers both outcomes of the
+// confirm dialog: OK actually goes to the title, NG (cancel) leaves
+// everything alone. Either way activeDialog must be cleared afterward.
+func TestResolveButtonDialogRunsOnConfirmOnlyOnOK(t *testing.T) {
+	resetConfirmDialogState()
+	called := false
+	activeDialog = &dialogState{Text: "test", OnConfirm: func(r *Renderer) { called = true }}
+	r := newTestRenderer()
+
+	resolveButtonDialog(r) // pending (Result == 0): must not resolve yet
+	if activeDialog == nil {
+		t.Fatal("expected a still-pending dialog to remain open")
+	}
+	if called {
+		t.Error("expected OnConfirm not to run before the user picks anything")
+	}
+
+	activeDialog.Result = 2 // NG / cancel
+	resolveButtonDialog(r)
+	if activeDialog != nil {
+		t.Error("expected resolveButtonDialog to clear activeDialog after NG")
+	}
+	if called {
+		t.Error("expected OnConfirm not to run on NG")
+	}
+
+	resetConfirmDialogState()
+	called = false
+	activeDialog = &dialogState{Text: "test", OnConfirm: func(r *Renderer) { called = true }}
+	activeDialog.Result = 1 // OK
+	resolveButtonDialog(r)
+	if activeDialog != nil {
+		t.Error("expected resolveButtonDialog to clear activeDialog after OK")
+	}
+	if !called {
+		t.Error("expected OnConfirm to run on OK")
+	}
+}
+
+// TestResolveButtonDialogIgnoresTagDialogs covers the other kind of
+// activeDialog — a [dialog] *tag*'s (no OnConfirm) — which resolves itself
+// inside handleDialog's own y.Until and must be left alone here even once
+// Result is set, so Update() calling resolveButtonDialog unconditionally
+// every frame doesn't double-resolve it.
+func TestResolveButtonDialogIgnoresTagDialogs(t *testing.T) {
+	resetConfirmDialogState()
+	activeDialog = &dialogState{Text: "test", Target: "somewhere", Result: 1} // no OnConfirm
+	r := newTestRenderer()
+	resolveButtonDialog(r)
+	if activeDialog == nil {
+		t.Error("expected a tag-triggered dialog (no OnConfirm) to be left untouched")
+	}
+	resetConfirmDialogState()
+}
+
+// TestAnyModalActiveDistinguishesDialogKinds: a button-triggered confirm
+// dialog must freeze story advancement (anyModalActive() == true); a
+// [dialog] tag's dialog must not, since it already blocks the coroutine
+// itself via y.Until — see anyModalActive's doc comment.
+func TestAnyModalActiveDistinguishesDialogKinds(t *testing.T) {
+	resetConfirmDialogState()
+	activeDialog = &dialogState{Text: "tag dialog"} // no OnConfirm
+	if anyModalActive() {
+		t.Error("expected a [dialog]-tag dialog to not count as a freezing modal")
+	}
+	activeDialog = &dialogState{Text: "button dialog", OnConfirm: func(r *Renderer) {}}
+	if !anyModalActive() {
+		t.Error("expected a button-triggered confirm dialog to count as a freezing modal")
+	}
+	resetConfirmDialogState()
+}
+
+// TestGoToTitleHidesLeftoverGameplayChrome reproduces a real report: after
+// confirmGoToTitle's OK took the player back to title.ks, the bottom-right
+// menu button (left showing from scene1.ks's @showmenubutton) and the
+// message window were still visible on top of the title screen. title.ks
+// itself never hides these — real Tyrano only ever shows the title screen
+// once, right after boot's own hidemenubutton — so goToTitle has to do it
+// itself now that it can be re-entered mid-playthrough.
+func TestGoToTitleHidesLeftoverGameplayChrome(t *testing.T) {
+	r := newTestRenderer()
+	r.manager.Config = &kag3.Config{ScreenWidth: 1280, ScreenHeight: 720}
+	// goToTitle's r.loadScript("title.ks") will fail (no such file in this
+	// empty fs), but that error is deliberately ignored by goToTitle — what
+	// this test cares about is that the UI-reset side effects below still
+	// happen regardless. A nil FSes map would panic (fs.ReadFile on a nil
+	// fs.FS), not just error, so it needs to be a real, if empty, fs.FS.
+	r.manager.FSes = map[string]fs.FS{"senarios": fstest.MapFS{}}
+	textPosition = &kag3.TextPosition{Visible: true}
+	menuButtonVisible = true
+	backlogViewing = true
+	menuOpen = true
+	slotPickerActive = slotPickerSave
+
+	r.goToTitle()
+
+	if textPosition.Visible {
+		t.Error("expected goToTitle to hide the message window")
+	}
+	if menuButtonVisible {
+		t.Error("expected goToTitle to hide the leftover @showmenubutton corner icon")
+	}
+	if backlogViewing || menuOpen || slotPickerActive != slotPickerNone {
+		t.Errorf("expected goToTitle to close any open overlay; backlogViewing=%v menuOpen=%v slotPickerActive=%v",
+			backlogViewing, menuOpen, slotPickerActive)
+	}
 }

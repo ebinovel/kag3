@@ -187,7 +187,13 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	r.texts = make(map[int][]Text)
 	charaName = ""
 	pendingRuby = ""
-	isWait = false
+	// true, not false — see the matching comment in goToTitle
+	// (renderer.go): a save/load/rollback triggered from the slot picker
+	// or [rollback] can just as easily land while the tag coroutine is
+	// blocked on isWait (mid-dialogue) rather than [s]'s isJumped, and
+	// isWait=false would leave it stuck there forever, never reaching the
+	// pending jump at all.
+	isWait = true
 	isSkip = false
 	isAuto = false
 	jumpIndex = d.Index
@@ -349,6 +355,13 @@ type dialogState struct {
 	FalseTarget string
 	// Result: 0 pending, 1 OK clicked, 2 NG clicked.
 	Result int
+	// OnConfirm, if set, marks this as a dialog opened from a button click
+	// (role="title" — see confirmGoToTitle) rather than a [dialog] tag:
+	// there's no coroutine y.Until to block on outside a tag handler, so
+	// Update() polls Result itself and calls OnConfirm once the user picks
+	// OK, then clears activeDialog — see anyModalActive (tags_uiscreens.go)
+	// and the resolution check in Update() (renderer.go).
+	OnConfirm func(*Renderer)
 }
 
 var (
@@ -670,7 +683,7 @@ func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
 			}
 		case 4: // BACK TO TITLE
 			menuOpen = false
-			r.goToTitle()
+			confirmGoToTitle(r)
 		}
 		return
 	}

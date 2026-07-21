@@ -1,0 +1,275 @@
+package ebitengine
+
+import (
+	"testing"
+
+	"github.com/eihigh/coro"
+)
+
+// TestIsJumpUnblocksBlockedSTagAfterFrozenFrames is a direct empirical
+// check of the mechanism confirmGoToTitle/resolveButtonDialog depend on:
+// [s] blocks the tag coroutine via y.Until(true, isJumped) (handleS in
+// tags_text.go), reading the *same* package-level isJump flag Update()'s
+// button/dialog handling sets. This drives the real coro.Coro (not
+// fakeYield, which never actually suspends) through several Next() calls
+// while [s] is blocking, "freezes" it by simply not calling Next() for a
+// few iterations (simulating the confirm dialog being open), then sets
+// isJump — mimicking what OnConfirm does — and resumes, to verify the
+// jump is actually picked up rather than silently lost.
+func TestIsJumpUnblocksBlockedSTagAfterFrozenFrames(t *testing.T) {
+	m := newTestManager(t, map[string]string{
+		"main.ks": "[s]\nafter s",
+	})
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript: %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+	}
+	isJump = false
+	isFirst = false
+	r.initScript()
+	co = coro.New(loop)
+	isFirst = true
+	defer func() { isFirst = false }()
+
+	// Drive it until [s] is blocking (isJumped() keeps returning false).
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			t.Fatal("coroutine finished before reaching the blocking [s] tag")
+		}
+	}
+	if len(r.texts) != 0 {
+		t.Fatalf("texts before jump = %+v, want empty ([s] should still be blocking)", r.texts)
+	}
+
+	// "Freeze": several Next()-less frames go by (this is what
+	// wasModalActive's early return in Update() does while a confirm
+	// dialog is open) — isJump must still be sitting there true afterward.
+	jumpIndex = 1 // the "after s" TextObject's index in scripts
+	isJump = true
+
+	// Resume — this is the frame after the confirm dialog closes.
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			break
+		}
+	}
+
+	found := false
+	for _, segs := range r.texts {
+		for _, seg := range segs {
+			if seg.Text == "after s" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected the jump set while [s] was blocking to be picked up once Next() resumed; r.texts = %+v", r.texts)
+	}
+	if isJump {
+		t.Error("expected isJump to have been consumed (cleared) by the outer script loop")
+	}
+}
+
+// TestIsJumpAloneDoesNotUnblockTextWaitingOnIsWait checks the *other* real
+// blocking point besides [s]: a displayed line of dialogue blocks on
+// isWait (see execItem's TextObject case: y.Until(false, func() bool {
+// return isWait })), which is a completely separate flag from isJump.
+// Setting isJump alone — without isWait also becoming true — must NOT be
+// enough to move past it; this documents why goToTitle (jumpIndex/isJump)
+// is not, by itself, sufficient to escape a screen that's mid-dialogue.
+func TestIsJumpAloneDoesNotUnblockTextWaitingOnIsWait(t *testing.T) {
+	m := newTestManager(t, map[string]string{
+		"main.ks": "waiting text\nafter jump",
+	})
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript: %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+		line:           -1, // so execItem's isNewLine check (r.line != object.Line) is true for line 0
+	}
+	isJump = false
+	isWait = false
+	isFirst = false
+	r.initScript()
+	co = coro.New(loop)
+	isFirst = true
+	defer func() { isFirst = false }()
+
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			t.Fatal("coroutine finished before blocking on the waiting text line")
+		}
+	}
+	if isWait {
+		t.Fatal("expected isWait to still be false (text line not yet acknowledged)")
+	}
+
+	// Simulate exactly what resolveButtonDialog's OnConfirm does: only
+	// isJump/jumpIndex, nothing about isWait.
+	jumpIndex = 1
+	isJump = true
+
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			break
+		}
+	}
+
+	found := false
+	for _, segs := range r.texts {
+		for _, seg := range segs {
+			if seg.Text == "after jump" {
+				found = true
+			}
+		}
+	}
+	if found {
+		t.Error("expected isJump alone to NOT be enough to move past text blocked on isWait — if this now passes, something changed and goToTitle's isJump-only approach may have become safe")
+	}
+}
+
+// TestGoToTitleEscapesTextWaitingOnIsWait is the regression test for the
+// actual reported bug: role="title" (via confirmGoToTitle, which only
+// resolves a frame or more after the click that opened the dialog) landing
+// while the *source* screen is mid-dialogue rather than resting at [s].
+// goToTitle must force isWait=true (see its comment) so this doesn't get
+// stuck forever the way TestIsJumpAloneDoesNotUnblockTextWaitingOnIsWait
+// demonstrates a bare isJump=true does.
+func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
+	m := newTestManager(t, map[string]string{
+		"main.ks":  "waiting text\nnever reached",
+		"title.ks": "reached title",
+	})
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript: %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+		line:           -1,
+	}
+	isJump = false
+	isWait = false
+	isFirst = false
+	r.initScript()
+	co = coro.New(loop)
+	isFirst = true
+	defer func() { isFirst = false }()
+
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			t.Fatal("coroutine finished before blocking on the waiting text line")
+		}
+	}
+	if isWait {
+		t.Fatal("expected isWait to still be false (text line not yet acknowledged)")
+	}
+
+	// Simulate clicking OK on the confirm dialog while main.ks is
+	// mid-dialogue, exactly as resolveButtonDialog's OnConfirm does.
+	r.goToTitle()
+
+	for i := 0; i < 10; i++ {
+		if !co.Next() {
+			break
+		}
+	}
+
+	if r.currentStorage != "title.ks" {
+		t.Errorf("currentStorage after goToTitle = %q, want %q", r.currentStorage, "title.ks")
+	}
+	found := false
+	for _, segs := range r.texts {
+		for _, seg := range segs {
+			if seg.Text == "reached title" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected to reach title.ks's content after goToTitle escaped the isWait block; r.texts = %+v", r.texts)
+	}
+}
+
+// TestApplySaveDataEscapesTextWaitingOnIsWait is the same regression, for
+// applySaveData (load/quickload/rollback via the slot picker — another
+// multi-frame modal that can just as easily resolve while the source
+// screen is mid-dialogue, not resting at [s]).
+func TestApplySaveDataEscapesTextWaitingOnIsWait(t *testing.T) {
+	m := newTestManager(t, map[string]string{
+		"main.ks": "waiting text\nnever reached",
+		"sub.ks":  "reached sub",
+	})
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript: %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+		line:           -1,
+	}
+	isJump = false
+	isWait = false
+	isFirst = false
+	r.initScript()
+	co = coro.New(loop)
+	isFirst = true
+	defer func() { isFirst = false }()
+
+	for i := 0; i < 5; i++ {
+		if !co.Next() {
+			t.Fatal("coroutine finished before blocking on the waiting text line")
+		}
+	}
+	if isWait {
+		t.Fatal("expected isWait to still be false (text line not yet acknowledged)")
+	}
+
+	// Simulate picking a slot in the save/load screen while main.ks is
+	// mid-dialogue.
+	if err := r.applySaveData(&saveData{Storage: "sub.ks", Index: 0}); err != nil {
+		t.Fatalf("applySaveData: %v", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		if !co.Next() {
+			break
+		}
+	}
+
+	if r.currentStorage != "sub.ks" {
+		t.Errorf("currentStorage after applySaveData = %q, want %q", r.currentStorage, "sub.ks")
+	}
+	found := false
+	for _, segs := range r.texts {
+		for _, seg := range segs {
+			if seg.Text == "reached sub" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected to reach sub.ks's content after applySaveData escaped the isWait block; r.texts = %+v", r.texts)
+	}
+}

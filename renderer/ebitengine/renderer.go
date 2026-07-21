@@ -304,7 +304,7 @@ func (r *Renderer) Update() {
 						fmt.Printf("button.Role:%s\n", button.Role)
 						ebiten.SetFullscreen(!ebiten.IsFullscreen())
 					case "title":
-						r.goToTitle()
+						confirmGoToTitle(r)
 					case "skip":
 						isSkip = !isSkip
 						if isSkip {
@@ -348,6 +348,7 @@ func (r *Renderer) Update() {
 	switch {
 	case activeDialog != nil:
 		handleDialogClick(screenW, screenH)
+		resolveButtonDialog(r)
 	case slotPickerActive != slotPickerNone:
 		r.handleSlotPickerClick()
 	case menuOpen:
@@ -383,23 +384,94 @@ func (r *Renderer) goToTitle() {
 	viewCharas = nil
 	charaName = ""
 	pendingRuby = ""
-	isWait = false
+	// title.ks itself never touches these — real Tyrano's own title screen
+	// only ever gets shown once, right after the boot iscript that hides
+	// them initially. Since goToTitle can now re-enter title.ks at any
+	// point in the middle of a playthrough (role="title", the quick menu's
+	// "BACK TO TITLE"), gameplay UI left over from wherever we were —
+	// scene1.ks's @showmenubutton corner icon, the message window — has to
+	// be hidden explicitly here instead, or it bleeds through on top of
+	// the title screen.
+	textPosition.Visible = false
+	menuButtonVisible = false
+	backlogViewing = false
+	menuOpen = false
+	slotPickerActive = slotPickerNone
+	// true, not false: the tag coroutine may currently be blocked inside a
+	// TextObject's y.Until(false, func() bool { return isWait }) — see
+	// execItem in macro.go — waiting on this exact flag, which is
+	// completely independent of isJump/[s]'s isJumped. Leaving it false
+	// here (the old behavior) meant that if the source screen happened to
+	// be mid-dialogue rather than resting at [s], the coroutine stayed
+	// stuck there forever: isJump never gets a chance to be read until
+	// whatever currently-blocked handler's own predicate resolves, and
+	// isWait=false never does on its own. Setting it true releases that
+	// wait immediately (harmlessly — the destination's own first text line
+	// resets isWait=false again the moment it actually starts revealing).
+	isWait = true
 	isSkip = false
 	isAuto = false
 	jumpIndex = 0
 	isJump = true
 }
 
+// confirmGoToTitle opens real Tyrano's own "タイトルに戻ります。よろしい
+// ですか？" confirmation before actually calling goToTitle — role="title"
+// and the quick-menu's "BACK TO TITLE" item both go through this instead of
+// calling goToTitle directly, so a stray click can't discard the player's
+// place in the story.
+func confirmGoToTitle(r *Renderer) {
+	activeDialog = &dialogState{
+		Text:      "タイトルに戻ります。よろしいですか？",
+		OKLabel:   dialogOKLabel,
+		NGLabel:   dialogNGLabel,
+		OnConfirm: func(r *Renderer) { r.goToTitle() },
+	}
+}
+
+// resolveButtonDialog finishes a button-triggered confirm dialog (one with
+// OnConfirm set — see confirmGoToTitle) once the user has picked OK or NG:
+// runs OnConfirm on OK, then clears activeDialog either way. A [dialog]
+// *tag*'s dialog never sets OnConfirm and resolves itself inside
+// handleDialog via its own y.Until, so this is a no-op for those and safe
+// to call unconditionally every frame activeDialog is non-nil.
+func resolveButtonDialog(r *Renderer) {
+	if activeDialog == nil || activeDialog.Result == 0 || activeDialog.OnConfirm == nil {
+		return
+	}
+	if activeDialog.Result == 1 {
+		activeDialog.OnConfirm(r)
+	}
+	activeDialog = nil
+}
+
 func (r *Renderer) initScript() {
 	loop = func(y coro.Yield) {
-		for i := 0; i < len(r.scripts); i++ {
+		// Deliberately not a "for i := 0; i < len(r.scripts); i++" loop:
+		// that shape checks the bound *before* the body's isJump check on
+		// every iteration, including the very first one after i++. A jump
+		// that lands while a *different* script (e.g. [call storage=...]
+		// or goToTitle swapping r.scripts out mid-loop) had left i sitting
+		// at a high index — say config.ks's [s] at index 63 — would then
+		// have that stale i compared against the *new* r.scripts' length
+		// (title.ks, much shorter) before isJump ever got a chance to
+		// overwrite it, silently ending the whole loop (r.Done = true)
+		// instead of jumping. Checking isJump first, unconditionally,
+		// before the bound check fixes that: whatever i was doesn't matter
+		// once a jump is pending.
+		i := 0
+		for {
 			if isJump {
 				i = jumpIndex
 				isJump = false
 			}
+			if i >= len(r.scripts) {
+				break
+			}
 			if err := r.execItem(y, r.scripts, &i, 0); err != nil {
 				panic(err)
 			}
+			i++
 			y()
 		}
 		r.Done = true

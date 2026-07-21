@@ -27,12 +27,17 @@ func init() {
 
 // anyModalActive reports whether any of the overlays that should freeze
 // normal script advancement (see Update() in renderer.go) is currently up:
-// the quick menu, the backlog viewer, the save/load slot picker, or an
-// active [edit] text field. [dialog] isn't included — it blocks the tag
-// coroutine directly via y.Until (see tags_save.go), so it doesn't need
-// this separate freeze mechanism.
+// the quick menu, the backlog viewer, the save/load slot picker, an active
+// [edit] text field, or a button-triggered confirm dialog (activeDialog
+// with OnConfirm set — see confirmGoToTitle in renderer.go). A [dialog]
+// *tag*'s dialog isn't included here — it blocks the tag coroutine
+// directly via y.Until (see handleDialog in tags_save.go), so it doesn't
+// need this separate freeze mechanism; only the button-triggered kind runs
+// outside the coroutine and needs Update() to hold the story back itself.
 func anyModalActive() bool {
-	return backlogViewing || menuOpen || slotPickerActive != slotPickerNone || (editState != nil && editState.Active)
+	return backlogViewing || menuOpen || slotPickerActive != slotPickerNone ||
+		(editState != nil && editState.Active) ||
+		(activeDialog != nil && activeDialog.OnConfirm != nil)
 }
 
 // --- showsave / showload: a slot picker built on Phase 7's saveSlot/loadSlot ---
