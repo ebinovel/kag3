@@ -1,6 +1,9 @@
 package ebitengine
 
-import "fmt"
+import (
+	"fmt"
+	"io/fs"
+)
 
 func init() {
 	register("iscript", handleIScript)
@@ -11,6 +14,8 @@ func init() {
 	register("clearvar", handleClearVar)
 	register("clearsysvar", handleClearSysVar)
 	register("erasemacro", handleEraseMacro)
+	register("loadjs", handleLoadJS)
+	register("plugin", handlePlugin)
 }
 
 // handleIScript runs the raw JavaScript body the parser collected between
@@ -62,5 +67,46 @@ func handleClearSysVar(ctx *tagCtx) error {
 
 func handleEraseMacro(ctx *tagCtx) error {
 	delete(ctx.r.manager.Macros, ctx.tag.Pm["name"])
+	return nil
+}
+
+// loadJSFile reads storage (default folder "senarios", the one fs key
+// external script files naturally live alongside) and evals it as one JS
+// source, for [loadjs] and [plugin storage=...].
+func (r *Renderer) loadJSFile(folder, storage string) error {
+	if folder == "" {
+		folder = "senarios"
+	}
+	b, err := fs.ReadFile(r.fses[folder], storage)
+	if err != nil {
+		return err
+	}
+	_, err = r.vm.Eval(string(b))
+	return err
+}
+
+func handleLoadJS(ctx *tagCtx) error {
+	storage, ok := ctx.tag.Pm["storage"]
+	if !ok {
+		return nil
+	}
+	return ctx.r.loadJSFile(ctx.tag.Pm["folder"], storage)
+}
+
+// loadedPlugins tracks plugin names [plugin name=...] has registered.
+// There's no real plugin/extension-point system for them to hook into yet,
+// so this is honest bookkeeping rather than a functioning plugin loader —
+// except when storage= is also given, which real Tyrano plugins commonly
+// are (a JS file), in which case it's really just [loadjs] under another
+// name.
+var loadedPlugins = map[string]bool{}
+
+func handlePlugin(ctx *tagCtx) error {
+	if name := ctx.tag.Pm["name"]; name != "" {
+		loadedPlugins[name] = true
+	}
+	if storage, ok := ctx.tag.Pm["storage"]; ok {
+		return ctx.r.loadJSFile(ctx.tag.Pm["folder"], storage)
+	}
 	return nil
 }

@@ -1,7 +1,9 @@
 package ebitengine
 
 import (
+	"io/fs"
 	"testing"
+	"testing/fstest"
 
 	"github.com/ebinovel/kag3"
 )
@@ -21,9 +23,15 @@ func newSaveTestRendererWithVars(t *testing.T) *Renderer {
 func TestSaveSlotRoundTrip(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()
+	defer delete(charas, "akane")
 
 	r := newSaveTestRendererWithVars(t)
 	r.callStack = []callFrame{{Storage: "sub.ks", Index: 3}}
+	// Registered in charas (same-process load), like a real [chara_new]
+	// would leave it — reconcileViewCharas's character-reconstruction path
+	// (fresh-process load, no prior registration) is covered separately by
+	// TestApplySaveDataReconstructsCharaAfterFreshProcess.
+	charas["akane"] = &kag3.Character{Name: "akane"}
 	viewCharas = []*kag3.CharaShow{{Name: "akane", Left: 10, Top: 20}}
 	bg.Time, bg.Method, bg.Position = 1234, "slide", "left"
 	currentScriptIndex = 42
@@ -262,5 +270,105 @@ func TestAutoSaveAutoLoadUseReservedSlot(t *testing.T) {
 	// Confirm it didn't collide with the manual slot.
 	if err := r.loadSlot(manualSaveSlot); err == nil {
 		t.Error("expected no manual-slot save to exist yet")
+	}
+}
+
+// TestApplySaveDataReconstructsCharaAfterFreshProcess is the crash this
+// whole fix is for: loading a save right after starting a brand-new process
+// (charas empty, none of the scenario's [chara_new] calls have run yet)
+// must re-register the character from CharaStorage instead of leaving a
+// dangling viewCharas entry for drawScene to crash on.
+func TestApplySaveDataReconstructsCharaAfterFreshProcess(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	defer delete(charas, "akane")
+	defer func() { viewCharas = nil }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"akane.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	charas["akane"] = &kag3.Character{Name: "akane", Storage: "akane.png", Image: newTestImage(1, 1)}
+	viewCharas = []*kag3.CharaShow{{Name: "akane", Left: 10, Top: 20}}
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate a fresh process: charas starts empty, nothing has run
+	// [chara_new] yet.
+	delete(charas, "akane")
+	viewCharas = nil
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	got, ok := charas["akane"]
+	if !ok || got.Image == nil {
+		t.Fatalf("charas[akane] after load = %+v, want reconstructed with a non-nil Image", got)
+	}
+	if got.Storage != "akane.png" {
+		t.Errorf("charas[akane].Storage = %q, want %q", got.Storage, "akane.png")
+	}
+	if len(viewCharas) != 1 || viewCharas[0].Name != "akane" {
+		t.Errorf("viewCharas after load = %+v, want akane kept (not dropped)", viewCharas)
+	}
+}
+
+// TestReconcileViewCharasDropsUnrestorableCharaWithoutPanicking covers the
+// fallback when a character can't be reconstructed at all (no recorded
+// path, or the file no longer exists) — it must be silently dropped from
+// viewCharas, never left dangling for drawScene to panic on.
+func TestReconcileViewCharasDropsUnrestorableCharaWithoutPanicking(t *testing.T) {
+	delete(charas, "ghost")
+	r := newTestRenderer()
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{}}
+	restored := []*kag3.CharaShow{{Name: "ghost", Left: 5}}
+
+	got := reconcileViewCharas(r, restored, map[string]string{}) // no CharaStorage entry at all
+	if len(got) != 0 {
+		t.Errorf("reconcileViewCharas with no storage path = %+v, want dropped (empty)", got)
+	}
+
+	got = reconcileViewCharas(r, restored, map[string]string{"ghost": "missing.png"}) // path given but file absent
+	if len(got) != 0 {
+		t.Errorf("reconcileViewCharas with an unreadable path = %+v, want dropped (empty)", got)
+	}
+	if _, ok := charas["ghost"]; ok {
+		t.Error("expected charas[ghost] to stay unregistered after a failed reconstruction")
+	}
+}
+
+// TestApplySaveDataReconstructsBackgroundAfterFreshProcess mirrors the
+// character fix for bg: a fresh process's bg.Image starts as NewRenderer's
+// solid-black placeholder, and load should replace it with the actual saved
+// background rather than leaving that placeholder in place.
+func TestApplySaveDataReconstructsBackgroundAfterFreshProcess(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"bg.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	bg = &kag3.Background{Time: 3000, Method: "crossfade", Storage: "bg.png", Image: newTestImage(1, 1)}
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate a fresh process: NewRenderer's default solid-black fill, no
+	// Storage tracked yet.
+	placeholder := newTestImage(1, 1)
+	bg = &kag3.Background{Image: placeholder}
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+	if bg.Storage != "bg.png" {
+		t.Errorf("bg.Storage after load = %q, want %q", bg.Storage, "bg.png")
+	}
+	if bg.Image == nil || bg.Image == placeholder {
+		t.Error("expected bg.Image to be replaced with the reloaded background, not left as the placeholder")
+	}
+	if bg.Method != "crossfade" {
+		t.Errorf("bg.Method after load = %q, want %q", bg.Method, "crossfade")
 	}
 }

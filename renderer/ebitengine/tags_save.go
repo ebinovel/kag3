@@ -12,6 +12,7 @@ import (
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
@@ -55,18 +56,19 @@ type bgSaveState struct {
 	Position string
 	Method   string
 	IsSystem bool
+	// Storage is bg.Storage (tags_background.go) — the file path
+	// applySaveData reloads Image from in a fresh process.
+	Storage string
 }
 
 // saveData is the plan's minimal in-memory-first save format: enough to
-// resume script execution and restore variables faithfully, not a full
-// visual snapshot. Notably absent, deliberately: bg.Image/NextImage
-// (no filename is tracked anywhere once [bg] loads them — see
-// tags_background.go — so there's nothing to persist) and charas' Image
-// (viewCharas only records position/state; the underlying registered
-// Character images stay in the process-lifetime `charas` map, so loading a
-// save works within the same run but won't re-populate that map after a
-// fresh process start unless the target script's own [chara_new] calls run
-// again first).
+// resume script execution and restore variables faithfully, not a pixel-
+// perfect visual snapshot. bg2 (the secondary background layer) and
+// characters' differential parts ([chara_layer]) are still out of scope —
+// bg/viewCharas' base appearance is reconstructed via CharaStorage/
+// Bg.Storage below (see reconcileViewCharas and applySaveData), everything
+// else restores only within the same process (where `charas` is already
+// populated).
 type saveData struct {
 	Storage    string
 	Index      int
@@ -74,17 +76,32 @@ type saveData struct {
 	SFVars     map[string]interface{}
 	FVars      map[string]interface{}
 	ViewCharas []*kag3.CharaShow
-	Bg         bgSaveState
+	// CharaStorage records, for every name appearing in ViewCharas, the
+	// image path charas[name].Storage held at save time — what
+	// reconcileViewCharas uses to re-register a character that a fresh
+	// process never ran [chara_new] for.
+	CharaStorage map[string]string
+	Bg           bgSaveState
 }
 
 func (r *Renderer) buildSaveData() *saveData {
+	charaStorage := make(map[string]string, len(viewCharas))
+	for _, c := range viewCharas {
+		if _, ok := charaStorage[c.Name]; ok {
+			continue
+		}
+		if ch, ok := charas[c.Name]; ok {
+			charaStorage[c.Name] = ch.Storage
+		}
+	}
 	return &saveData{
-		Storage:    r.currentStorage,
-		Index:      currentScriptIndex,
-		CallStack:  append([]callFrame(nil), r.callStack...),
-		SFVars:     r.vm.ExportSF(),
-		FVars:      r.vm.ExportF(),
-		ViewCharas: append([]*kag3.CharaShow(nil), viewCharas...),
+		Storage:      r.currentStorage,
+		Index:        currentScriptIndex,
+		CallStack:    append([]callFrame(nil), r.callStack...),
+		SFVars:       r.vm.ExportSF(),
+		FVars:        r.vm.ExportF(),
+		ViewCharas:   append([]*kag3.CharaShow(nil), viewCharas...),
+		CharaStorage: charaStorage,
 		Bg: bgSaveState{
 			Time:     bg.Time,
 			IsWait:   bg.IsWait,
@@ -92,8 +109,44 @@ func (r *Renderer) buildSaveData() *saveData {
 			Position: bg.Position,
 			Method:   bg.Method,
 			IsSystem: bg.IsSystem,
+			Storage:  bg.Storage,
 		},
 	}
+}
+
+// reconcileViewCharas ensures every entry in restored has a matching charas
+// registration before it's allowed back into the live viewCharas — the
+// invariant the rest of the renderer (drawScene, charaShow) already assumes
+// [chara_show] enforces. Anything already registered (a same-process load)
+// is left untouched; anything missing is re-registered from charaStorage if
+// possible, or dropped (logged, not panicked) if its path is missing or the
+// file can't be read.
+func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage map[string]string) []*kag3.CharaShow {
+	kept := restored[:0]
+	for _, c := range restored {
+		if _, ok := charas[c.Name]; ok {
+			kept = append(kept, c)
+			continue
+		}
+		storage := charaStorage[c.Name]
+		if storage == "" {
+			fmt.Printf("save/load: %s の画像パスが無いため復元できません(スキップします)\n", c.Name)
+			continue
+		}
+		img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], storage)
+		if err != nil {
+			fmt.Printf("save/load: %s の画像読み込みに失敗したためスキップします: %v\n", c.Name, err)
+			continue
+		}
+		charas[c.Name] = &kag3.Character{
+			Name:    c.Name,
+			Image:   img,
+			Storage: storage,
+			Faces:   map[string]string{"default": storage},
+		}
+		kept = append(kept, c)
+	}
+	return kept
 }
 
 // applySaveData restores everything saveData captured, then defers to the
@@ -110,13 +163,27 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	r.callStack = append([]callFrame(nil), d.CallStack...)
 	r.vm.RestoreF(d.FVars)
 	r.vm.RestoreSF(d.SFVars)
-	viewCharas = append([]*kag3.CharaShow(nil), d.ViewCharas...)
+	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage)
 	bg.Time = d.Bg.Time
 	bg.IsWait = d.Bg.IsWait
 	bg.IsCross = d.Bg.IsCross
 	bg.Position = d.Bg.Position
 	bg.Method = d.Bg.Method
 	bg.IsSystem = d.Bg.IsSystem
+	if d.Bg.Storage != "" {
+		images := "images"
+		if d.Bg.IsSystem {
+			images = "system/images"
+		}
+		if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses[images], d.Bg.Storage); err != nil {
+			fmt.Printf("save/load: 背景 %s の読み込みに失敗しました: %v\n", d.Bg.Storage, err)
+		} else {
+			bg.Image = img
+			bg.NextImage = nil
+			bg.IsEnd = true
+			bg.Storage = d.Bg.Storage
+		}
+	}
 	r.texts = make(map[int][]Text)
 	charaName = ""
 	pendingRuby = ""
@@ -174,6 +241,9 @@ func (r *Renderer) saveSlot(slot int) error {
 	if err := os.WriteFile(slotPath(dir, slot, "json"), b, 0o644); err != nil {
 		return err
 	}
+	// The slot picker's thumbnail cache (tags_uiscreens.go) may be holding a
+	// stale (or absent) decode of slot_<N>.png from before this save.
+	delete(slotThumbnailCache, slot)
 	if lastSnapshot != nil {
 		if f, err := os.Create(slotPath(dir, slot, "png")); err == nil {
 			_ = png.Encode(f, lastSnapshot)
@@ -471,35 +541,97 @@ func drawBacklog(r *Renderer, buf *ebiten.Image) {
 
 // --- quick menu (button role="menu") ---
 //
-// scene1.ks already places individual save/load/skip/auto/backlog/etc.
-// buttons directly on screen, so this doesn't need to reproduce all of
-// them — just the actions real Tyrano's role="menu" panel is most often
-// used for that aren't already one-click away.
+// Laid out to match real Tyrano's own system menu screen (built from the
+// same bundled resources/system/images assets: bg_base.png, label_menu.png,
+// menu_button_close.png for the "BACK" button top-right — same as the slot
+// picker's — and the five menu_button_*/menu_message_close.png pill
+// buttons), at a 1280x720 canvas. scene1.ks already places individual
+// save/load/skip/auto/backlog buttons directly on screen too, so this
+// doesn't need a "閉じる" item of its own — the top-right BACK button
+// covers that, consistently with the slot picker.
+const (
+	quickMenuLabelX, quickMenuLabelY    = 10, 10
+	quickMenuButtonX, quickMenuButtonY0 = 380, 190
+	quickMenuButtonW, quickMenuButtonH  = 520, 70
+	quickMenuButtonGap                  = 25
+)
 
 var (
 	menuOpen        bool
 	menuOpenedFrame int
 )
 
-func quickMenuItems(screenW, screenH int) []modalRect {
-	w, h, gap := 220, 50, 10
-	labels := []string{"セーブ", "ロード", "タイトルへ", "閉じる"}
-	total := len(labels)*(h+gap) - gap
-	startY := screenH/2 - total/2
-	items := make([]modalRect, len(labels))
-	for i, label := range labels {
-		items[i] = modalRect{Label: label, X: screenW/2 - w/2, Y: startY + i*(h+gap), W: w, H: h}
+// quickMenuButtonSpec is one pill button: its normal/hover image pair and
+// hit-test rect. The order here is the on-screen top-to-bottom order and is
+// what quickMenuButtons()'s index maps to in handleQuickMenuClick.
+type quickMenuButtonSpec struct {
+	Normal, Hover string
+	X, Y, W, H    int
+}
+
+func quickMenuButtons() []quickMenuButtonSpec {
+	names := [...][2]string{
+		{"menu_button_save.png", "menu_button_save2.png"},
+		{"menu_button_load.png", "menu_button_load2.png"},
+		{"menu_message_close.png", "menu_message_close2.png"},
+		{"menu_button_skip.png", "menu_button_skip2.png"},
+		{"menu_button_title.png", "menu_button_title2.png"},
+	}
+	items := make([]quickMenuButtonSpec, len(names))
+	for i, n := range names {
+		items[i] = quickMenuButtonSpec{
+			Normal: n[0], Hover: n[1],
+			X: quickMenuButtonX, Y: quickMenuButtonY0 + i*(quickMenuButtonH+quickMenuButtonGap),
+			W: quickMenuButtonW, H: quickMenuButtonH,
+		}
 	}
 	return items
 }
 
+// quickMenuButtonImageName picks btn.Hover/Normal depending on whether
+// (mX, mY) is currently over it — split out from drawQuickMenu so it's
+// testable without a real ebiten.CursorPosition(), same idea as
+// backButtonImageName in tags_uiscreens.go.
+func quickMenuButtonImageName(btn quickMenuButtonSpec, mX, mY int) string {
+	if isColision(mX, mY, btn.X, btn.Y, btn.W, btn.H) {
+		return btn.Hover
+	}
+	return btn.Normal
+}
+
 func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 	w, h := buf.Bounds().Dx(), buf.Bounds().Dy()
-	dim := ebiten.NewImage(w, h)
-	dim.Fill(color.RGBA{0, 0, 0, 160})
-	buf.DrawImage(dim, &ebiten.DrawImageOptions{})
-	for _, item := range quickMenuItems(w, h) {
-		drawModalRect(buf, r.fontFace, item)
+	if bgImg := loadSystemImage(r, "bg_base.png"); bgImg != nil {
+		op := &ebiten.DrawImageOptions{}
+		bw, bh := bgImg.Bounds().Dx(), bgImg.Bounds().Dy()
+		op.GeoM.Scale(float64(w)/float64(bw), float64(h)/float64(bh))
+		buf.DrawImage(bgImg, op)
+	} else {
+		dim := ebiten.NewImage(w, h)
+		dim.Fill(color.RGBA{0, 0, 0, 160})
+		buf.DrawImage(dim, &ebiten.DrawImageOptions{})
+	}
+
+	if labelImg := loadSystemImage(r, "label_menu.png"); labelImg != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(quickMenuLabelX, quickMenuLabelY)
+		buf.DrawImage(labelImg, op)
+	}
+
+	back := backButtonRect(r)
+	mX, mY := ebiten.CursorPosition()
+	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY)); backImg != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(back.X), float64(back.Y))
+		buf.DrawImage(backImg, op)
+	}
+
+	for _, btn := range quickMenuButtons() {
+		if img := loadSystemImage(r, quickMenuButtonImageName(btn, mX, mY)); img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(btn.X), float64(btn.Y))
+			buf.DrawImage(img, op)
+		}
 	}
 }
 
@@ -511,24 +643,34 @@ func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
 		return
 	}
 	mX, mY := ebiten.CursorPosition()
-	for idx, item := range quickMenuItems(screenW, screenH) {
-		if !isColision(mX, mY, item.X, item.Y, item.W, item.H) {
+
+	back := backButtonRect(r)
+	if isColision(mX, mY, back.X, back.Y, back.W, back.H) {
+		menuOpen = false
+		return
+	}
+
+	for idx, btn := range quickMenuButtons() {
+		if !isColision(mX, mY, btn.X, btn.Y, btn.W, btn.H) {
 			continue
 		}
 		switch idx {
-		case 0:
-			if err := r.saveSlot(manualSaveSlot); err != nil {
-				fmt.Printf("save failed: %v\n", err)
+		case 0: // SAVE — Phase 9's slot picker (tags_uiscreens.go)
+			openSlotPicker(slotPickerSave)
+		case 1: // LOAD
+			openSlotPicker(slotPickerLoad)
+		case 2: // HIDE MESSAGE — same toggle as button role="window"
+			menuOpen = false
+			textPosition.Visible = !textPosition.Visible
+		case 3: // MESSAGE SKIP — same toggle as button role="skip"
+			menuOpen = false
+			isSkip = !isSkip
+			if isSkip {
+				isAuto = false
 			}
-		case 1:
-			if err := r.loadSlot(manualSaveSlot); err != nil {
-				fmt.Printf("load failed: %v\n", err)
-			}
-		case 2:
+		case 4: // BACK TO TITLE
 			menuOpen = false
 			r.goToTitle()
-		case 3:
-			menuOpen = false
 		}
 		return
 	}
@@ -536,12 +678,14 @@ func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
 
 // drawModal renders whichever overlay (if any) is currently active, on top
 // of the normal scene. Returning bool isn't needed by drawScene (Update
-// tracks activity itself via backlogViewing/menuOpen/activeDialog), so this
-// only draws.
+// tracks activity itself via anyModalActive/activeDialog — tags_uiscreens.go),
+// so this only draws.
 func drawModal(r *Renderer, buf *ebiten.Image) {
 	switch {
 	case activeDialog != nil:
 		drawDialog(r, buf)
+	case slotPickerActive != slotPickerNone:
+		drawSlotPicker(r, buf)
 	case backlogViewing:
 		drawBacklog(r, buf)
 	case menuOpen:

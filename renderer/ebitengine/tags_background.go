@@ -95,6 +95,11 @@ func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	if err != nil {
 		return err
 	}
+	// Storage tracks whatever's currently requested, independent of
+	// whether the transition has visually finished — save/load (see
+	// tags_save.go) uses it to reconstruct the background image in a
+	// fresh process, where NextImage/Image can't be persisted directly.
+	target.Storage = object.Pm["storage"]
 	// [mode_effect enabled="false"] (tags_sysdesign.go) skips the animated
 	// crossfade/etc. entirely: swap straight to the new image instead of
 	// staging it as NextImage for drawScene's transition to animate.

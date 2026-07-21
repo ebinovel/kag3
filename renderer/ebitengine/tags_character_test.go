@@ -250,3 +250,45 @@ func TestDrawCharaPartsHandlesNilAndEmpty(t *testing.T) {
 	drawCharaParts(nil, nil, 0, 0)
 	drawCharaParts(nil, &kag3.Character{Name: "akane"}, 0, 0)
 }
+
+// TestHandleCharaNewSetsStorage confirms [chara_new] records the image path
+// it loaded, not just the decoded image — save/load (tags_save.go) needs it
+// to re-register the character in a fresh process.
+func TestHandleCharaNewSetsStorage(t *testing.T) {
+	delete(charas, "akane")
+	r := newTestRendererWithImageFS(t, map[string][]byte{"akane.png": tinyPNG(t)})
+	tag := kag3.TagObject{Name: "chara_new", Pm: map[string]string{"name": "akane", "storage": "akane.png"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_new dispatch error: %v", err)
+	}
+	if charas["akane"].Storage != "akane.png" {
+		t.Errorf("charas[akane].Storage = %q, want %q", charas["akane"].Storage, "akane.png")
+	}
+	if charas["akane"].Faces["default"] != "akane.png" {
+		t.Errorf("charas[akane].Faces[default] = %q, want %q", charas["akane"].Faces["default"], "akane.png")
+	}
+}
+
+// TestHandleCharaModUpdatesStorage confirms a face swap keeps Storage
+// pointing at whatever's actually showing, so a save made afterward
+// restores that face rather than the original [chara_new] default.
+func TestHandleCharaModUpdatesStorage(t *testing.T) {
+	r := newTestRendererWithImageFS(t, map[string][]byte{
+		"akane.png":       tinyPNG(t),
+		"akane_smile.png": tinyPNG(t),
+	})
+	charas["akane"] = &kag3.Character{
+		Name:    "akane",
+		Storage: "akane.png",
+		Faces:   map[string]string{"default": "akane.png", "smile": "akane_smile.png"},
+	}
+	tag := kag3.TagObject{Name: "chara_mod", Pm: map[string]string{"name": "akane", "face": "smile"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_mod dispatch error: %v", err)
+	}
+	if charas["akane"].Storage != "akane_smile.png" {
+		t.Errorf("charas[akane].Storage = %q, want %q", charas["akane"].Storage, "akane_smile.png")
+	}
+}

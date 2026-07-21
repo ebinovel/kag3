@@ -37,10 +37,11 @@ func handleCharaNew(ctx *tagCtx) error {
 		return err
 	}
 	charas[name] = &kag3.Character{
-		Name:  name,
-		Image: charaImage,
-		JName: object.Pm["jname"],
-		Faces: make(map[string]string),
+		Name:    name,
+		Image:   charaImage,
+		JName:   object.Pm["jname"],
+		Faces:   make(map[string]string),
+		Storage: object.Pm["storage"],
 	}
 	charas[name].Faces["default"] = object.Pm["storage"]
 	return nil
@@ -64,14 +65,19 @@ func handleCharaFace(ctx *tagCtx) error {
 func handleCharaMod(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
+	storage := charas[object.Pm["name"]].Faces[object.Pm["face"]]
 	charaImage, _, err := ebitenutil.NewImageFromFileSystem(
 		r.fses["images"],
-		charas[object.Pm["name"]].Faces[object.Pm["face"]],
+		storage,
 	)
 	if err != nil {
 		return err
 	}
 	charas[object.Pm["name"]].Image = charaImage
+	// Keep Storage tracking whatever's actually showing, so a save made
+	// after a face change restores the same face rather than the original
+	// [chara_new] default.
+	charas[object.Pm["name"]].Storage = storage
 	return nil
 }
 

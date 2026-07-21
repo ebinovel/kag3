@@ -167,15 +167,18 @@ func (r *Renderer) loadScript(name string) error {
 func (r *Renderer) Update() {
 	t++
 	// wasModalActive/the check before the co.Next() loop below prevent a
-	// single click from both toggling backlogViewing/menuOpen *and* being
-	// read by doNext() as "advance the story" in the same frame — the tag
-	// coroutine may be sitting blocked in an unrelated [s]/[wait] at the
-	// exact moment the user opens/closes one of these overlays.
-	wasModalActive := backlogViewing || menuOpen
+	// single click (or keypress, for [edit]'s Enter-to-commit) from both
+	// toggling/driving one of these overlays *and* being read by doNext()
+	// as "advance the story" in the same frame — the tag coroutine may be
+	// sitting blocked in an unrelated [s]/[wait] at the exact moment the
+	// user opens/closes one of these overlays. See anyModalActive in
+	// tags_uiscreens.go.
+	wasModalActive := anyModalActive()
 	// hoveringClickable drives [cursor]'s pointer-vs-default swap (see
 	// tags_sysdesign.go); recomputed fresh below wherever a link/glink/
 	// button already runs an isColision hit-test for its own purposes.
 	hoveringClickable = false
+	r.handleEditInput()
 	if !isFirst {
 		co = coro.New(loop)
 		isFirst = true
@@ -269,13 +272,13 @@ func (r *Renderer) Update() {
 				if button.Role != "" {
 					switch button.Role {
 					case "save":
-						if err := r.saveSlot(manualSaveSlot); err != nil {
-							fmt.Printf("save failed: %v\n", err)
-						}
+						// Per tyrano.jp/tag's [button] reference, role="save"
+						// opens the save-slot screen rather than acting on a
+						// fixed slot directly — that's what quicksave is
+						// for. Reuses Phase 9's slot picker (tags_uiscreens.go).
+						openSlotPicker(slotPickerSave)
 					case "load":
-						if err := r.loadSlot(manualSaveSlot); err != nil {
-							fmt.Printf("load failed: %v\n", err)
-						}
+						openSlotPicker(slotPickerLoad)
 					case "quicksave":
 						if err := r.saveSlot(quickSaveSlot); err != nil {
 							fmt.Printf("quicksave failed: %v\n", err)
@@ -339,21 +342,23 @@ func (r *Renderer) Update() {
 		links = nil
 	}
 	screenW, screenH := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
-	if activeDialog != nil {
+	switch {
+	case activeDialog != nil:
 		handleDialogClick(screenW, screenH)
-	}
-	if menuOpen {
+	case slotPickerActive != slotPickerNone:
+		r.handleSlotPickerClick()
+	case menuOpen:
 		r.handleQuickMenuClick(screenW, screenH)
-	} else {
+	default:
 		r.handleMenuButtonClick()
 	}
 	// Backlog has no per-item hit-test — any click dismisses it, except on
 	// the very frame that opened it (that click is the role="backlog"
-	// button press itself, already handled above).
+	// button press, or [showlog], already handled above/this frame).
 	if backlogViewing && t != backlogOpenedFrame && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		backlogViewing = false
 	}
-	if wasModalActive || backlogViewing || menuOpen {
+	if wasModalActive || anyModalActive() {
 		return
 	}
 	stepAudioFades()
@@ -492,7 +497,15 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 	}
 	for _, c := range viewCharas {
 		currentLeft += charaSpace
-		left := currentLeft - (charas[c.Name].Image.Bounds().Dx() / 2)
+		// c ranges over every currently-shown character, not just the one
+		// this call is about (already guarded at the top via name) — a
+		// sibling could in principle be an unreconciled load-restored entry
+		// (see reconcileViewCharas in tags_save.go), so re-check here too.
+		sibling, ok := charas[c.Name]
+		if !ok || sibling.Image == nil {
+			continue
+		}
+		left := currentLeft - (sibling.Image.Bounds().Dx() / 2)
 		c.NewLeft = left
 		if charaNew {
 			c.IsSlide = true
@@ -892,22 +905,31 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 		}
 	}
 	for _, chara := range viewCharas {
+		// A registered=false entry here means a loaded save's character
+		// couldn't be reconciled (see reconcileViewCharas in tags_save.go)
+		// — that function is meant to filter these out before they ever
+		// reach viewCharas, but skip defensively rather than crash the
+		// whole renderer if that invariant is ever violated.
+		registered, ok := charas[chara.Name]
+		if !ok || registered.Image == nil {
+			continue
+		}
 		if chara.IsSlide {
 			e := &effects.SlideInLeft{}
-			e.Draw(buf, charas[chara.Name].Image, chara, charaTick, t, chara.Time)
+			e.Draw(buf, registered.Image, chara, charaTick, t, chara.Time)
 		} else {
 			if chara.IsRemove {
 				e := &effects.FadeOut{}
-				e.Draw(buf, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time,
+				e.Draw(buf, registered.Image, chara.Left, chara.Top, charaTick, t, chara.Time,
 					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
 			} else {
 				e := &effects.FadeIn{}
-				e.Draw(buf, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time,
+				e.Draw(buf, registered.Image, chara.Left, chara.Top, charaTick, t, chara.Time,
 					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
 			}
 		}
 		if !chara.IsRemove {
-			drawCharaParts(buf, charas[chara.Name], chara.Left, chara.Top)
+			drawCharaParts(buf, registered, chara.Left, chara.Top)
 		}
 	}
 	applyFukiPosition()
@@ -1203,6 +1225,10 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 		text.Draw(buf, glink.Text, r.fontFace, glinkOp)
 	}
 	for _, button := range buttons {
+		if button.Graphic == nil && button.EnterImg == nil {
+			// An invisible hit zone (e.g. [clickable]) — nothing to draw.
+			continue
+		}
 		buttonOp := &ebiten.DrawImageOptions{}
 		buttonOp.GeoM.Translate(float64(button.X), float64(button.Y))
 
@@ -1226,6 +1252,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
+	drawEditBox(r, buf)
 	drawModal(r, buf)
 }
 

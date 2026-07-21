@@ -58,6 +58,12 @@ type Background struct {
 	Method    string
 	IsEnd     bool
 	IsSystem  bool
+	// Storage is the file path of whatever's currently requested into
+	// Image/NextImage (see applyBGTag in tags_background.go). Neither
+	// *ebiten.Image field can round-trip through a JSON save file, so this
+	// is what save/load uses to reconstruct the background after a fresh
+	// process start.
+	Storage string
 }
 
 type BGM struct {
@@ -106,6 +112,12 @@ type Character struct {
 	// ActivePart is which part name is currently showing for each layer
 	// slot (see [chara_part]/[chara_part_reset]).
 	ActivePart map[string]string
+	// Storage is the file path of whatever's currently in Image (set by
+	// [chara_new], kept in sync by [chara_mod]). *ebiten.Image can't
+	// round-trip through a JSON save file, so save/load uses this to
+	// re-register the character in a fresh process that never ran
+	// [chara_new] for it.
+	Storage string
 }
 
 type CharaShow struct {
