@@ -24,11 +24,26 @@ func newVM() *VM {
 	v.f = v.rt.NewObject()
 	v.sf = v.rt.NewObject()
 	v.tf = v.rt.NewObject()
+	initSystemNamespace(v.rt, v.sf)
+	initSystemNamespace(v.rt, v.tf)
 	v.rt.Set("f", v.f)
 	v.rt.Set("sf", v.sf)
 	v.rt.Set("tf", v.tf)
 	v.rt.Set("mp", v.rt.NewObject())
 	return v
+}
+
+// initSystemNamespace sets ns.system to a fresh object with a "backlog"
+// array, matching real Tyrano's own tf.system/sf.system — scripts (e.g. the
+// bundled replay.ks/config.ks templates) read/write tf.system.flag_replay
+// and call tf.system.backlog.pop() unconditionally, assuming the engine
+// already created these before any script ran; without this they'd hit a
+// "Cannot convert undefined or null to object" TypeError the first time
+// they touch tf.system.
+func initSystemNamespace(rt *goja.Runtime, ns *goja.Object) {
+	system := rt.NewObject()
+	system.Set("backlog", rt.NewArray())
+	ns.Set("system", system)
 }
 
 // Eval runs a JavaScript expression or statement and returns its value.
@@ -86,9 +101,12 @@ func (v *VM) ClearF() {
 }
 
 // ClearSF replaces "sf" (the system-variable namespace) with a fresh empty
-// object, for [clearsysvar].
+// object, for [clearsysvar]. sf.system is reinitialized too (see
+// initSystemNamespace) so a script relying on it doesn't crash just because
+// it happened to run after a [clearsysvar].
 func (v *VM) ClearSF() {
 	v.sf = v.rt.NewObject()
+	initSystemNamespace(v.rt, v.sf)
 	v.rt.Set("sf", v.sf)
 }
 
@@ -123,6 +141,14 @@ func (v *VM) RestoreSF(vars map[string]interface{}) {
 	obj := v.rt.NewObject()
 	for k, val := range vars {
 		obj.Set(k, val)
+	}
+	// A save made before sf.system existed (or one where a script deleted
+	// it) shouldn't reintroduce the same crash this namespace exists to
+	// avoid — see initSystemNamespace. A missing property comes back as Go
+	// nil here (goja.Object.Get doesn't return the _undefined sentinel for
+	// keys that were never set at all), so check for both.
+	if system := obj.Get("system"); system == nil || goja.IsUndefined(system) {
+		initSystemNamespace(v.rt, obj)
 	}
 	v.sf = obj
 	v.rt.Set("sf", obj)

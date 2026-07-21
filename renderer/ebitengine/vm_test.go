@@ -79,3 +79,47 @@ func TestVMPushMPFrame(t *testing.T) {
 		t.Errorf("mp.name after popping frame A = %q, want %q", got, "undefined")
 	}
 }
+
+// TestTFSystemAndSFSystemPreinitialized reproduces the crash reported when
+// pressing the back button in replay mode: example/resources/senarios/
+// replay.ks unconditionally does `tf.system.flag_replay = false;` and
+// config.ks does `tf.system.backlog.pop();`, both assuming tf.system (and
+// its backlog array) already exist — real Tyrano creates them before any
+// script runs. Without that, tf.system is undefined and the assignment
+// throws "Cannot convert undefined or null to object".
+func TestTFSystemAndSFSystemPreinitialized(t *testing.T) {
+	v := newVM()
+	if _, err := v.Eval("tf.system.flag_replay = false;"); err != nil {
+		t.Errorf("tf.system.flag_replay assignment failed: %v", err)
+	}
+	if _, err := v.Eval("tf.system.backlog.pop();"); err != nil {
+		t.Errorf("tf.system.backlog.pop() failed: %v", err)
+	}
+	if _, err := v.Eval("sf.system.foo = 1;"); err != nil {
+		t.Errorf("sf.system.foo assignment failed: %v", err)
+	}
+}
+
+// TestClearSFReinitializesSystemNamespace ensures [clearsysvar] doesn't
+// reintroduce the same crash for any script that happens to touch
+// sf.system afterward.
+func TestClearSFReinitializesSystemNamespace(t *testing.T) {
+	v := newVM()
+	v.ClearSF()
+	if _, err := v.Eval("sf.system.foo = 1;"); err != nil {
+		t.Errorf("sf.system.foo assignment after ClearSF failed: %v", err)
+	}
+}
+
+// TestRestoreSFReinitializesMissingSystemNamespace covers loading a save
+// made before sf.system existed (or one where a script deleted it).
+func TestRestoreSFReinitializesMissingSystemNamespace(t *testing.T) {
+	v := newVM()
+	v.RestoreSF(map[string]interface{}{"seen": true}) // no "system" key at all
+	if _, err := v.Eval("sf.system.foo = 1;"); err != nil {
+		t.Errorf("sf.system.foo assignment after RestoreSF (no system key) failed: %v", err)
+	}
+	if got := v.EvalString("sf.seen"); got != "true" {
+		t.Errorf("sf.seen after RestoreSF = %q, want %q (existing keys must survive)", got, "true")
+	}
+}
