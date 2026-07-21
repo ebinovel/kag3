@@ -100,6 +100,12 @@ type Character struct {
 	JName string
 	Faces map[string]string
 	Image *ebiten.Image
+	// Parts holds differential-part image variants, keyed by layer slot
+	// (e.g. "face", "accessory") then part name (see [chara_layer]).
+	Parts map[string]map[string]*ebiten.Image
+	// ActivePart is which part name is currently showing for each layer
+	// slot (see [chara_part]/[chara_part_reset]).
+	ActivePart map[string]string
 }
 
 type CharaShow struct {

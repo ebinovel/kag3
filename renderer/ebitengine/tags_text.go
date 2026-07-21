@@ -71,7 +71,7 @@ func handleResetFont(ctx *tagCtx) error {
 
 func handlePText(ctx *tagCtx) error {
 	object := ctx.tag
-	pText = &kag3.PText{}
+	pText := &kag3.PText{}
 	rr, gg, bb, aa := color.White.RGBA()
 	pText.Color = &color.RGBA{uint8(rr), uint8(gg), uint8(bb), uint8(aa)}
 	for key, value := range object.Pm {
@@ -135,5 +135,6 @@ func handlePText(ctx *tagCtx) error {
 			pText.Gradient = value
 		}
 	}
+	ptexts[pText.Name] = pText
 	return nil
 }

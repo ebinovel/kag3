@@ -60,7 +60,12 @@ var (
 	textPosition                                 *kag3.TextPosition
 	textStyle                                    *kag3.TextStyle
 	beforeTextSize                               float64
-	pText                                        *kag3.PText
+	// ptexts holds every named [ptext] area, keyed by its "name"
+	// attribute — ptext is general-purpose text placement, not just the
+	// character name-plate. Which one (if any) doubles as the name-plate
+	// is set by [chara_config ptext="..."] into charaNamePText.
+	ptexts                                       map[string]*kag3.PText
+	charaNamePText                               string
 	textGlyphs                                   []text.Glyph
 	charaName                                    string
 	buttons                                      []*kag3.Button
@@ -84,6 +89,7 @@ var (
 
 func init() {
 	charas = make(map[string]*kag3.Character)
+	ptexts = make(map[string]*kag3.PText)
 	textPosition = &kag3.TextPosition{}
 	audioContext = audio.NewContext(44100)
 	layopt = &kag3.LayOpt{}
@@ -773,6 +779,9 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 				e.Draw(screen, charas[chara.Name].Image, chara.Left, chara.Top, charaTick, t, chara.Time)
 			}
 		}
+		if !chara.IsRemove {
+			drawCharaParts(screen, charas[chara.Name], chara.Left, chara.Top)
+		}
 	}
 	if textPosition != nil && textPosition.Visible {
 		op := &ebiten.DrawImageOptions{}
@@ -785,12 +794,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 			textPosition.BackImage.Fill(color.RGBA{0, 0, 0, 128})
 			screen.DrawImage(textPosition.BackImage, op)
 		}
-		if pText != nil {
-			cPTextOp := &text.DrawOptions{}
-			cPTextOp.GeoM.Translate(float64(pText.X), float64(pText.Y))
-			cPTextOp.ColorScale.ScaleWithColor(color.White)
-			text.Draw(screen, charaName, r.nameFontFace, cPTextOp)
-		}
+		drawPTexts(screen, r.nameFontFace)
 
 		marginLeft := x + float64(textPosition.MarginLeft)
 		marginTop := y + float64(textPosition.MarginTop)
@@ -1080,6 +1084,71 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	}
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(screen, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
+}
+
+// drawCharaParts overlays a character's currently active differential
+// parts (see [chara_layer]/[chara_part]) on top of its base image, aligned
+// to the same origin. Layers are drawn in sorted-name order for
+// determinism since Tyrano-style z-index configuration isn't implemented.
+func drawCharaParts(screen *ebiten.Image, c *kag3.Character, left, top int) {
+	if c == nil || len(c.ActivePart) == 0 {
+		return
+	}
+	layerNames := make([]string, 0, len(c.ActivePart))
+	for layer := range c.ActivePart {
+		layerNames = append(layerNames, layer)
+	}
+	slices.Sort(layerNames)
+	for _, layer := range layerNames {
+		part := c.ActivePart[layer]
+		img, ok := c.Parts[layer][part]
+		if !ok {
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(left), float64(top))
+		screen.DrawImage(img, op)
+	}
+}
+
+// drawPTexts renders every named [ptext] area. The one registered as the
+// character name-plate via [chara_config ptext="..."] shows charaName;
+// every other one shows its own literal .Text. Sorted by name for
+// deterministic draw order.
+func drawPTexts(screen *ebiten.Image, face *text.GoTextFace) {
+	if len(ptexts) == 0 {
+		return
+	}
+	names := make([]string, 0, len(ptexts))
+	for name := range ptexts {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		pt := ptexts[name]
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(pt.X), float64(pt.Y))
+		if pt.Color != nil {
+			op.ColorScale.ScaleWithColor(pt.Color)
+		} else {
+			op.ColorScale.ScaleWithColor(color.White)
+		}
+		text.Draw(screen, ptextContent(name), face, op)
+	}
+}
+
+// ptextContent is the string a named ptext area should currently display:
+// charaName for the one registered via [chara_config ptext=...], its own
+// literal .Text otherwise. Split out from drawPTexts so the name-plate
+// resolution logic is testable without an ebiten screen/font.
+func ptextContent(name string) string {
+	if name == charaNamePText {
+		return charaName
+	}
+	if pt, ok := ptexts[name]; ok {
+		return pt.Text
+	}
+	return ""
 }
 
 func parseColor(value string) (r, g, b int, err error) {
