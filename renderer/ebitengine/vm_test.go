@@ -123,3 +123,26 @@ func TestRestoreSFReinitializesMissingSystemNamespace(t *testing.T) {
 		t.Errorf("sf.seen after RestoreSF = %q, want %q (existing keys must survive)", got, "true")
 	}
 }
+
+// TestBrowserShimReproducesConfigKsCrash reproduces the crash reported when
+// opening the config screen: config.ks's [iscript] does
+// `$(".layer_camera").empty(); $("#bgmovie").remove();` — real Tyrano runs
+// in a browser with jQuery loaded, kag3 doesn't have a DOM at all, so
+// without a $ shim this throws "ReferenceError: $ is not defined" and kills
+// the whole renderer.
+func TestBrowserShimReproducesConfigKsCrash(t *testing.T) {
+	v := newVM()
+	if _, err := v.Eval(`$(".layer_camera").empty(); $("#bgmovie").remove();`); err != nil {
+		t.Errorf("jQuery-style $(...) call failed: %v", err)
+	}
+	// scene1.ks's web-demo-link buttons call window.open(url) directly.
+	if _, err := v.Eval(`window.open("http://tyrano.jp/home/example");`); err != nil {
+		t.Errorf("window.open(...) call failed: %v", err)
+	}
+	// A longer jQuery chain, matching config.ks's volume-icon update code
+	// (`$(".bgmvol_"+tf.current_bgm_vol).attr("src", "...")`), must also
+	// not panic and must be chainable.
+	if _, err := v.Eval(`$(".bgmvol_10").attr("src", "c_set.png").css("color", "red");`); err != nil {
+		t.Errorf("chained jQuery-style call failed: %v", err)
+	}
+}

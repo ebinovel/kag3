@@ -30,8 +30,53 @@ func newVM() *VM {
 	v.rt.Set("sf", v.sf)
 	v.rt.Set("tf", v.tf)
 	v.rt.Set("mp", v.rt.NewObject())
+	if _, err := v.rt.RunString(browserShimJS); err != nil {
+		// This is a fixed, hand-written shim, not user script — a failure
+		// here is a bug in this engine, not something to hide from a
+		// script author, but it also shouldn't be possible to hit in
+		// practice, so there's nothing more useful to do than note it.
+		panic("kag3: browser shim failed to install: " + err.Error())
+	}
 	return v
 }
+
+// browserShimJS defines $ and window as harmless no-ops. The bundled
+// TyranoScript template (config.ks, scene1.ks, tyrano.ks — this project's
+// own example resources) is the browser/jQuery-based official Tyrano
+// distribution: its [iscript] blocks call things like
+// $(".layer_camera").empty() to manipulate an HTML page that simply
+// doesn't exist in this canvas-based engine, and window.open(url) to open
+// a link in a new browser tab. Without these, the first such call throws
+// "ReferenceError: $/window is not defined" and kills the whole renderer —
+// the same category of problem tf.system/sf.system (see
+// initSystemNamespace) solves for engine-reserved variables, just for
+// browser globals instead. $(...) returns a chainable stub whose methods
+// are no-ops and report an empty result (.length = 0), which is a safe
+// default: this engine's own system screens (menu/save/load — see
+// tags_uiscreens.go/tags_save.go) are drawn independently of whatever a
+// legacy script's jQuery calls would have done to a DOM that was never
+// there to begin with.
+const browserShimJS = `
+var $ = (function() {
+	var methods = [
+		"attr", "css", "empty", "remove", "html", "text", "val", "show", "hide",
+		"addClass", "removeClass", "toggleClass", "hasClass", "on", "off",
+		"trigger", "click", "bind", "unbind", "each", "find", "children",
+		"parent", "closest", "append", "prepend", "before", "after", "width",
+		"height", "offset", "position", "data", "stop", "delay", "animate",
+		"fadeIn", "fadeOut", "fadeTo", "toggle", "is"
+	];
+	function stub() {
+		var api = { length: 0 };
+		for (var i = 0; i < methods.length; i++) {
+			(function(name) { api[name] = function() { return api; }; })(methods[i]);
+		}
+		return api;
+	}
+	return function() { return stub(); };
+})();
+var window = { open: function() {} };
+`
 
 // initSystemNamespace sets ns.system to a fresh object with a "backlog"
 // array, matching real Tyrano's own tf.system/sf.system — scripts (e.g. the
