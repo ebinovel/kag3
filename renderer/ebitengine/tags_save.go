@@ -146,6 +146,14 @@ type saveData struct {
 	// reconcileViewCharas uses to re-register a character that a fresh
 	// process never ran [chara_new] for.
 	CharaStorage map[string]string
+	// CharaFaces records, for every name appearing in ViewCharas, the full
+	// charas[name].Faces map (face name -> image path) held at save time.
+	// A save resumed mid-script (jumpIndex straight to the saved position)
+	// skips whatever [chara_face] tags ran earlier in the file, so without
+	// this a [chara_mod ... face="happy"] reached after loading would find
+	// nothing but the "default" face reconcileViewCharas used to seed on its
+	// own — see the save/load gaps note above.
+	CharaFaces   map[string]map[string]string
 	Bg           bgSaveState
 	TextPosition textPositionSaveState
 	// LastMessage is whatever text was in the message window at save time
@@ -156,12 +164,18 @@ type saveData struct {
 
 func (r *Renderer) buildSaveData() *saveData {
 	charaStorage := make(map[string]string, len(viewCharas))
+	charaFaces := make(map[string]map[string]string, len(viewCharas))
 	for _, c := range viewCharas {
 		if _, ok := charaStorage[c.Name]; ok {
 			continue
 		}
 		if ch, ok := charas[c.Name]; ok {
 			charaStorage[c.Name] = ch.Storage
+			faces := make(map[string]string, len(ch.Faces))
+			for face, storage := range ch.Faces {
+				faces[face] = storage
+			}
+			charaFaces[c.Name] = faces
 		}
 	}
 	return &saveData{
@@ -173,6 +187,7 @@ func (r *Renderer) buildSaveData() *saveData {
 		FVars:        r.vm.ExportF(),
 		ViewCharas:   append([]*kag3.CharaShow(nil), viewCharas...),
 		CharaStorage: charaStorage,
+		CharaFaces:   charaFaces,
 		Bg: bgSaveState{
 			Time:     bg.Time,
 			IsWait:   bg.IsWait,
@@ -216,7 +231,14 @@ func (r *Renderer) buildSaveData() *saveData {
 // is left untouched; anything missing is re-registered from charaStorage if
 // possible, or dropped (logged, not panicked) if its path is missing or the
 // file can't be read.
-func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage map[string]string) []*kag3.CharaShow {
+//
+// charaFaces restores the character's full face registry (see saveData's
+// CharaFaces doc comment) — without it, [chara_mod ... face=...] for any
+// face beyond "default" would find nothing and, before that was guarded
+// (see handleCharaMod), crashed the whole game. A save written before this
+// field existed (or a name reconcileViewCharas had to fall back to
+// charaStorage for some other reason) still gets a working "default" entry.
+func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage map[string]string, charaFaces map[string]map[string]string) []*kag3.CharaShow {
 	kept := restored[:0]
 	for _, c := range restored {
 		if _, ok := charas[c.Name]; ok {
@@ -233,11 +255,15 @@ func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage m
 			fmt.Printf("save/load: %s の画像読み込みに失敗したためスキップします: %v\n", c.Name, err)
 			continue
 		}
+		faces := charaFaces[c.Name]
+		if len(faces) == 0 {
+			faces = map[string]string{"default": storage}
+		}
 		charas[c.Name] = &kag3.Character{
 			Name:    c.Name,
 			Image:   img,
 			Storage: storage,
-			Faces:   map[string]string{"default": storage},
+			Faces:   faces,
 		}
 		kept = append(kept, c)
 	}
@@ -265,7 +291,7 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	r.sleepStack = callFramesToSleepStack(d.SleepStack)
 	r.vm.RestoreF(d.FVars)
 	r.vm.RestoreSF(d.SFVars)
-	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage)
+	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage, d.CharaFaces)
 	bg.Time = d.Bg.Time
 	bg.IsWait = d.Bg.IsWait
 	bg.IsCross = d.Bg.IsCross

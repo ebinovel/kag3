@@ -348,6 +348,61 @@ func TestApplySaveDataReconstructsCharaAfterFreshProcess(t *testing.T) {
 	}
 }
 
+// TestApplySaveDataRestoresCharaFacesAfterFreshProcess is the regression
+// test for the actual reported crash: loading a save that resumes mid-
+// script (jumpIndex straight to the saved position) skipped whatever
+// [chara_face] tags ran earlier in the file, so charas["akane"].Faces only
+// ever got reconstructed with a "default" entry — and the very next
+// [chara_mod name="akane" face="happy"] found nothing, computed storage="",
+// and panicked the whole coroutine (see handleCharaMod's fix). CharaFaces
+// must round-trip through save/load so a non-default face works right after
+// a fresh-process load, exactly like the real slot_4.json scenario.
+func TestApplySaveDataRestoresCharaFacesAfterFreshProcess(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	defer delete(charas, "akane")
+	defer func() { viewCharas = nil }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{
+		"akane.png":       &fstest.MapFile{Data: tinyPNG(t)},
+		"akane_happy.png": &fstest.MapFile{Data: tinyPNG(t)},
+	}}
+	charas["akane"] = &kag3.Character{
+		Name:    "akane",
+		Storage: "akane.png",
+		Image:   newTestImage(1, 1),
+		Faces:   map[string]string{"default": "akane.png", "happy": "akane_happy.png"},
+	}
+	viewCharas = []*kag3.CharaShow{{Name: "akane", Left: 10, Top: 20}}
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate a fresh process: charas starts empty, nothing has run
+	// [chara_new]/[chara_face] yet — same as the real slot_4.json report.
+	delete(charas, "akane")
+	viewCharas = nil
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	if got := charas["akane"].Faces["happy"]; got != "akane_happy.png" {
+		t.Fatalf(`charas["akane"].Faces["happy"] = %q, want "akane_happy.png"`, got)
+	}
+
+	tag := kag3.TagObject{Name: "chara_mod", Pm: map[string]string{"name": "akane", "face": "happy"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_mod after fresh-process load errored (this is the reported crash): %v", err)
+	}
+	if charas["akane"].Storage != "akane_happy.png" {
+		t.Errorf(`charas["akane"].Storage after chara_mod = %q, want "akane_happy.png"`, charas["akane"].Storage)
+	}
+}
+
 // TestReconcileViewCharasDropsUnrestorableCharaWithoutPanicking covers the
 // fallback when a character can't be reconstructed at all (no recorded
 // path, or the file no longer exists) — it must be silently dropped from
@@ -358,12 +413,12 @@ func TestReconcileViewCharasDropsUnrestorableCharaWithoutPanicking(t *testing.T)
 	r.fses = map[string]fs.FS{"images": fstest.MapFS{}}
 	restored := []*kag3.CharaShow{{Name: "ghost", Left: 5}}
 
-	got := reconcileViewCharas(r, restored, map[string]string{}) // no CharaStorage entry at all
+	got := reconcileViewCharas(r, restored, map[string]string{}, nil) // no CharaStorage entry at all
 	if len(got) != 0 {
 		t.Errorf("reconcileViewCharas with no storage path = %+v, want dropped (empty)", got)
 	}
 
-	got = reconcileViewCharas(r, restored, map[string]string{"ghost": "missing.png"}) // path given but file absent
+	got = reconcileViewCharas(r, restored, map[string]string{"ghost": "missing.png"}, nil) // path given but file absent
 	if len(got) != 0 {
 		t.Errorf("reconcileViewCharas with an unreadable path = %+v, want dropped (empty)", got)
 	}
