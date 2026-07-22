@@ -440,11 +440,26 @@ func (r *Renderer) goToTitle() {
 	// only ever gets shown once, right after the boot iscript that hides
 	// them initially. Since goToTitle can now re-enter title.ks at any
 	// point in the middle of a playthrough (role="title", the quick menu's
-	// "BACK TO TITLE"), gameplay UI left over from wherever we were —
-	// scene1.ks's @showmenubutton corner icon, the message window — has to
-	// be hidden explicitly here instead, or it bleeds through on top of
-	// the title screen.
-	textPosition.Visible = false
+	// "BACK TO TITLE"), gameplay UI left over from wherever we were has to
+	// be reset explicitly here, or it bleeds through — not just onto the
+	// title screen itself, but into whatever scenario starts next. [position]
+	// (r.position in this file) only ever *merges* the attributes a given
+	// tag call specifies, so a field a later [position] call never touches
+	// again (most notably frame=, but also color/margins/vertical/...) stays
+	// whatever the *previous* playthrough last set it to: reported as a
+	// custom end-of-story message-window frame (scene1.ks's
+	// [position frame="frame.png" ...] near the end) still showing behind
+	// scene1.ks's very first line after choosing "はじめから" a second time,
+	// since that early [position] call never specifies frame= to clear it.
+	// A fresh struct matches exactly what NewRenderer starts a brand-new
+	// process with. textStyle/defaultTextStyle ([font]/[deffont]) are the
+	// same kind of never-explicitly-cleared global and get the same
+	// treatment, for the same reason (scene1.ks's end-of-story
+	// [deffont color="0x454D51"] otherwise recolors the next playthrough's
+	// very first lines too).
+	textPosition = &kag3.TextPosition{}
+	textStyle = nil
+	defaultTextStyle = nil
 	menuButtonVisible = false
 	backlogViewing = false
 	menuOpen = false

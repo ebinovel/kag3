@@ -1,8 +1,10 @@
 package ebitengine
 
 import (
+	"image/color"
 	"testing"
 
+	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
 )
 
@@ -205,6 +207,53 @@ func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected to reach title.ks's content after goToTitle escaped the isWait block; r.texts = %+v", r.texts)
+	}
+}
+
+// TestGoToTitleResetsTextPositionAndStyle is the regression test for a real
+// reported bug: finishing the story, returning to title, then choosing
+// "はじめから" a second time showed scene1.ks's very first line inside the
+// *end-of-story* custom message window (scene1.ks's own
+// [position frame="frame.png" ...] from near the end) instead of the
+// default box. [position] (r.position) only merges the attributes a given
+// tag call specifies, so a field no later call ever touches again (frame=,
+// color=, ...) survives forever unless something resets it — goToTitle is
+// that reset point. textStyle/defaultTextStyle ([font]/[deffont]) are the
+// same class of never-cleared global (scene1.ks's end-of-story
+// [deffont color=...] would otherwise recolor the next playthrough's text
+// too) and must reset the same way.
+func TestGoToTitleResetsTextPositionAndStyle(t *testing.T) {
+	m := newTestManager(t, map[string]string{"title.ks": "reached title"})
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		currentStorage: "scene1.ks",
+	}
+	isJump = false
+	isWait = false
+	textPosition = &kag3.TextPosition{
+		Left: 0, Top: 510, Width: 1280, Height: 210,
+		FrameImage: newTestImage(1280, 210), FrameStorage: "frame.png",
+		Color: color.RGBA{0xFA, 0xFA, 0xFA, 0xff},
+	}
+	textStyle = &kag3.TextStyle{Color: &color.RGBA{0x45, 0x4D, 0x51, 0xff}}
+	defaultTextStyle = &kag3.TextStyle{Color: &color.RGBA{0x45, 0x4D, 0x51, 0xff}}
+	defer func() { textPosition, textStyle, defaultTextStyle = nil, nil, nil }()
+
+	r.goToTitle()
+
+	if textPosition.FrameImage != nil || textPosition.FrameStorage != "" {
+		t.Errorf("textPosition after goToTitle = %+v, want FrameImage/FrameStorage cleared", textPosition)
+	}
+	if textPosition.Width != 0 || textPosition.Height != 0 || textPosition.Left != 0 {
+		t.Errorf("textPosition after goToTitle = %+v, want a fresh zero-value struct", textPosition)
+	}
+	if textStyle != nil {
+		t.Errorf("textStyle after goToTitle = %+v, want nil", textStyle)
+	}
+	if defaultTextStyle != nil {
+		t.Errorf("defaultTextStyle after goToTitle = %+v, want nil", defaultTextStyle)
 	}
 }
 
