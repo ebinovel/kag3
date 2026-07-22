@@ -65,7 +65,26 @@ func handleCharaFace(ctx *tagCtx) error {
 func handleCharaMod(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
-	storage := charas[object.Pm["name"]].Faces[object.Pm["face"]]
+	name := object.Pm["name"]
+	chara, ok := charas[name]
+	if !ok {
+		fmt.Printf("chara_mod: %s は登録されていないためスキップします\n", name)
+		return nil
+	}
+	// A save/load resumed mid-script (see the save/load gaps note in
+	// tags_save.go) skips whatever [chara_face] declarations came before the
+	// jump point, so a face this character legitimately has in the real
+	// scenario can be missing from the process-lifetime charas registry —
+	// same class of gap charaShow's own "face" handling already guards
+	// against (renderer.go's [chara_show face=...] case). Log and keep
+	// whatever's currently showing rather than opening an empty path and
+	// crashing the whole coroutine (see initScript's loop: any error from a
+	// tag handler panics).
+	storage, ok := chara.Faces[object.Pm["face"]]
+	if !ok {
+		fmt.Printf("chara_mod: %s の表情 %s は登録されていないためスキップします\n", name, object.Pm["face"])
+		return nil
+	}
 	charaImage, _, err := ebitenutil.NewImageFromFileSystem(
 		r.fses["images"],
 		storage,
@@ -73,11 +92,11 @@ func handleCharaMod(ctx *tagCtx) error {
 	if err != nil {
 		return err
 	}
-	charas[object.Pm["name"]].Image = charaImage
+	chara.Image = charaImage
 	// Keep Storage tracking whatever's actually showing, so a save made
 	// after a face change restores the same face rather than the original
 	// [chara_new] default.
-	charas[object.Pm["name"]].Storage = storage
+	chara.Storage = storage
 	return nil
 }
 

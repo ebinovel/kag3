@@ -321,3 +321,48 @@ func TestHandleCharaModUpdatesStorage(t *testing.T) {
 		t.Errorf("charas[akane].Storage = %q, want %q", charas["akane"].Storage, "akane_smile.png")
 	}
 }
+
+// TestHandleCharaModMissingFaceDoesNotError is the regression test for a
+// real reported crash: loading a save that resumes mid-script (jumpIndex
+// straight to the saved position, see the save/load gaps note in
+// tags_save.go) skips whatever [chara_face] declarations came earlier in
+// the file, so charas["akane"].Faces["happy"] doesn't exist even though the
+// character is registered (reconcileViewCharas only seeds a "default"
+// face). Before this, that missing lookup silently became storage="" ,
+// which ebitenutil.NewImageFromFileSystem turned into an "open : invalid
+// argument" error — and initScript's loop panics on any error a tag handler
+// returns, killing the whole coroutine. It must now log and leave the
+// character's current image untouched instead.
+func TestHandleCharaModMissingFaceDoesNotError(t *testing.T) {
+	r := newTestRendererWithImageFS(t, map[string][]byte{"akane.png": tinyPNG(t)})
+	charas["akane"] = &kag3.Character{
+		Name:    "akane",
+		Storage: "akane.png",
+		Faces:   map[string]string{"default": "akane.png"},
+	}
+	origImage := charas["akane"].Image
+	tag := kag3.TagObject{Name: "chara_mod", Pm: map[string]string{"name": "akane", "face": "happy"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_mod dispatch error = %v, want nil (missing face should be logged and skipped)", err)
+	}
+	if charas["akane"].Storage != "akane.png" {
+		t.Errorf("charas[akane].Storage = %q, want unchanged %q", charas["akane"].Storage, "akane.png")
+	}
+	if charas["akane"].Image != origImage {
+		t.Error("charas[akane].Image changed even though the requested face was never registered")
+	}
+}
+
+// TestHandleCharaModMissingCharacterDoesNotError covers the other half: a
+// [chara_mod] for a name that was never [chara_new]'d (or was deleted via
+// [chara_delete]) must not panic on charas[name] being nil either.
+func TestHandleCharaModMissingCharacterDoesNotError(t *testing.T) {
+	delete(charas, "nobody")
+	r := newTestRenderer()
+	tag := kag3.TagObject{Name: "chara_mod", Pm: map[string]string{"name": "nobody", "face": "happy"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_mod dispatch error = %v, want nil (unregistered character should be logged and skipped)", err)
+	}
+}
