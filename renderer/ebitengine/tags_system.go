@@ -2,7 +2,9 @@ package ebitengine
 
 import (
 	"strconv"
+	"strings"
 
+	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -16,8 +18,8 @@ func init() {
 	// window) — real Tyrano distinguishes "close a system dialog" from
 	// "hide the message layer", but kag3 doesn't have system dialogs yet.
 	register("hidemessage", handleClose)
-	register("sleepgame", handleCall)
-	register("awakegame", handleReturn)
+	register("sleepgame", handleSleepGame)
+	register("awakegame", handleAwakeGame)
 	register("breakgame", handleBreakGame)
 }
 
@@ -74,12 +76,68 @@ func handleClose(ctx *tagCtx) error {
 	return nil
 }
 
-// handleBreakGame discards the most recent sleepgame (call) frame without
-// resuming it, unlike [awakegame]/[return].
+// handleSleepGame implements the [sleepgame] tag form (as opposed to button
+// role="sleepgame", handled directly in Update()): pushes onto r.sleepStack,
+// not r.callStack — see the Renderer.sleepStack doc comment for why the two
+// must stay separate. Otherwise identical to handleCall.
+func handleSleepGame(ctx *tagCtx) error {
+	r := ctx.r
+	target := strings.TrimPrefix(ctx.tag.Pm["target"], "*")
+
+	r.sleepStack = append(r.sleepStack, sleepFrame{
+		Storage:      r.currentStorage,
+		Index:        *ctx.i + 1,
+		Buttons:      append([]*kag3.Button(nil), buttons...),
+		Bg:           *bg,
+		TextPosition: *textPosition,
+	})
+
+	storage := ctx.tag.Pm["storage"]
+	if storage != "" && storage != r.currentStorage {
+		if err := r.loadScript(storage); err != nil {
+			return err
+		}
+		*ctx.i = -1
+	}
+	if target != "" {
+		if v, ok := r.labels[target]; ok {
+			*ctx.i = v.Index
+		}
+	}
+	return nil
+}
+
+// handleAwakeGame implements [awakegame]: pops r.sleepStack (mirroring
+// handleReturn, but against the separate sleep stack) and restores the
+// caller's buttons, background and message window — see the sleepFrame doc
+// comment for why that's needed on top of just repositioning execution.
+func handleAwakeGame(ctx *tagCtx) error {
+	r := ctx.r
+	if len(r.sleepStack) == 0 {
+		return nil
+	}
+	n := len(r.sleepStack) - 1
+	frame := r.sleepStack[n]
+	r.sleepStack = r.sleepStack[:n]
+
+	if frame.Storage != "" && frame.Storage != r.currentStorage {
+		if err := r.loadScript(frame.Storage); err != nil {
+			return err
+		}
+	}
+	buttons = frame.Buttons
+	bg = &frame.Bg
+	textPosition = &frame.TextPosition
+	*ctx.i = frame.Index - 1
+	return nil
+}
+
+// handleBreakGame discards the most recent sleepgame frame without resuming
+// it, unlike [awakegame].
 func handleBreakGame(ctx *tagCtx) error {
 	r := ctx.r
-	if n := len(r.callStack); n > 0 {
-		r.callStack = r.callStack[:n-1]
+	if n := len(r.sleepStack); n > 0 {
+		r.sleepStack = r.sleepStack[:n-1]
 	}
 	return nil
 }

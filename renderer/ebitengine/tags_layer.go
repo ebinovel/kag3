@@ -77,12 +77,21 @@ func handleLocate(ctx *tagCtx) error {
 	return nil
 }
 
-// handleClearFix clears the "fix" layer's content. kag3 doesn't have a
-// general per-layer visibility system yet (layopt.Layer is tracked but
-// nothing filters rendering by it), so this targets glinks specifically —
-// the fixed navigation-link elements that are the actual real-world use of
-// a "fix" layer in the example scenarios.
+// handleClearFix clears the "fix" layer's content: all glinks (kag3 doesn't
+// have a general per-layer visibility system yet, so glinks are always
+// treated as living on the fix layer) plus any [button fix="true"] —
+// buttons with Fix=false are already cleared on every jump (see Update() in
+// renderer.go); Fix=true ones are deliberately exempted from that so they
+// survive normal navigation, and this tag is the only thing that removes
+// them, matching real Tyrano's config.ks calling [clearfix] on the way out.
 func handleClearFix(ctx *tagCtx) error {
 	glinks = nil
+	kept := buttons[:0]
+	for _, b := range buttons {
+		if !b.Fix {
+			kept = append(kept, b)
+		}
+	}
+	buttons = kept
 	return nil
 }

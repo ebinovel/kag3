@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"io/fs"
+	"os"
 	"testing"
 	"testing/fstest"
 
@@ -370,5 +371,85 @@ func TestApplySaveDataReconstructsBackgroundAfterFreshProcess(t *testing.T) {
 	}
 	if bg.Method != "crossfade" {
 		t.Errorf("bg.Method after load = %q, want %q", bg.Method, "crossfade")
+	}
+}
+
+// TestApplySaveDataReconstructsMessageWindowAfterFreshProcess covers the
+// reported bug: applySaveData resumes execution via jumpIndex straight into
+// the middle of a script, skipping whatever one-time [position]/[layopt]
+// setup configured the message window earlier in the file. On a fresh
+// process textPosition starts at its zero value (Visible=false, Width=
+// Height=0, no BackImage), so without restoring it from the save, the
+// message box and its text never appear again after a load.
+func TestApplySaveDataReconstructsMessageWindowAfterFreshProcess(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"frame.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	textPosition = &kag3.TextPosition{
+		Visible: true, Left: 160, Top: 500, Width: 1000, Height: 200,
+		MarginLeft: 50, MarginTop: 45, MarginRight: 70, MarginBottom: 60,
+		FrameStorage: "frame.png",
+	}
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate a fresh process: NewRenderer's zero-valued textPosition, no
+	// [position]/[layopt] setup tags have run yet.
+	textPosition = &kag3.TextPosition{}
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+	if !textPosition.Visible {
+		t.Error("expected textPosition.Visible = true after load")
+	}
+	if textPosition.Width != 1000 || textPosition.Height != 200 {
+		t.Errorf("textPosition.Width/Height after load = %d/%d, want 1000/200", textPosition.Width, textPosition.Height)
+	}
+	if textPosition.MarginLeft != 50 || textPosition.MarginTop != 45 {
+		t.Errorf("textPosition margins after load = %+v, want MarginLeft=50 MarginTop=45", textPosition)
+	}
+	if textPosition.BackImage == nil {
+		t.Error("expected BackImage to be regenerated at the restored Width/Height")
+	}
+	if textPosition.FrameImage == nil {
+		t.Error("expected FrameImage to be reloaded from FrameStorage")
+	}
+}
+
+// TestApplySaveDataFromOldSaveFormatDoesNotClobberTextPosition guards the
+// backward-compat path: a save file written before TextPosition existed in
+// saveData unmarshals it as the Go zero value, which must not stomp a
+// same-process textPosition that's already correctly configured.
+func TestApplySaveDataFromOldSaveFormatDoesNotClobberTextPosition(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+
+	r := newSaveTestRendererWithVars(t)
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+	// buildSaveData always populates TextPosition now, so hand-craft the old
+	// (pre-fix) on-disk shape directly instead — a JSON object missing the
+	// "TextPosition" key entirely, as any save written before this field
+	// existed would be.
+	dir, err := saveDir(r)
+	if err != nil {
+		t.Fatalf("saveDir error: %v", err)
+	}
+	if err := os.WriteFile(slotPath(dir, manualSaveSlot, "json"), []byte(`{"Storage":"scene1.ks","Index":42}`), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	textPosition = &kag3.TextPosition{Visible: true, Width: 1000, Height: 200}
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+	if !textPosition.Visible || textPosition.Width != 1000 {
+		t.Errorf("textPosition after loading an old-format save = %+v, want unchanged (Visible=true Width=1000)", textPosition)
 	}
 }

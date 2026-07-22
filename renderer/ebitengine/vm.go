@@ -58,24 +58,36 @@ func newVM() *VM {
 // tags_uiscreens.go/tags_save.go) are drawn independently of whatever a
 // legacy script's jQuery calls would have done to a DOM that was never
 // there to begin with.
+// __jqSetImageSrc, if SetJQueryHooks has wired it in, is the one $(...)
+// method actually implemented rather than stubbed: config.ks's own visual
+// feedback for its volume/speed/skip buttons — "which one is currently
+// selected" — works entirely through $(".someClass").attr("src", path),
+// swapping a button's displayed graphic. Everything else $ can do stays a
+// harmless no-op (see the browserShimJS doc comment above).
 const browserShimJS = `
 var $ = (function() {
 	var methods = [
-		"attr", "css", "empty", "remove", "html", "text", "val", "show", "hide",
+		"css", "empty", "remove", "html", "text", "val", "show", "hide",
 		"addClass", "removeClass", "toggleClass", "hasClass", "on", "off",
 		"trigger", "click", "bind", "unbind", "each", "find", "children",
 		"parent", "closest", "append", "prepend", "before", "after", "width",
 		"height", "offset", "position", "data", "stop", "delay", "animate",
 		"fadeIn", "fadeOut", "fadeTo", "toggle", "is"
 	];
-	function stub() {
+	function stub(selector) {
 		var api = { length: 0 };
 		for (var i = 0; i < methods.length; i++) {
 			(function(name) { api[name] = function() { return api; }; })(methods[i]);
 		}
+		api.attr = function(name, value) {
+			if (arguments.length >= 2 && name === "src" && typeof __jqSetImageSrc === "function") {
+				__jqSetImageSrc(selector, value);
+			}
+			return api;
+		};
 		return api;
 	}
-	return function() { return stub(); };
+	return function(selector) { return stub(selector); };
 })();
 var window = { open: function() {} };
 var TG = { config: {}, menu: {} };
@@ -158,6 +170,18 @@ func (v *VM) SetMenuHooks(r *Renderer) {
 	})
 }
 
+// SetJQueryHooks wires __jqSetImageSrc, the one $(...) call the
+// browserShimJS stub actually forwards to Go — see its doc comment.
+// selector is a bare class selector (".bgmvol_10"); real Tyrano renders
+// [button name="a,b"] as an HTML element with class="a b", so the match
+// here is against kag3.Button.Name's comma-separated tokens, the closest
+// equivalent this engine has to an HTML class list.
+func (v *VM) SetJQueryHooks(r *Renderer) {
+	v.rt.Set("__jqSetImageSrc", func(selector, path string) {
+		r.setButtonImageByClass(selector, path)
+	})
+}
+
 // initSystemNamespace sets ns.system to a fresh object with a "backlog"
 // array, matching real Tyrano's own tf.system/sf.system — scripts (e.g. the
 // bundled replay.ks/config.ks templates) read/write tf.system.flag_replay
@@ -195,6 +219,23 @@ func (v *VM) EvalString(src string) string {
 		return ""
 	}
 	return val.String()
+}
+
+// EvalButtonExp runs a clicked [button]'s preexp/exp, real Tyrano's pattern
+// for running JS as a side effect of a click before Target/Role take effect
+// (see config.ks's volume buttons and tyrano.ks's CG-gallery buttons).
+// preexp, if set, runs first and its result is bound to a "preexp" variable
+// exp can reference. Errors are swallowed, matching handleEval's tolerance
+// for malformed expressions elsewhere in this file.
+func (v *VM) EvalButtonExp(preexp, exp string) {
+	if preexp != "" {
+		if val, err := v.Eval(preexp); err == nil {
+			v.rt.Set("preexp", val)
+		}
+	}
+	if exp != "" {
+		v.Eval(exp)
+	}
 }
 
 // PushMPFrame creates a new "mp" object populated from pm and makes it the

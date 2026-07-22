@@ -1,7 +1,9 @@
 package ebitengine
 
 import (
+	"io/fs"
 	"testing"
+	"testing/fstest"
 
 	"github.com/ebinovel/kag3"
 )
@@ -54,6 +56,97 @@ func TestVMExpandParams(t *testing.T) {
 	}
 	if out["mp"] != "default_name" {
 		t.Errorf("mp = %q, want default %q (no active mp frame)", out["mp"], "default_name")
+	}
+}
+
+// TestVMEvalButtonExpSetsVariableBeforeTargetReads reproduces a real crash:
+// config.ks's text-speed buttons (e.g. [button target="*ch_speed_change"
+// exp="tf.set_ch_speed = 100; ..."]) set tf.set_ch_speed via exp=, and the
+// jumped-to label immediately reads it back via [configdelay
+// speed="&tf.set_ch_speed"]. Before EvalButtonExp existed, exp= was parsed
+// but never evaluated on click, so tf.set_ch_speed stayed "undefined" and
+// strconv.Atoi panicked the whole renderer.
+func TestVMEvalButtonExpSetsVariableBeforeTargetReads(t *testing.T) {
+	v := newVM()
+	v.EvalButtonExp("", "tf.set_ch_speed = 100; tf.config_num_ch = 0")
+	if got := v.EvalString("tf.set_ch_speed"); got != "100" {
+		t.Errorf("tf.set_ch_speed after EvalButtonExp = %q, want %q", got, "100")
+	}
+	pm := v.expandParams(map[string]string{"speed": "&tf.set_ch_speed"})
+	if pm["speed"] != "100" {
+		t.Errorf("expanded speed = %q, want %q (strconv.Atoi of this used to panic on \"undefined\")", pm["speed"], "100")
+	}
+}
+
+// TestVMEvalButtonExpPreExpBindsResultForExp covers tyrano.ks's CG-gallery
+// buttons ([button preexp="mp.graphic" exp="tf.selected_cg_image = preexp"
+// ...]): preexp's result must be readable from exp as a "preexp" variable.
+func TestVMEvalButtonExpPreExpBindsResultForExp(t *testing.T) {
+	v := newVM()
+	pop := v.PushMPFrame(map[string]string{"graphic": "cg1.png"})
+	defer pop()
+	v.EvalButtonExp("mp.graphic", "tf.selected_cg_image = preexp")
+	if got := v.EvalString("tf.selected_cg_image"); got != "cg1.png" {
+		t.Errorf("tf.selected_cg_image after EvalButtonExp = %q, want %q", got, "cg1.png")
+	}
+}
+
+// TestJQuerySetImageSrcSwapsMatchingButtonGraphics reproduces a real
+// report: pressing a config.ks volume/speed/skip button never visibly
+// changed its color. config.ks's own visual feedback for "which one is
+// selected" is entirely $(".class").attr("src", path) — reset the whole
+// group to the "off" graphic, then set just the clicked one's class to
+// "on" — and the $ shim used to no-op every method, including attr.
+func TestJQuerySetImageSrcSwapsMatchingButtonGraphics(t *testing.T) {
+	r := newTestRenderer()
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"c_set.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	r.vm.SetJQueryHooks(r)
+	offImg := newTestImage(1, 1)
+	buttons = []*kag3.Button{
+		{Name: "bgmvol,bgmvol_10", Graphic: offImg},
+		{Name: "bgmvol,bgmvol_20", Graphic: offImg},
+		{Name: "sevol,sevol_10", Graphic: offImg},
+	}
+	defer func() { buttons = nil }()
+
+	if _, err := r.vm.Eval(`$(".bgmvol_10").attr("src", "c_set.png")`); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if buttons[0].Graphic == offImg {
+		t.Error("expected bgmvol_10's Graphic to change")
+	}
+	if buttons[1].Graphic != offImg {
+		t.Error("expected bgmvol_20's Graphic to stay unchanged (different class)")
+	}
+	if buttons[2].Graphic != offImg {
+		t.Error("expected sevol_10's Graphic to stay unchanged (different button group)")
+	}
+}
+
+// TestJQuerySetImageSrcResetsWholeGroup covers config.ks's other half of
+// the pattern: $(".bgmvol").attr(...) resets every button in the group
+// (all of whose Name lists include the bare "bgmvol" token) before the
+// specific one gets re-selected.
+func TestJQuerySetImageSrcResetsWholeGroup(t *testing.T) {
+	r := newTestRenderer()
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"c_btn.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	r.vm.SetJQueryHooks(r)
+	onImg := newTestImage(1, 1)
+	buttons = []*kag3.Button{
+		{Name: "bgmvol,bgmvol_10", Graphic: onImg},
+		{Name: "bgmvol,bgmvol_20", Graphic: onImg},
+		{Name: "sevol,sevol_10", Graphic: onImg},
+	}
+	defer func() { buttons = nil }()
+
+	if _, err := r.vm.Eval(`$(".bgmvol").attr("src", "c_btn.png")`); err != nil {
+		t.Fatalf("Eval error: %v", err)
+	}
+	if buttons[0].Graphic == onImg || buttons[1].Graphic == onImg {
+		t.Error("expected both bgmvol buttons' Graphic to reset")
+	}
+	if buttons[2].Graphic != onImg {
+		t.Error("expected sevol_10's Graphic to stay unchanged (different button group)")
 	}
 }
 

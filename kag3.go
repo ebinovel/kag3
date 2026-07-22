@@ -99,6 +99,13 @@ type Button struct {
 	AutoNext            bool
 	SaveSnap            bool
 	KeyForcus           int
+	// Exp/PreExp are raw JS run on click, before Target/Role take effect —
+	// e.g. config.ks's volume buttons use exp to set tf.current_bgm_vol
+	// ahead of jumping to *vol_bgm_change, which reads it. PreExp runs
+	// first, if set, with its result bound to a "preexp" variable Exp can
+	// reference (see tyrano.ks's CG-gallery buttons).
+	Exp    string
+	PreExp string
 }
 
 type Character struct {
@@ -224,14 +231,19 @@ type PText struct {
 }
 
 type TextPosition struct {
-	Layer        string
-	Page         string
-	Left         int
-	Top          int
-	Width        int
-	Height       int
-	BackImage    *ebiten.Image
-	FrameImage   *ebiten.Image
+	Layer      string
+	Page       string
+	Left       int
+	Top        int
+	Width      int
+	Height     int
+	BackImage  *ebiten.Image
+	FrameImage *ebiten.Image
+	// FrameStorage is the file path FrameImage was loaded from (see
+	// [position frame=...] in renderer.go). *ebiten.Image can't round-trip
+	// through a JSON save file, so save/load uses this to reconstruct
+	// FrameImage after a fresh process start, same idea as Background.Storage.
+	FrameStorage string
 	Color        color.RGBA
 	BorderColor  color.RGBA
 	BorderSize   int

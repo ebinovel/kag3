@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ebinovel/kag3"
 	"github.com/ebinovel/kag3/renderer/ebitengine/effects"
@@ -40,6 +41,14 @@ type Renderer struct {
 	vm             *VM
 	currentStorage string
 	callStack      []callFrame
+	// sleepStack is role="sleepgame"/[sleepgame]'s own return-address stack,
+	// deliberately separate from callStack: config.ks (the bundled sample)
+	// calls [clearstack] right before [awakegame] to discard any leftover
+	// [button target=...]-click call frames (see the button click handler
+	// below) — if sleepgame/awakegame shared callStack, that same
+	// [clearstack] would also wipe the frame awakegame needs to find its
+	// way back to the scenario that opened the config screen.
+	sleepStack []sleepFrame
 }
 
 // callFrame is a [call]'s return address: the storage it was called from
@@ -48,6 +57,34 @@ type Renderer struct {
 type callFrame struct {
 	Storage string
 	Index   int
+}
+
+// sleepFrame is role="sleepgame"/[sleepgame]'s return-address entry. Real
+// Tyrano's sleepgame is a layer-overlay mechanic — it pauses/hides the
+// calling scene rather than tearing it down, so its buttons, background and
+// message window are still there underneath when the overlay closes. kag3
+// has no such layering: opening config.ks fully replaces r.scripts and
+// repoints the single package-level bg/textPosition at config.ks's own
+// background (bg_config.png) and message-window geometry — without a
+// snapshot to restore, the caller's buttons (e.g. title.ks's), background
+// (title.jpg) and message window would stay gone/wrong even though
+// execution correctly resumes there. TextPosition matters even when the
+// caller never shows a message box itself: config.ks's own
+// *ch_speed_change repoints textPosition to a tiny "message1" preview box
+// (for its text-speed sample) and never restores it — [layopt visible=...]
+// is the real Tyrano tag that's supposed to hide it again, but kag3 has no
+// per-layer visibility system yet (see handleLayopt's doc comment), so that
+// call is a no-op and the preview box would otherwise stay on screen
+// (wrong size/position, still Visible) after leaving config. Buttons/Bg/
+// TextPosition deliberately aren't part of callFrame: only sleepgame
+// crosses full scenes with visual teardown in between, so only it needs
+// this.
+type sleepFrame struct {
+	Storage      string
+	Index        int
+	Buttons      []*kag3.Button
+	Bg           kag3.Background
+	TextPosition kag3.TextPosition
 }
 
 var (
@@ -141,6 +178,7 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	}
 	r.vm.SetConfig(manager.Config)
 	r.vm.SetMenuHooks(r)
+	r.vm.SetJQueryHooks(r)
 	r.initScript()
 	img := ebiten.NewImage(manager.Config.ScreenWidth, manager.Config.ScreenHeight)
 	img.Fill(color.Black)
@@ -254,16 +292,24 @@ func (r *Renderer) Update() {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				fmt.Printf("click button:%+v\n", button)
 				fmt.Printf("labels:%+v\n", r.labels)
+				// Must run before Storage/Role/Target below: config.ks's
+				// volume buttons set tf.current_bgm_vol etc. via exp=,
+				// which *vol_bgm_change (jumped to next) reads.
+				r.vm.EvalButtonExp(button.PreExp, button.Exp)
 				if button.Storage != "" {
 					fmt.Printf("button.Storage:%+v\n", button.Storage)
 					// role="sleepgame" must record its return address
-					// (see [awakegame]/handleReturn in tags_flow.go) against
-					// the *old* storage/position, before loadScript below
-					// overwrites r.currentStorage.
+					// (see [awakegame]/handleAwakeGame in tags_system.go)
+					// against the *old* storage/position, before loadScript
+					// below overwrites r.currentStorage. sleepStack, not
+					// callStack — see the Renderer.sleepStack doc comment.
 					if button.Role == "sleepgame" {
-						r.callStack = append(r.callStack, callFrame{
-							Storage: r.currentStorage,
-							Index:   currentScriptIndex,
+						r.sleepStack = append(r.sleepStack, sleepFrame{
+							Storage:      r.currentStorage,
+							Index:        currentScriptIndex,
+							Buttons:      append([]*kag3.Button(nil), buttons...),
+							Bg:           *bg,
+							TextPosition: *textPosition,
 						})
 					}
 					r.loadScript(button.Storage)
@@ -324,25 +370,15 @@ func (r *Renderer) Update() {
 					}
 				}
 				if button.Target != "" {
-					if v, ok := r.labels[button.Target]; ok {
-						fmt.Printf("label:%+v\n", v)
-						jumpIndex = v.Index
-						isJump = true
-					}
-					if v, ok := r.labels[button.Target[1:]]; ok {
-						fmt.Printf("label:%+v\n", v)
-						jumpIndex = v.Index
-						isJump = true
-					}
-
+					r.buttonTargetJump(button.Target)
 				}
 			}
 		}
 	}
 	if isJump {
 		glinks = nil
-		buttons = nil
 		links = nil
+		clearNonFixButtons()
 	}
 	screenW, screenH := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
 	switch {
@@ -630,6 +666,7 @@ func (r *Renderer) position(tagObject kag3.TagObject) (err error) {
 			if err != nil {
 				return
 			}
+			textPosition.FrameStorage = value
 		case "color", "border_color":
 			var r, g, b int
 			r, g, b, err = parseColor(value)
@@ -825,6 +862,10 @@ func (r *Renderer) button(object kag3.TagObject) (err error) {
 			if err != nil {
 				return
 			}
+		case "exp":
+			button.Exp = value
+		case "preexp":
+			button.PreExp = value
 		}
 	}
 	if button.Width == 0 && button.Height == 0 {
@@ -833,6 +874,86 @@ func (r *Renderer) button(object kag3.TagObject) (err error) {
 	fmt.Printf("button: %+v\n", button)
 	buttons = append(buttons, button)
 	return nil
+}
+
+// buttonTargetJump resolves a clicked button's target= against r.labels and,
+// if found, jumps there — call-style, not a plain [jump]: real Tyrano's
+// official config.ks (this repo's example/resources/senarios/config.ks) ends
+// every target label (*vol_bgm_change etc.) with [return], expecting to land
+// back exactly where the button was clicked. Pushing currentScriptIndex, not
+// +1, matches role="sleepgame"'s push in Update() — both happen outside the
+// coroutine, so [return]'s "-1 to compensate for the enclosing loop's
+// increment" lands back on whatever tag is currently blocking (typically
+// [s]), re-entering it cleanly.
+func (r *Renderer) buttonTargetJump(target string) {
+	v, ok := r.labels[target]
+	if !ok {
+		v, ok = r.labels[target[1:]]
+	}
+	if !ok {
+		return
+	}
+	fmt.Printf("label:%+v\n", v)
+	r.callStack = append(r.callStack, callFrame{
+		Storage: r.currentStorage,
+		Index:   currentScriptIndex,
+	})
+	jumpIndex = v.Index
+	isJump = true
+}
+
+// clearNonFixButtons drops every button without Fix=true from the buttons
+// list — the reaction to any jump (see Update()). Fix=true buttons persist
+// across jumps (that's what "fix" means, e.g. config.ks's entire button set,
+// registered once at *config_page); only [clearfix] (tags_layer.go) removes
+// those.
+func clearNonFixButtons() {
+	kept := buttons[:0]
+	for _, b := range buttons {
+		if b.Fix {
+			kept = append(kept, b)
+		}
+	}
+	buttons = kept
+}
+
+// setButtonImageByClass implements the one real effect of the $ shim's
+// attr("src", ...) — see SetJQueryHooks/browserShimJS in vm.go. Every
+// button whose Name (comma-separated, e.g. "bgmvol,bgmvol_10") contains
+// selector (with its leading "." stripped) as a token gets its Graphic
+// reloaded from path. Config.ks's own volume/speed/skip buttons are
+// exactly this pattern: [button name="bgmvol,bgmvol_10" ...] plus an
+// iscript that resets the whole "bgmvol" group to the off graphic, then
+// sets just the "bgmvol_10" one to the on graphic. A path that fails to
+// load is logged and skipped, not fatal — matching how a missing/renamed
+// asset is handled elsewhere in this engine.
+func (r *Renderer) setButtonImageByClass(selector, path string) {
+	class := strings.TrimPrefix(selector, ".")
+	if class == "" {
+		return
+	}
+	var img *ebiten.Image
+	for _, b := range buttons {
+		matched := false
+		for _, name := range strings.Split(b.Name, ",") {
+			if strings.TrimSpace(name) == class {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		if img == nil {
+			var err error
+			img, _, err = ebitenutil.NewImageFromFileSystem(r.fses["images"], path)
+			if err != nil {
+				fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
+				return
+			}
+		}
+		b.Graphic = img
+	}
 }
 
 func (r *Renderer) image(object kag3.TagObject) (err error) {

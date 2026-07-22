@@ -139,6 +139,24 @@ func TestHandleClearFixClearsGLinks(t *testing.T) {
 	}
 }
 
+// TestHandleClearFixClearsFixButtonsOnly covers [clearfix]'s other half:
+// config.ks (the bundled sample) registers its whole button set with
+// fix="true" and calls [clearfix] on the way out (*backtitle) to remove
+// them, so clearfix must clear Fix=true buttons but leave any ordinary
+// (Fix=false) button alone.
+func TestHandleClearFixClearsFixButtonsOnly(t *testing.T) {
+	buttons = []*kag3.Button{{Name: "a", Fix: true}, {Name: "b", Fix: false}}
+	defer func() { buttons = nil }()
+	tag := kag3.TagObject{Name: "clearfix"}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("dispatchTag error: %v", err)
+	}
+	if len(buttons) != 1 || buttons[0].Name != "b" {
+		t.Errorf("buttons = %+v, want only the non-fix button \"b\" remaining", buttons)
+	}
+}
+
 func TestHandleHideMessageHidesTextWindow(t *testing.T) {
 	textPosition.Visible = true
 	tag := kag3.TagObject{Name: "hidemessage"}

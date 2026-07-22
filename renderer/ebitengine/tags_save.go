@@ -61,6 +61,61 @@ type bgSaveState struct {
 	Storage string
 }
 
+// textPositionSaveState is the subset of *kag3.TextPosition that's actually
+// serializable (BackImage/FrameImage are GPU textures, not JSON data).
+// applySaveData resumes execution via jumpIndex straight into the middle of
+// a script (see its doc comment), which skips whatever one-time [position]/
+// [layopt] setup ran earlier in the file to configure the message window —
+// without this, a load either leaves textPosition at its zero value (fresh
+// process: Visible=false, Width/Height=0, no BackImage) or at whatever
+// goToTitle/[close] last left it at (same process), so the message box and
+// its text silently never reappear.
+type textPositionSaveState struct {
+	Layer        string
+	Page         string
+	Left         int
+	Top          int
+	Width        int
+	Height       int
+	Color        color.RGBA
+	BorderColor  color.RGBA
+	BorderSize   int
+	Opacity      int
+	MarginLeft   int
+	MarginTop    int
+	MarginRight  int
+	MarginBottom int
+	MarginN      int
+	Radius       int
+	Vertical     bool
+	Visible      bool
+	Gradient     color.RGBA
+	FilterColor  *color.RGBA
+	// FrameStorage is textPosition.FrameStorage — the file path
+	// applySaveData reloads FrameImage from, same idea as Bg.Storage.
+	FrameStorage string
+}
+
+// sleepStackToCallFrames/callFramesToSleepStack convert between
+// Renderer.sleepStack's live []sleepFrame (which carries a Buttons
+// snapshot) and saveData's serializable []callFrame (Storage/Index only —
+// see SleepStack's doc comment for why Buttons is dropped).
+func sleepStackToCallFrames(stack []sleepFrame) []callFrame {
+	out := make([]callFrame, len(stack))
+	for i, f := range stack {
+		out[i] = callFrame{Storage: f.Storage, Index: f.Index}
+	}
+	return out
+}
+
+func callFramesToSleepStack(frames []callFrame) []sleepFrame {
+	out := make([]sleepFrame, len(frames))
+	for i, f := range frames {
+		out[i] = sleepFrame{Storage: f.Storage, Index: f.Index}
+	}
+	return out
+}
+
 // saveData is the plan's minimal in-memory-first save format: enough to
 // resume script execution and restore variables faithfully, not a pixel-
 // perfect visual snapshot. bg2 (the secondary background layer) and
@@ -70,9 +125,19 @@ type bgSaveState struct {
 // else restores only within the same process (where `charas` is already
 // populated).
 type saveData struct {
-	Storage    string
-	Index      int
-	CallStack  []callFrame
+	Storage   string
+	Index     int
+	CallStack []callFrame
+	// SleepStack is Renderer.sleepStack — role="sleepgame"/[sleepgame]'s own
+	// return-address stack, kept separate from CallStack (see the
+	// Renderer.sleepStack doc comment in renderer.go). Storage/Index only:
+	// sleepFrame.Buttons/Bg hold *ebiten.Image fields that can't round-trip
+	// through JSON, same class of gap as bg2/imgs (see the save/load gaps
+	// this repo already accepts) — a save made mid-sleepgame won't restore
+	// the caller's buttons/background after a fresh-process load, but
+	// that's an unreachable edge case today (config.ks, the only sleepgame
+	// user, disables the normal save UI while open).
+	SleepStack []callFrame
 	SFVars     map[string]interface{}
 	FVars      map[string]interface{}
 	ViewCharas []*kag3.CharaShow
@@ -82,6 +147,7 @@ type saveData struct {
 	// process never ran [chara_new] for.
 	CharaStorage map[string]string
 	Bg           bgSaveState
+	TextPosition textPositionSaveState
 }
 
 func (r *Renderer) buildSaveData() *saveData {
@@ -98,6 +164,7 @@ func (r *Renderer) buildSaveData() *saveData {
 		Storage:      r.currentStorage,
 		Index:        currentScriptIndex,
 		CallStack:    append([]callFrame(nil), r.callStack...),
+		SleepStack:   sleepStackToCallFrames(r.sleepStack),
 		SFVars:       r.vm.ExportSF(),
 		FVars:        r.vm.ExportF(),
 		ViewCharas:   append([]*kag3.CharaShow(nil), viewCharas...),
@@ -110,6 +177,29 @@ func (r *Renderer) buildSaveData() *saveData {
 			Method:   bg.Method,
 			IsSystem: bg.IsSystem,
 			Storage:  bg.Storage,
+		},
+		TextPosition: textPositionSaveState{
+			Layer:        textPosition.Layer,
+			Page:         textPosition.Page,
+			Left:         textPosition.Left,
+			Top:          textPosition.Top,
+			Width:        textPosition.Width,
+			Height:       textPosition.Height,
+			Color:        textPosition.Color,
+			BorderColor:  textPosition.BorderColor,
+			BorderSize:   textPosition.BorderSize,
+			Opacity:      textPosition.Opacity,
+			MarginLeft:   textPosition.MarginLeft,
+			MarginTop:    textPosition.MarginTop,
+			MarginRight:  textPosition.MarginRight,
+			MarginBottom: textPosition.MarginBottom,
+			MarginN:      textPosition.MarginN,
+			Radius:       textPosition.Radius,
+			Vertical:     textPosition.Vertical,
+			Visible:      textPosition.Visible,
+			Gradient:     textPosition.Gradient,
+			FilterColor:  textPosition.FilterColor,
+			FrameStorage: textPosition.FrameStorage,
 		},
 	}
 }
@@ -161,6 +251,7 @@ func (r *Renderer) applySaveData(d *saveData) error {
 		}
 	}
 	r.callStack = append([]callFrame(nil), d.CallStack...)
+	r.sleepStack = callFramesToSleepStack(d.SleepStack)
 	r.vm.RestoreF(d.FVars)
 	r.vm.RestoreSF(d.SFVars)
 	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage)
@@ -182,6 +273,43 @@ func (r *Renderer) applySaveData(d *saveData) error {
 			bg.NextImage = nil
 			bg.IsEnd = true
 			bg.Storage = d.Bg.Storage
+		}
+	}
+	// Width/Height!=0 as the "was this actually captured" signal — same idea
+	// as Bg.Storage!="" above — so loading a save written before this field
+	// existed doesn't stomp a same-process textPosition that's already
+	// correctly configured with zeroed-out layout.
+	if d.TextPosition.Width != 0 || d.TextPosition.Height != 0 {
+		textPosition.Layer = d.TextPosition.Layer
+		textPosition.Page = d.TextPosition.Page
+		textPosition.Left = d.TextPosition.Left
+		textPosition.Top = d.TextPosition.Top
+		textPosition.Width = d.TextPosition.Width
+		textPosition.Height = d.TextPosition.Height
+		textPosition.Color = d.TextPosition.Color
+		textPosition.BorderColor = d.TextPosition.BorderColor
+		textPosition.BorderSize = d.TextPosition.BorderSize
+		textPosition.Opacity = d.TextPosition.Opacity
+		textPosition.MarginLeft = d.TextPosition.MarginLeft
+		textPosition.MarginTop = d.TextPosition.MarginTop
+		textPosition.MarginRight = d.TextPosition.MarginRight
+		textPosition.MarginBottom = d.TextPosition.MarginBottom
+		textPosition.MarginN = d.TextPosition.MarginN
+		textPosition.Radius = d.TextPosition.Radius
+		textPosition.Vertical = d.TextPosition.Vertical
+		textPosition.Visible = d.TextPosition.Visible
+		textPosition.Gradient = d.TextPosition.Gradient
+		textPosition.FilterColor = d.TextPosition.FilterColor
+		textPosition.BackImage = ebiten.NewImage(textPosition.Width, textPosition.Height)
+		textPosition.FrameImage = nil
+		textPosition.FrameStorage = ""
+		if d.TextPosition.FrameStorage != "" {
+			if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], d.TextPosition.FrameStorage); err != nil {
+				fmt.Printf("save/load: メッセージ枠 %s の読み込みに失敗しました: %v\n", d.TextPosition.FrameStorage, err)
+			} else {
+				textPosition.FrameImage = img
+				textPosition.FrameStorage = d.TextPosition.FrameStorage
+			}
 		}
 	}
 	r.texts = make(map[int][]Text)
