@@ -338,6 +338,48 @@ func TestHandleButtonParsesExpAndPreExp(t *testing.T) {
 	}
 }
 
+// TestResolveFolderImage is the regression test for the other half of the
+// 回想モード (recollection mode) bug: tyrano.ks's replay_image_button/
+// cg_image_button macros pass folder="bgimage" (a subdirectory of images,
+// not a separate top-level FS root kag3 never registered) together with a
+// real-Tyrano-specific relative escape for their shared "no image"
+// placeholder ("../../tyrano/images/system/noimage.png") that plain
+// r.fses["bgimage"] resolution turned into a nil FS, panicking
+// ebitenutil.NewImageFromFileSystem the moment a locked replay/CG slot
+// tried to draw its fallback graphic.
+func TestResolveFolderImage(t *testing.T) {
+	r := newTestRenderer()
+	// fstest.MapFS is a map, which can't be compared with == (interface
+	// comparison panics on uncomparable dynamic types) — so identity is
+	// checked behaviorally instead, via a marker file unique to each FS.
+	imagesFS := fstest.MapFS{"images-marker": &fstest.MapFile{}}
+	systemFS := fstest.MapFS{"system-marker": &fstest.MapFile{}}
+	r.fses = map[string]fs.FS{"images": imagesFS, "system/images": systemFS}
+	isImagesFS := func(f fs.FS) bool { _, err := fs.Stat(f, "images-marker"); return err == nil }
+	isSystemFS := func(f fs.FS) bool { _, err := fs.Stat(f, "system-marker"); return err == nil }
+
+	t.Run("plain images root", func(t *testing.T) {
+		gotFS, gotName := resolveFolderImage(r, "", "room.jpg")
+		if !isImagesFS(gotFS) || gotName != "room.jpg" {
+			t.Errorf("resolveFolderImage(\"\", \"room.jpg\") name=%q, want images FS, \"room.jpg\"", gotName)
+		}
+	})
+
+	t.Run("bgimage subfolder", func(t *testing.T) {
+		gotFS, gotName := resolveFolderImage(r, "bgimage", "cat.jpg")
+		if !isImagesFS(gotFS) || gotName != "bgimage/cat.jpg" {
+			t.Errorf(`resolveFolderImage("bgimage", "cat.jpg") name=%q, want images FS, "bgimage/cat.jpg"`, gotName)
+		}
+	})
+
+	t.Run("relative escape to the shared system asset folder", func(t *testing.T) {
+		gotFS, gotName := resolveFolderImage(r, "bgimage", "../../tyrano/images/system/noimage.png")
+		if !isSystemFS(gotFS) || gotName != "noimage.png" {
+			t.Errorf(`resolveFolderImage("bgimage", "../../tyrano/images/system/noimage.png") name=%q, want system/images FS, "noimage.png"`, gotName)
+		}
+	})
+}
+
 // TestApplyTextStyleKeepsCurrentFontColorForInactiveLine is the regression
 // test for「こんな風に。簡単です。」disappearing: drawScene's "already
 // fully-revealed line" branch used to fall straight to v.TextStyle (always
