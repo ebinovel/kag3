@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"image/color"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -335,6 +336,44 @@ func TestHandleButtonParsesExpAndPreExp(t *testing.T) {
 	if buttons[0].Exp != "tf.set_ch_speed = 100" || buttons[0].PreExp != "mp.graphic" {
 		t.Errorf("buttons[0].Exp/PreExp = %q/%q, want the tag's exp=/preexp=", buttons[0].Exp, buttons[0].PreExp)
 	}
+}
+
+// TestApplyTextStyleKeepsCurrentFontColorForInactiveLine is the regression
+// test for「こんな風に。簡単です。」disappearing: drawScene's "already
+// fully-revealed line" branch used to fall straight to v.TextStyle (always
+// nil — Text segments never set it at creation) and default to plain white,
+// ignoring the package-level textStyle entirely. On scene1.ks's custom
+// message window ([deffont color="0x454D51"], a near-white box), that made
+// every earlier line on the page revert to invisible white text the moment
+// it stopped being the currently-revealing line. applyTextStyle must resolve
+// the *same* color regardless of which line is calling it.
+func TestApplyTextStyleKeepsCurrentFontColorForInactiveLine(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	beforeTextSize = r.fontFace.Size
+	saved := textStyle
+	defer func() { textStyle = saved }()
+	textStyle = &kag3.TextStyle{Color: &color.RGBA{0x45, 0x4D, 0x51, 0xff}}
+
+	tOp := &text.DrawOptions{}
+	applyTextStyle(r, tOp, Text{Text: "こんな風に。簡単です。"})
+
+	gotR, gotG, gotB := tOp.ColorScale.R(), tOp.ColorScale.G(), tOp.ColorScale.B()
+	wantR, wantG, wantB := float32(0x45)/0xff, float32(0x4D)/0xff, float32(0x51)/0xff
+	const tol = 0.01
+	if abs32(gotR-wantR) > tol || abs32(gotG-wantG) > tol || abs32(gotB-wantB) > tol {
+		t.Errorf("ColorScale = %v/%v/%v, want ~%v/%v/%v (0x454D51, the active [deffont] color)", gotR, gotG, gotB, wantR, wantG, wantB)
+	}
+	if gotR >= 0.99 && gotG >= 0.99 && gotB >= 0.99 {
+		t.Errorf("ColorScale = %v/%v/%v, resolved to plain white instead of the active [deffont] color", gotR, gotG, gotB)
+	}
+}
+
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func TestClearNonFixButtonsKeepsOnlyFixButtons(t *testing.T) {

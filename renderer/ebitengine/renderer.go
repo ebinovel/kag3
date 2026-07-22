@@ -1119,6 +1119,41 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	drawCursor(screen)
 }
 
+// applyTextStyle resolves the size/color a text segment should draw with
+// and applies both: r.fontFace.Size as a side effect (glyph measurement
+// reads it directly) and tOp.ColorScale. Precedence is the package-level
+// textStyle (the currently active [font]/[deffont] setting) first, then the
+// segment's own v.TextStyle (set by [font]'s own empty marker Text, see
+// r.textStyle), then the beforeTextSize/white default. Used for both the
+// currently-revealing line and every earlier line still on screen — they
+// must resolve identically, since a line doesn't stop being e.g.
+// [deffont color=...]-styled just because it's no longer the one being
+// typed.
+func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
+	if textStyle != nil {
+		if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
+			r.fontFace.Size = float64(textStyle.Size)
+		}
+		if textStyle.Color != nil {
+			tOp.ColorScale.ScaleWithColor(textStyle.Color)
+		} else {
+			tOp.ColorScale.ScaleWithColor(color.White)
+		}
+	} else if v.TextStyle != nil {
+		if v.TextStyle.Size != 0 && float64(v.TextStyle.Size) != beforeTextSize {
+			r.fontFace.Size = float64(v.TextStyle.Size)
+		}
+		if v.TextStyle.Color != nil {
+			tOp.ColorScale.ScaleWithColor(v.TextStyle.Color)
+		} else {
+			tOp.ColorScale.ScaleWithColor(color.White)
+		}
+	} else {
+		r.fontFace.Size = beforeTextSize
+		tOp.ColorScale.ScaleWithColor(color.White)
+	}
+}
+
 func (r *Renderer) drawScene(buf *ebiten.Image) {
 	if bg.Image != nil {
 		buf.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
@@ -1322,28 +1357,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 							}
 							glyph := text.AppendGlyphs(nil, vText, r.fontFace, &tOp.LayoutOptions)
 							segLen := len(glyph)
-							if textStyle != nil {
-								if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
-									r.fontFace.Size = float64(textStyle.Size)
-								}
-								if textStyle.Color != nil {
-									tOp.ColorScale.ScaleWithColor(textStyle.Color)
-								} else {
-									tOp.ColorScale.ScaleWithColor(color.White)
-								}
-							} else if v.TextStyle != nil {
-								if v.TextStyle.Size != 0 && float64(v.TextStyle.Size) != beforeTextSize {
-									r.fontFace.Size = float64(v.TextStyle.Size)
-								}
-								if v.TextStyle.Color != nil {
-									tOp.ColorScale.ScaleWithColor(v.TextStyle.Color)
-								} else {
-									tOp.ColorScale.ScaleWithColor(color.White)
-								}
-							} else {
-								r.fontFace.Size = beforeTextSize
-								tOp.ColorScale.ScaleWithColor(color.White)
-							}
+							applyTextStyle(r, tOp, v)
 							segShowCount := charsToShow - segOffset
 							if segShowCount >= segLen {
 								tOp.GeoM.Reset()
@@ -1396,15 +1410,18 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 							vText = string(rn)
 							w, _ = text.Measure(vText, r.fontFace, tOp.LineSpacing)
 						}
-						if v.TextStyle != nil {
-							if v.TextStyle.Color != nil {
-								tOp.ColorScale.ScaleWithColor(v.TextStyle.Color)
-							} else {
-								tOp.ColorScale.ScaleWithColor(color.White)
-							}
-						} else {
-							tOp.ColorScale.ScaleWithColor(color.White)
-						}
+						// applyTextStyle, not a bare color.White default: an
+						// already fully-revealed line must keep using
+						// whatever [font]/[deffont] color is *currently* in
+						// effect, the same as the active line resolves it —
+						// before this fix it fell straight to plain white
+						// the instant it stopped being the active line,
+						// which on a light/white message-box design (e.g.
+						// scene1.ks's [deffont color="0x454D51"] custom
+						// window) made every earlier line on the same page
+						// effectively invisible against the background as
+						// soon as the next line started revealing.
+						applyTextStyle(r, tOp, v)
 						tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)
 						text.Draw(buf, vText, r.fontFace, tOp)
 						if v.Ruby != "" {
