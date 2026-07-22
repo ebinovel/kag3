@@ -29,8 +29,13 @@ type Text struct {
 }
 
 type Renderer struct {
-	manager          *kag3.Manager
-	scripts          []any
+	manager *kag3.Manager
+	scripts []any
+	// currentScripts is set by execItem (macro.go) on every TagObject it
+	// processes, to whichever slice is actually being iterated right now —
+	// see its doc comment there for why this exists (skipIfChain/[ignore]/
+	// [keyframe] must not always assume r.scripts).
+	currentScripts   []any
 	labels           map[string]kag3.LabelInfo
 	fontFace         *text.GoTextFace
 	nameFontFace     *text.GoTextFace

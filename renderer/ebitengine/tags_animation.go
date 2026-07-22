@@ -269,15 +269,16 @@ var keyframes = map[string][]frameSpec{}
 // handleKeyframe scans forward from [keyframe name=...] to the matching
 // [endkeyframe], collecting each [frame]'s attributes, the same way
 // [ignore] scans forward for [endignore] — no parser changes needed since
-// a keyframe block only ever contains [frame] tags.
+// a keyframe block only ever contains [frame] tags. Uses r.currentScripts,
+// not r.scripts, for the same reason skipIfChain (tags_flow.go) does.
 func handleKeyframe(ctx *tagCtx) error {
-	r := ctx.r
+	scripts := ctx.r.currentScripts
 	name := ctx.tag.Pm["name"]
 	var frames []frameSpec
 	idx := *ctx.i
-	for idx+1 < len(r.scripts) {
+	for idx+1 < len(scripts) {
 		idx++
-		tag, ok := r.scripts[idx].(kag3.TagObject)
+		tag, ok := scripts[idx].(kag3.TagObject)
 		if !ok {
 			continue
 		}

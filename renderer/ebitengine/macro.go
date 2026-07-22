@@ -81,6 +81,18 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 		}
 	case kag3.TagObject:
 		r.line = object.Line
+		// currentScripts records whichever slice this specific execItem call
+		// is iterating — r.scripts at the top level, or a macro's Body while
+		// expandMacro is running one (see expandMacro below) — so handlers
+		// that scan forward/backward for a matching tag ([if]/[elsif]/
+		// [else]/[endif]'s skipIfChain, [ignore], [keyframe], all in
+		// tags_flow.go/tags_animation.go) search the right array instead of
+		// always r.scripts. Unlike jump/link/call (documented as an accepted
+		// macro limitation, since real Tyrano macros essentially never
+		// contain them), [if] inside a macro body is common and expected —
+		// tyrano.ks's own cg_image_button/replay_image_button macros use it
+		// — so this one has to work.
+		r.currentScripts = scripts
 		if err := dispatchTag(r, y, object, i, depth); err != nil {
 			return err
 		}

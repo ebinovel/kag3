@@ -176,9 +176,19 @@ func handleEndif(ctx *tagCtx) error {
 // chain with several elsifs is resolved by hopping through this function
 // once per intermediate tag rather than in one jump — simpler, and each hop
 // is cheap relative to the coroutine's per-frame step budget.
+//
+// Scans r.currentScripts, not r.scripts: a false [if] inside a macro body
+// (e.g. tyrano.ks's own cg_image_button/replay_image_button) must skip
+// within that macro's Body, not the top-level script — scanning r.scripts
+// instead searches a completely unrelated (and usually much longer) array,
+// so *i ends up set to some unrelated position, which the caller
+// (expandMacro's body loop, bounded by len(m.Body)) sees as "past the end"
+// and returns early, silently dropping the rest of the macro body (the
+// [else] branch, [endif], and everything after) without any error.
 func skipIfChain(r *Renderer, i *int, depth int) {
-	for idx := *i + 1; idx < len(r.scripts); idx++ {
-		tag, ok := r.scripts[idx].(kag3.TagObject)
+	scripts := r.currentScripts
+	for idx := *i + 1; idx < len(scripts); idx++ {
+		tag, ok := scripts[idx].(kag3.TagObject)
 		if !ok || tag.IfCount != depth {
 			continue
 		}
@@ -188,17 +198,18 @@ func skipIfChain(r *Renderer, i *int, depth int) {
 			return
 		}
 	}
-	*i = len(r.scripts) - 1
+	*i = len(scripts) - 1
 }
 
-// handleIgnore skips to the matching [endignore], supporting nesting.
+// handleIgnore skips to the matching [endignore], supporting nesting. Uses
+// r.currentScripts for the same reason skipIfChain does (see its comment).
 func handleIgnore(ctx *tagCtx) error {
-	r := ctx.r
+	scripts := ctx.r.currentScripts
 	depth := 1
 	idx := *ctx.i
-	for idx+1 < len(r.scripts) {
+	for idx+1 < len(scripts) {
 		idx++
-		if tag, ok := r.scripts[idx].(kag3.TagObject); ok {
+		if tag, ok := scripts[idx].(kag3.TagObject); ok {
 			switch tag.Name {
 			case "ignore":
 				depth++

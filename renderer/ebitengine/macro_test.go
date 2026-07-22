@@ -102,3 +102,35 @@ func TestExpandMacroSetsMPFrame(t *testing.T) {
 		t.Errorf("mp.name after expandMacro returned = %q, want %q (frame should be popped)", got, "undefined")
 	}
 }
+
+// TestExpandMacroIfElseTakesElseBranch is the regression test for a real
+// reported bug: tyrano.ks's own bundled replay_image_button/cg_image_button
+// macros (the ones behind title.ks's CG/回想 gallery buttons) wrap a
+// [button] in [if exp=...]...[else]...[endif], and the false branch was
+// silently dropping everything from [else] onward — no error, just nothing
+// rendered — because skipIfChain/handleIgnore scanned r.scripts (the
+// top-level script) instead of the macro's own Body, landing *i on a
+// position far outside Body's bounds and making expandMacro's own body loop
+// exit early as if it had reached the end. A macro whose [if] evaluates
+// false must still run its [else] body.
+func TestExpandMacroIfElseTakesElseBranch(t *testing.T) {
+	r := newTestRenderer()
+	macroTestProbe = ""
+	m := &kag3.Macro{
+		Name: "conditional",
+		Body: []any{
+			kag3.TagObject{Name: "if", Line: 0, Pm: map[string]string{"exp": "false"}, IfCount: 1},
+			kag3.TagObject{Name: "macro_test_probe", Line: 1, Pm: map[string]string{"whom": "if-branch"}, IfCount: 0},
+			kag3.TagObject{Name: "else", Line: 2, IfCount: 1},
+			kag3.TagObject{Name: "macro_test_probe", Line: 3, Pm: map[string]string{"whom": "else-branch"}, IfCount: 0},
+			kag3.TagObject{Name: "endif", Line: 4, IfCount: 1},
+		},
+	}
+
+	if err := r.expandMacro(fakeYield(), m, map[string]string{}, 0); err != nil {
+		t.Fatalf("expandMacro returned error: %v", err)
+	}
+	if macroTestProbe != "else-branch" {
+		t.Errorf("macroTestProbe = %q, want %q (a false [if] inside a macro body must still run its [else])", macroTestProbe, "else-branch")
+	}
+}
