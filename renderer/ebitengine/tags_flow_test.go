@@ -139,6 +139,57 @@ func TestIgnoreNested(t *testing.T) {
 	}
 }
 
+// TestJumpStorageClearsNonFixButtons is the regression test for「はじめから
+// をクリックしたら、タイトルのボタンが残ってしまっています」: title.ks's
+// *gamestart label does a plain `@jump storage="scene1.ks"` (in-coroutine,
+// not a click), which never went through Update()'s isJump/screenChanged
+// handling at all — so title.ks's own non-fix buttons (start/load/cg/replay)
+// stayed in `buttons` forever, sitting underneath scene1.ks's role_button
+// set. [jump storage=...] must sweep non-fix buttons itself.
+func TestJumpStorageClearsNonFixButtons(t *testing.T) {
+	m := newTestManager(t, map[string]string{
+		"main.ks": "[button name=\"stale\" width=10 height=10]\n[jump storage=\"sub.ks\"]",
+		"sub.ks":  "reached sub",
+	})
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript(main.ks): %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+	}
+	buttons = []*kag3.Button{{Name: "fixed", Fix: true}}
+	defer func() { buttons = nil }()
+
+	for i := 0; i < len(r.scripts); i++ {
+		if err := r.execItem(fakeYield(), r.scripts, &i, 0); err != nil {
+			t.Fatalf("execItem error: %v", err)
+		}
+	}
+
+	if r.currentStorage != "sub.ks" {
+		t.Fatalf("currentStorage = %q, want %q", r.currentStorage, "sub.ks")
+	}
+	for _, b := range buttons {
+		if b.Name == "stale" {
+			t.Errorf("buttons = %+v, want main.ks's non-fix \"stale\" button cleared after [jump storage=...]", buttons)
+		}
+	}
+	found := false
+	for _, b := range buttons {
+		if b.Name == "fixed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("buttons = %+v, want the fix=true \"fixed\" button to survive the storage change", buttons)
+	}
+}
+
 func TestClearStack(t *testing.T) {
 	r := newTestRenderer()
 	r.callStack = []callFrame{{Storage: "a.ks", Index: 1}, {Storage: "b.ks", Index: 2}}

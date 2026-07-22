@@ -347,3 +347,48 @@ func TestClearNonFixButtonsKeepsOnlyFixButtons(t *testing.T) {
 		t.Errorf("buttons = %+v, want only the fix buttons \"a\" and \"c\" remaining", buttons)
 	}
 }
+
+// TestClearLinksOnJumpKeepsButtonsForSameStorageJump is the regression test
+// for the reported bug: clicking a [link] to a label in the *same* scenario
+// (e.g. scene1.ks's [link target=*playmusic]) made the role_button set
+// (registered earlier via [button name="role_button" ...], no fix="true" —
+// matching the real bundled sample script exactly) disappear. That jump sets
+// isJump but must NOT set screenChanged, so clearLinksOnJump must leave
+// non-fix buttons alone.
+func TestClearLinksOnJumpKeepsButtonsForSameStorageJump(t *testing.T) {
+	buttons = []*kag3.Button{{Name: "role_button", Fix: false}}
+	links = []*kag3.Link{{Target: "*playmusic"}}
+	glinks = []*kag3.GLink{{Target: "somewhere"}}
+	isJump = true
+	screenChanged = false
+	defer func() { buttons, links, glinks, isJump, screenChanged = nil, nil, nil, false, false }()
+
+	clearLinksOnJump()
+
+	if len(buttons) != 1 || buttons[0].Name != "role_button" {
+		t.Errorf("buttons = %+v, want the role_button to survive a same-storage label jump", buttons)
+	}
+	if links != nil || glinks != nil {
+		t.Errorf("links/glinks = %+v/%+v, want both cleared regardless of screenChanged", links, glinks)
+	}
+}
+
+// TestClearLinksOnJumpClearsNonFixButtonsForScreenChange is the counterpart:
+// a real storage change (a [link storage=...] to a different .ks file,
+// goToTitle, applySaveData) must still sweep non-fix buttons, same as
+// before this fix.
+func TestClearLinksOnJumpClearsNonFixButtonsForScreenChange(t *testing.T) {
+	buttons = []*kag3.Button{{Name: "a", Fix: true}, {Name: "b", Fix: false}}
+	isJump = true
+	screenChanged = true
+	defer func() { buttons, isJump, screenChanged = nil, false, false }()
+
+	clearLinksOnJump()
+
+	if len(buttons) != 1 || buttons[0].Name != "a" {
+		t.Errorf("buttons = %+v, want only the fix button \"a\" remaining after a screen change", buttons)
+	}
+	if screenChanged {
+		t.Error("expected screenChanged to be consumed (cleared) by clearLinksOnJump")
+	}
+}

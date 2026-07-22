@@ -250,6 +250,12 @@ func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage m
 // script-loop iteration boundary rather than tearing r.scripts out from
 // under a suspended coroutine.
 func (r *Renderer) applySaveData(d *saveData) error {
+	// Save data doesn't capture button state (see the save/load gaps note in
+	// tags_save.go's own doc comments), so whatever's in `buttons` right now
+	// belongs to wherever the player was when they opened the load screen,
+	// not the loaded position — always treat a load as a screen change so
+	// Update()'s isJump handling clears stale non-fix buttons.
+	screenChanged = true
 	if d.Storage != "" && d.Storage != r.currentStorage {
 		if err := r.loadScript(d.Storage); err != nil {
 			return err

@@ -37,6 +37,7 @@ func handleJump(ctx *tagCtx) error {
 		if err := r.loadScript(jump.Storage); err != nil {
 			return err
 		}
+		clearNonFixButtons()
 		if jump.Target == "" {
 			*ctx.i = 0
 		}
@@ -74,6 +75,7 @@ func handleCall(ctx *tagCtx) error {
 		if err := r.loadScript(storage); err != nil {
 			return err
 		}
+		clearNonFixButtons()
 		// Land exactly on the new script's first item if no target
 		// follows: the enclosing loop increments *ctx.i once more after
 		// this handler returns.
@@ -104,6 +106,7 @@ func handleReturn(ctx *tagCtx) error {
 		if err := r.loadScript(frame.Storage); err != nil {
 			return err
 		}
+		clearNonFixButtons()
 	}
 	// -1 to compensate for the enclosing loop's increment, same as [call].
 	*ctx.i = frame.Index - 1

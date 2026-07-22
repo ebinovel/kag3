@@ -123,6 +123,20 @@ var (
 	isJump                                       bool
 	isJumped                                     func() bool
 	jumpIndex                                    int
+	// screenChanged marks that whatever is about to consume isJump represents
+	// a real screen change (a different storage loaded, or goToTitle/save-load
+	// tearing down the previous screen's state) rather than a same-storage
+	// label jump ([link]/[glink]/[button target=] to a label in the same
+	// file). Set at the point loadScript/goToTitle/applySaveData actually
+	// changes screens, read (and cleared) whenever the isJump handling in
+	// Update() runs — which can be a later frame than where it was set, e.g.
+	// a title confirm dialog resolves and returns early the same frame
+	// (anyModalActive), so isJump isn't processed until the next Update().
+	// Without this, clearNonFixButtons() had to run unconditionally on every
+	// isJump, which wiped scene1.ks's role_button set (registered without
+	// fix="true", matching the real bundled sample) on every in-scene
+	// [link]/[glink] click even though nothing about the screen changed.
+	screenChanged bool
 	audioContext                                 *audio.Context
 	layopt                                       *kag3.LayOpt
 	isTextEnd                                    bool
@@ -255,6 +269,7 @@ func (r *Renderer) Update() {
 				//fmt.Println("isCollsion", mX, mY)
 				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 					if link.Storage != "" {
+						screenChanged = true
 						r.loadScript(link.Storage)
 					}
 					if v, ok := r.labels[link.Target[1:]]; ok {
@@ -272,6 +287,7 @@ func (r *Renderer) Update() {
 			hoveringClickable = true
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				if glink.Storage != "" {
+					screenChanged = true
 					r.loadScript(glink.Storage)
 				}
 				if v, ok := r.labels[glink.Target]; ok {
@@ -314,6 +330,7 @@ func (r *Renderer) Update() {
 							TextPosition: *textPosition,
 						})
 					}
+					screenChanged = true
 					r.loadScript(button.Storage)
 					if button.Target == "" {
 						jumpIndex = 0
@@ -377,11 +394,7 @@ func (r *Renderer) Update() {
 			}
 		}
 	}
-	if isJump {
-		glinks = nil
-		links = nil
-		clearNonFixButtons()
-	}
+	clearLinksOnJump()
 	screenW, screenH := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
 	switch {
 	case activeDialog != nil:
@@ -416,6 +429,7 @@ func (r *Renderer) Update() {
 // goToTitle resets session state and jumps to title.ks, shared by button
 // role="title" and the quick-menu's title item (see tags_save.go).
 func (r *Renderer) goToTitle() {
+	screenChanged = true
 	r.loadScript("title.ks")
 	r.texts = make(map[int][]Text)
 	r.callStack = nil
@@ -904,11 +918,31 @@ func (r *Renderer) buttonTargetJump(target string) {
 	isJump = true
 }
 
+// clearLinksOnJump runs once per Update() frame, right before isJump is
+// consumed by the coroutine (see initScript's loop): any pending link/glink
+// choice list is always dropped (it belonged to whatever line just advanced
+// past), but buttons are only swept by clearNonFixButtons when screenChanged
+// says this jump is an actual screen change — a same-storage label jump
+// ([link]/[glink]/[button target=] to a label in the current file) must
+// leave persistent UI like scene1.ks's role_button set alone, matching real
+// Tyrano: a jump within a scenario doesn't tear down the screen.
+func clearLinksOnJump() {
+	if !isJump {
+		return
+	}
+	glinks = nil
+	links = nil
+	if screenChanged {
+		clearNonFixButtons()
+		screenChanged = false
+	}
+}
+
 // clearNonFixButtons drops every button without Fix=true from the buttons
-// list — the reaction to any jump (see Update()). Fix=true buttons persist
-// across jumps (that's what "fix" means, e.g. config.ks's entire button set,
-// registered once at *config_page); only [clearfix] (tags_layer.go) removes
-// those.
+// list — the reaction to a screen-changing jump (see clearLinksOnJump).
+// Fix=true buttons persist across jumps (that's what "fix" means, e.g.
+// config.ks's entire button set, registered once at *config_page); only
+// [clearfix] (tags_layer.go) removes those.
 func clearNonFixButtons() {
 	kept := buttons[:0]
 	for _, b := range buttons {
