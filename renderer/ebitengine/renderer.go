@@ -1456,6 +1456,17 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
 	drawEditBox(r, buf)
+	// Save slot thumbnails (see captureSnapshot in tags_save.go) are kept
+	// fresh here, every frame, specifically *before* drawModal — buf has
+	// the full scene at this point but none of any modal overlay's own
+	// drawing yet, regardless of which overlay (if any) is about to be
+	// added. Capturing at openSlotPicker/saveSlot time instead (an earlier
+	// version of this code did) was too late whenever a save was reached
+	// through another modal first (e.g. the quick menu's own SAVE item):
+	// renderBuffer by then already had *that* modal's last several frames
+	// baked in, so the thumbnail showed the quick menu instead of the
+	// scene underneath it.
+	captureSnapshot(buf)
 	drawModal(r, buf)
 }
 

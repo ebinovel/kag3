@@ -236,6 +236,16 @@ func recordBacklog(r *Renderer) {
 	if backlogPaused {
 		return
 	}
+	if s := currentMessageText(r); s != "" {
+		backlog = append(backlog, s)
+	}
+}
+
+// currentMessageText concatenates every segment of r.texts, in line order —
+// whatever's currently on screen in the message window, revealed or not.
+// Shared by recordBacklog and buildSaveData (tags_save.go), which captures
+// it as the save slot's preview text (see the DATA SAVE/LOAD screen).
+func currentMessageText(r *Renderer) string {
 	lineNums := make([]int, 0, len(r.texts))
 	for k := range r.texts {
 		lineNums = append(lineNums, k)
@@ -247,9 +257,7 @@ func recordBacklog(r *Renderer) {
 			sb.WriteString(seg.Text)
 		}
 	}
-	if sb.Len() > 0 {
-		backlog = append(backlog, sb.String())
-	}
+	return sb.String()
 }
 
 func handleNoLog(ctx *tagCtx) error {

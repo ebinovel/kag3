@@ -148,6 +148,10 @@ type saveData struct {
 	CharaStorage map[string]string
 	Bg           bgSaveState
 	TextPosition textPositionSaveState
+	// LastMessage is whatever text was in the message window at save time
+	// (see currentMessageText in tags_message.go) — the DATA SAVE/LOAD
+	// screen's preview line, alongside the thumbnail (see captureSnapshot).
+	LastMessage string
 }
 
 func (r *Renderer) buildSaveData() *saveData {
@@ -201,6 +205,7 @@ func (r *Renderer) buildSaveData() *saveData {
 			FilterColor:  textPosition.FilterColor,
 			FrameStorage: textPosition.FrameStorage,
 		},
+		LastMessage: currentMessageText(r),
 	}
 }
 
@@ -357,11 +362,30 @@ func slotPath(dir string, slot int, ext string) string {
 	return filepath.Join(dir, fmt.Sprintf("slot_%d.%s", slot, ext))
 }
 
-// lastSnapshot is [savesnap]'s captured thumbnail, written alongside the
-// next save*Slot call. It's deliberately not cleared by saveSlot — real
-// Tyrano's savesnap is meant to be called once, shortly before whichever
-// save action follows.
+// lastSnapshot is the save slot thumbnail, written alongside the next
+// save*Slot call. Kept fresh automatically every frame (see drawScene in
+// renderer.go, which calls captureSnapshot right before drawModal — after
+// the full scene is drawn but before any modal overlay is), so by the time
+// any save action runs, whatever's here is always "the scene, with no
+// modal on top", regardless of how it was reached (direct button, the
+// quick menu's own SAVE item, [showsave], TG.menu.doSave, ...).
 var lastSnapshot *ebiten.Image
+
+// captureSnapshot copies buf into lastSnapshot. buf is passed explicitly
+// (rather than reading the renderBuffer global directly) so drawScene can
+// call this with the scene-so-far *before* it draws in the current frame's
+// modal overlay (see drawScene's own comment) — same image, different
+// point in its own draw sequence, not necessarily renderBuffer's final
+// state for this frame.
+func captureSnapshot(buf *ebiten.Image) {
+	if buf == nil {
+		return
+	}
+	w, h := buf.Bounds().Dx(), buf.Bounds().Dy()
+	snap := ebiten.NewImage(w, h)
+	snap.DrawImage(buf, &ebiten.DrawImageOptions{})
+	lastSnapshot = snap
+}
 
 func (r *Renderer) saveSlot(slot int) error {
 	dir, err := saveDir(r)
@@ -403,16 +427,12 @@ func (r *Renderer) loadSlot(slot int) error {
 	return r.applySaveData(&data)
 }
 
-// handleSaveSnap captures the current frame (before any save-menu overlay
-// would be drawn on top of it) as a thumbnail for the *next* save*Slot call.
+// handleSaveSnap captures the current frame as a thumbnail for the *next*
+// save*Slot call — redundant with drawScene's own automatic per-frame
+// capture in the common case, but harmless to keep: real Tyrano scripts
+// may still call [savesnap] explicitly, and this keeps that working.
 func handleSaveSnap(ctx *tagCtx) error {
-	if renderBuffer == nil {
-		return nil
-	}
-	w, h := renderBuffer.Bounds().Dx(), renderBuffer.Bounds().Dy()
-	snap := ebiten.NewImage(w, h)
-	snap.DrawImage(renderBuffer, &ebiten.DrawImageOptions{})
-	lastSnapshot = snap
+	captureSnapshot(renderBuffer)
 	return nil
 }
 

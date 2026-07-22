@@ -37,6 +37,51 @@ func TestDrawSceneButtonWithoutEnterImgDoesNotPanicOnHover(t *testing.T) {
 	r.drawScene(buf) // must not panic
 }
 
+// TestDrawSceneCapturesSnapshotBeforeModalOverlay reproduces a real report:
+// save slot thumbnails were showing the quick menu / save screen itself
+// instead of the game scene underneath. The earlier fix captured
+// lastSnapshot when openSlotPicker/saveSlot ran, but by then renderBuffer
+// could already have another modal (e.g. the quick menu, reached first to
+// click its own SAVE item) baked into it from prior frames. drawScene now
+// captures unconditionally, every call, right before drawModal draws
+// whatever overlay is active into buf — so lastSnapshot always reflects
+// the scene as of *this* frame with no modal on it yet, regardless of
+// what was on screen before. This only proves the "always re-captured,
+// fresh object" contract (pixel content can't be asserted headless — see
+// captureSnapshot's own doc comment on why): combined with capture being
+// the last thing before drawModal in source order, that's the observable
+// behavior a test here can pin down.
+func TestDrawSceneCapturesSnapshotBeforeModalOverlay(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.manager.Config = &kag3.Config{ScreenWidth: 1280, ScreenHeight: 720}
+	r.fses = map[string]fs.FS{"system/images": fstest.MapFS{}}
+	textPosition = &kag3.TextPosition{Visible: false}
+	bg = &kag3.Background{}
+	bg2 = &kag3.Background{}
+	viewCharas = nil
+	links, glinks, imgs, buttons = nil, nil, nil, nil
+	lastSnapshot = nil
+	menuOpen = false
+	defer func() { menuOpen = false; lastSnapshot = nil }()
+
+	buf := newTestImage(1280, 720)
+	r.drawScene(buf)
+	firstCapture := lastSnapshot
+	if firstCapture == nil {
+		t.Fatal("expected drawScene to populate lastSnapshot even with no modal active")
+	}
+
+	menuOpen = true
+	r.drawScene(buf)
+	if lastSnapshot == nil {
+		t.Fatal("expected drawScene to populate lastSnapshot with the quick menu open")
+	}
+	if lastSnapshot == firstCapture {
+		t.Error("expected a fresh capture on this call, not the previous frame's")
+	}
+}
+
 func resetConfirmDialogState() {
 	activeDialog = nil
 	viewCharas = nil

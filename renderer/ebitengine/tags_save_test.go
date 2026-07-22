@@ -250,6 +250,39 @@ func TestHandleSaveSnapNoopWithoutRenderBuffer(t *testing.T) {
 	}
 }
 
+// TestCaptureSnapshotCopiesBuf covers the piece drawScene now calls
+// automatically every frame (see its own doc comment in renderer.go): real
+// Tyrano's bundled scripts, including this project's example/, never call
+// [savesnap] themselves, so relying on it left every save slot
+// thumbnail-less in practice. Only DrawImage here, deliberately no
+// png.Encode(lastSnapshot) — that reads pixels back from the GPU and
+// panics outside a running ebiten game loop (see
+// TestSlotPickerRowsReflectSavedSlot's own note on the same constraint).
+func TestCaptureSnapshotCopiesBuf(t *testing.T) {
+	buf := newTestImage(4, 4)
+	lastSnapshot = nil
+	defer func() { lastSnapshot = nil }()
+
+	captureSnapshot(buf)
+	if lastSnapshot == nil {
+		t.Fatal("expected captureSnapshot to populate lastSnapshot from buf")
+	}
+	if lastSnapshot == buf {
+		t.Error("expected lastSnapshot to be an independent copy, not buf itself")
+	}
+}
+
+// TestBuildSaveDataCapturesCurrentMessage covers the save slot's other new
+// preview field: whatever's in the message window at save time.
+func TestBuildSaveDataCapturesCurrentMessage(t *testing.T) {
+	r := newSaveTestRendererWithVars(t)
+	r.texts = map[int][]Text{0: {{Text: "帰るか"}}, 1: {{Text: "。。。"}}}
+	data := r.buildSaveData()
+	if data.LastMessage != "帰るか。。。" {
+		t.Errorf("LastMessage = %q, want %q", data.LastMessage, "帰るか。。。")
+	}
+}
+
 func TestAutoSaveAutoLoadUseReservedSlot(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()

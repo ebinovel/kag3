@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"os"
@@ -66,6 +67,12 @@ func handleShowLoad(ctx *tagCtx) error {
 }
 
 func openSlotPicker(mode slotPickerMode) {
+	// No capture here: lastSnapshot is kept fresh every frame by
+	// drawScene, always reflecting the scene with no modal on top —
+	// see captureSnapshot's doc comment (tags_save.go) for why capturing
+	// only at this specific moment used to be too late (and wrong) when
+	// this picker was reached through another modal, e.g. the quick
+	// menu's own SAVE item.
 	menuOpen = false
 	slotPickerActive = mode
 	slotPickerOpenedFrame = t
@@ -98,10 +105,13 @@ const (
 	slotPickerViewportBottomMargin               = 20
 	slotPickerThumbInsetX, slotPickerThumbInsetY = 15, 12
 	slotPickerThumbW, slotPickerThumbH           = 166, 96
-	slotPickerTextInsetX, slotPickerTextInsetY   = 210, 62
-	slotPickerScrollStep                         = 40
-	slotPickerScrollbarW                         = 12
-	slotPickerScrollbarMargin                    = 30
+	slotPickerTextInsetX, slotPickerTextInsetY   = 210, 45
+	// slotPickerMessageInsetY positions row.Message (the save's preview
+	// text — see slotRowInfo) just below the date/time line.
+	slotPickerMessageInsetY   = 80
+	slotPickerScrollStep      = 40
+	slotPickerScrollbarW      = 12
+	slotPickerScrollbarMargin = 30
 )
 
 // slotPickerScrollY is how far the row list has been scrolled down (0 = top).
@@ -177,6 +187,28 @@ func hasSaveSlot(r *Renderer, slot int) bool {
 	return exists
 }
 
+// saveSlotLastMessage reads just the LastMessage field back out of a save
+// slot's JSON — the picker row's preview line (see the DATA SAVE/LOAD
+// screen), alongside the mtime saveSlotInfo already reports. A read/parse
+// failure yields "", same tolerant handling as a missing thumbnail.
+func saveSlotLastMessage(r *Renderer, slot int) string {
+	dir, err := saveDir(r)
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(slotPath(dir, slot, "json"))
+	if err != nil {
+		return ""
+	}
+	var data struct {
+		LastMessage string
+	}
+	if err := json.Unmarshal(b, &data); err != nil {
+		return ""
+	}
+	return data.LastMessage
+}
+
 // slotRowInfo is one row of the picker. Y is content-relative (as if
 // slotPickerScrollY were 0) — both drawing and hit-testing subtract the
 // current scroll offset themselves, so a row's on-screen position always
@@ -186,6 +218,10 @@ type slotRowInfo struct {
 	Y          int
 	HasData    bool
 	StatusText string
+	// Message is the save slot's preview text (currentMessageText at save
+	// time — see saveData.LastMessage), shown under StatusText. Empty for
+	// an empty slot, or a save written before this field existed.
+	Message string
 }
 
 func slotPickerRows(r *Renderer) []slotRowInfo {
@@ -198,14 +234,17 @@ func slotPickerRows(r *Renderer) []slotRowInfo {
 		slot := i + 1
 		exists, modTime := saveSlotInfo(r, slot)
 		text := "まだ、保存されているデータがありません。"
+		message := ""
 		if exists {
 			text = modTime.Format("2006/01/02 15:04:05")
+			message = saveSlotLastMessage(r, slot)
 		}
 		rows[i] = slotRowInfo{
 			Slot:       slot,
 			Y:          slotPickerRowY0 + i*(slotPickerRowH+slotPickerRowGap),
 			HasData:    exists,
 			StatusText: text,
+			Message:    message,
 		}
 	}
 	return rows
@@ -331,10 +370,23 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 				viewport.DrawImage(thumb, op)
 			}
 		}
-		textOp := &text.DrawOptions{}
-		textOp.ColorScale.ScaleWithColor(color.RGBA{70, 70, 70, 255})
-		textOp.GeoM.Translate(slotPickerTextInsetX, float64(y+slotPickerTextInsetY))
-		text.Draw(viewport, row.StatusText, r.fontFace, textOp)
+		dateOp := &text.DrawOptions{}
+		dateColor := color.RGBA{70, 70, 70, 255}
+		if row.HasData {
+			// Matches real Tyrano's own DATA LOAD screen: the timestamp is
+			// the one line styled distinctly from the plain-gray "no data"
+			// message, so a save's date reads at a glance.
+			dateColor = color.RGBA{60, 130, 220, 255}
+		}
+		dateOp.ColorScale.ScaleWithColor(dateColor)
+		dateOp.GeoM.Translate(slotPickerTextInsetX, float64(y+slotPickerTextInsetY))
+		text.Draw(viewport, row.StatusText, r.fontFace, dateOp)
+		if row.Message != "" {
+			msgOp := &text.DrawOptions{}
+			msgOp.ColorScale.ScaleWithColor(color.RGBA{70, 70, 70, 255})
+			msgOp.GeoM.Translate(slotPickerTextInsetX, float64(y+slotPickerMessageInsetY))
+			text.Draw(viewport, row.Message, r.fontFace, msgOp)
+		}
 	}
 	vpOp := &ebiten.DrawImageOptions{}
 	vpOp.GeoM.Translate(slotPickerRowX, float64(viewportY))

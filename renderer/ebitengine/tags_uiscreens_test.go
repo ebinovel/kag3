@@ -134,15 +134,17 @@ func TestSlotPickerRowsCountMatchesConfig(t *testing.T) {
 func TestSlotPickerRowsReflectSavedSlot(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()
-	// A prior test may have left a real decoded image in lastSnapshot,
-	// which saveSlot would try to PNG-encode — that reads pixels back from
-	// the GPU and panics outside a running ebiten game loop (see
-	// tags_uiscreens_test.go's TestHasSaveSlotReflectsDiskState for the
-	// same guard).
-	lastSnapshot = nil
+	// A prior test may have left a real decoded image in lastSnapshot (or
+	// a renderBuffer that saveSlot's own auto-capture would turn into
+	// one), which saveSlot would try to PNG-encode — that reads pixels
+	// back from the GPU and panics outside a running ebiten game loop
+	// (see tags_uiscreens_test.go's TestHasSaveSlotReflectsDiskState for
+	// the same guard).
+	renderBuffer, lastSnapshot = nil, nil
 
 	r := newSaveTestRendererWithVars(t)
 	r.manager.Config = &kag3.Config{ScreenWidth: 1280, ScreenHeight: 720, ConfigSaveSlotNum: 3}
+	r.texts = map[int][]Text{0: {{Text: "帰るか。。。"}}}
 	if err := r.saveSlot(2); err != nil {
 		t.Fatalf("saveSlot error: %v", err)
 	}
@@ -153,8 +155,14 @@ func TestSlotPickerRowsReflectSavedSlot(t *testing.T) {
 	if rows[1].StatusText == "まだ、保存されているデータがありません。" {
 		t.Error("expected slot 2's row to show a timestamp, not the no-data message")
 	}
+	if rows[1].Message != "帰るか。。。" {
+		t.Errorf("rows[1].Message = %q, want the message displayed at save time %q", rows[1].Message, "帰るか。。。")
+	}
 	if rows[0].HasData || rows[2].HasData {
 		t.Errorf("expected only slot 2 to have data, got rows=%+v", rows)
+	}
+	if rows[0].Message != "" || rows[2].Message != "" {
+		t.Errorf("expected empty slots to have no Message, got rows=%+v", rows)
 	}
 }
 
