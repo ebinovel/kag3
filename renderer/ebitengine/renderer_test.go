@@ -6,6 +6,7 @@ import (
 	"testing/fstest"
 
 	"github.com/ebinovel/kag3"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // TestDrawSceneButtonWithoutEnterImgDoesNotPanicOnHover reproduces a real
@@ -32,6 +33,55 @@ func TestDrawSceneButtonWithoutEnterImgDoesNotPanicOnHover(t *testing.T) {
 		{Graphic: newTestImage(10, 10), EnterImg: nil, X: 0, Y: 0, Width: 100000, Height: 100000},
 	}
 	defer func() { buttons = nil }()
+
+	buf := newTestImage(1280, 720)
+	r.drawScene(buf) // must not panic
+}
+
+// TestVerticalFontFaceSubstitutesVerticalGlyphs guards the vertical-text
+// glyph substitution added to fix [position vertical=true]: without the
+// OpenType "vert" feature enabled, kag3's manual vertical layout was just
+// rotating horizontal-form glyphs into a column, so punctuation like "。"
+// stayed in its horizontal (lower-left) position instead of moving to the
+// vertical form's upper-right, and "ー" stayed a horizontal bar instead of
+// a vertical one. NotoSansJP-Regular.ttf (the bundled font) does define
+// substitute glyphs for these — this pins that down via GID, since the
+// rendered pixels can't be read back outside a real ebiten game loop.
+func TestVerticalFontFaceSubstitutesVerticalGlyphs(t *testing.T) {
+	horiz := newTestFontFace(t)
+	vert := newTestVerticalFontFace(t)
+	for _, ch := range []string{"。", "ー", "ゃ"} {
+		hg := text.AppendGlyphs(nil, ch, horiz, nil)
+		vg := text.AppendGlyphs(nil, ch, vert, nil)
+		if len(hg) == 0 || len(vg) == 0 {
+			t.Fatalf("%q: expected at least one glyph from both faces, got horiz=%d vert=%d", ch, len(hg), len(vg))
+		}
+		if hg[0].GID == vg[0].GID {
+			t.Errorf("%q: horizontal and vertical GID both = %d, want the vert feature to substitute a different glyph", ch, hg[0].GID)
+		}
+	}
+}
+
+// TestDrawSceneVerticalTextDoesNotPanic covers [position vertical=true]'s
+// draw path (renderer.go's textPosition.Vertical branch) end to end: it
+// must use r.verticalFontFace (wired from Manager.VerticalFontFace in
+// NewRenderer), not silently fall back to a nil face.
+func TestDrawSceneVerticalTextDoesNotPanic(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.verticalFontFace = newTestVerticalFontFace(t)
+	r.texts = map[int][]Text{0: {{Text: "このように縦書きで記述することもできます。"}}}
+	r.line = 0
+	textPosition = &kag3.TextPosition{
+		Visible: true, Vertical: true,
+		Left: 20, Top: 40, Width: 1200, Height: 660,
+		MarginTop: 45, MarginRight: 70, MarginBottom: 60,
+	}
+	textPosition.BackImage = newTestImage(textPosition.Width, textPosition.Height)
+	bg = &kag3.Background{}
+	bg2 = &kag3.Background{}
+	viewCharas, links, glinks, imgs, buttons = nil, nil, nil, nil, nil
+	isWait = true
 
 	buf := newTestImage(1280, 720)
 	r.drawScene(buf) // must not panic

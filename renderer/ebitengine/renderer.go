@@ -29,18 +29,19 @@ type Text struct {
 }
 
 type Renderer struct {
-	manager        *kag3.Manager
-	scripts        []any
-	labels         map[string]kag3.LabelInfo
-	fontFace       *text.GoTextFace
-	nameFontFace   *text.GoTextFace
-	fses           map[string]fs.FS
-	texts          map[int][]Text
-	line           int
-	Done           bool
-	vm             *VM
-	currentStorage string
-	callStack      []callFrame
+	manager          *kag3.Manager
+	scripts          []any
+	labels           map[string]kag3.LabelInfo
+	fontFace         *text.GoTextFace
+	nameFontFace     *text.GoTextFace
+	verticalFontFace *text.GoTextFace
+	fses             map[string]fs.FS
+	texts            map[int][]Text
+	line             int
+	Done             bool
+	vm               *VM
+	currentStorage   string
+	callStack        []callFrame
 	// sleepStack is role="sleepgame"/[sleepgame]'s own return-address stack,
 	// deliberately separate from callStack: config.ks (the bundled sample)
 	// calls [clearstack] right before [awakegame] to discard any leftover
@@ -172,7 +173,8 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 			Size:     manager.FontFace.Size,
 			Language: manager.FontFace.Language,
 		},
-		fses:           manager.FSes,
+		verticalFontFace: manager.VerticalFontFace,
+		fses:             manager.FSes,
 		vm:             newVM(),
 		currentStorage: manager.CurrentStorage,
 	}
@@ -1163,7 +1165,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 				ch    rune
 				style *kag3.TextStyle
 			}
-			charSize := r.fontFace.Size
+			charSize := r.verticalFontFace.Size
 			rightEdge := x + float64(textPosition.Width) - float64(textPosition.MarginRight)
 			availableHeight := float64(textPosition.Height) - float64(textPosition.MarginTop) - float64(textPosition.MarginBottom)
 			charsPerCol := int(availableHeight / charSize)
@@ -1211,7 +1213,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 					} else {
 						tOp.ColorScale.ScaleWithColor(color.White)
 					}
-					text.Draw(buf, string(rs.ch), r.fontFace, tOp)
+					text.Draw(buf, string(rs.ch), r.verticalFontFace, tOp)
 				}
 				colIndex += (len(runes) + charsPerCol - 1) / charsPerCol
 			}

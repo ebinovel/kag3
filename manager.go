@@ -11,13 +11,20 @@ import (
 type Senario []interface{}
 
 type Manager struct {
-	Config *Config
-	FSes map[string]fs.FS
-	parser *KS
-	Senario Senario
-	Labels map[string]LabelInfo
+	Config   *Config
+	FSes     map[string]fs.FS
+	parser   *KS
+	Senario  Senario
+	Labels   map[string]LabelInfo
 	FontFace *text.GoTextFace
-	Macros map[string]*Macro
+	// VerticalFontFace shares FontFace's Source but has the OpenType "vert"
+	// feature enabled, so glyphs substitute to their vertical-writing forms
+	// (punctuation moves to the upper-right of its cell, long vowel marks
+	// rotate, etc.) — the same effect Windows' "@"-prefixed vertical font
+	// names have, without needing a separate font file. See
+	// renderer/ebitengine/renderer.go's Vertical text drawing branch.
+	VerticalFontFace *text.GoTextFace
+	Macros           map[string]*Macro
 	// CurrentStorage is the filename last passed to LoadScript, i.e. what
 	// Senario/Labels currently reflect.
 	CurrentStorage string
@@ -64,8 +71,14 @@ func (m *Manager) loadDefaultFont() {
 		panic(err)
 	}
 	m.FontFace = &text.GoTextFace{
-		Source: s,
-		Size: float64(m.Config.DefaultFontSize),
+		Source:   s,
+		Size:     float64(m.Config.DefaultFontSize),
 		Language: language.Japanese,
 	}
+	m.VerticalFontFace = &text.GoTextFace{
+		Source:   s,
+		Size:     float64(m.Config.DefaultFontSize),
+		Language: language.Japanese,
+	}
+	m.VerticalFontFace.SetFeature(text.MustParseTag("vert"), 1)
 }

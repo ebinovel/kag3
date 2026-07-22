@@ -36,6 +36,27 @@ func newTestFontFace(t *testing.T) *text.GoTextFace {
 	return &text.GoTextFace{Source: src, Size: 16}
 }
 
+// newTestVerticalFontFace mirrors newTestFontFace but with the "vert"
+// OpenType feature enabled — matches Manager.VerticalFontFace (manager.go),
+// which is what makes [position vertical=true] substitute glyphs into
+// their vertical-writing forms (punctuation moves to the upper-right of
+// its cell, long vowel marks rotate, etc.) instead of just rotating
+// horizontal-form glyphs into a vertical column.
+func newTestVerticalFontFace(t *testing.T) *text.GoTextFace {
+	t.Helper()
+	b, err := fs.ReadFile(kag3.Fonts, "NotoSansJP-Regular.ttf")
+	if err != nil {
+		t.Fatalf("failed to read embedded test font: %v", err)
+	}
+	src, err := text.NewGoTextFaceSource(bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("failed to parse embedded test font: %v", err)
+	}
+	face := &text.GoTextFace{Source: src, Size: 16}
+	face.SetFeature(text.MustParseTag("vert"), 1)
+	return face
+}
+
 func TestAnyModalActiveReflectsEachOverlay(t *testing.T) {
 	resetUIScreenState()
 	if anyModalActive() {
