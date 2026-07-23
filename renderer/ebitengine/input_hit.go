@@ -70,8 +70,8 @@ func hitGLinks(r *Renderer) {
 // hitButtons hit-tests every [button]/[clickable] against the cursor,
 // setting hoveringClickable on hover and, on click, evaluating exp=/preexp=,
 // loading button.Storage (with role="sleepgame"'s extra return-address
-// bookkeeping), dispatching button.Role, and finally jumping to
-// button.Target.
+// bookkeeping), dispatching button.Role via buttonRoles (role_dispatch.go),
+// and finally jumping to button.Target.
 func hitButtons(r *Renderer) {
 	for _, button := range buttons {
 		mX, mY := ebiten.CursorPosition()
@@ -107,56 +107,8 @@ func hitButtons(r *Renderer) {
 						isJump = true
 					}
 				}
-				if button.Role != "" {
-					switch button.Role {
-					case "save":
-						// Per tyrano.jp/tag's [button] reference, role="save"
-						// opens the save-slot screen rather than acting on a
-						// fixed slot directly — that's what quicksave is
-						// for. Reuses Phase 9's slot picker (tags_uiscreens.go).
-						openSlotPicker(slotPickerSave)
-					case "load":
-						openSlotPicker(slotPickerLoad)
-					case "quicksave":
-						if err := r.saveSlot(quickSaveSlot); err != nil {
-							fmt.Printf("quicksave failed: %v\n", err)
-						}
-					case "quickload":
-						if err := r.loadSlot(quickSaveSlot); err != nil {
-							fmt.Printf("quickload failed: %v\n", err)
-						}
-					case "backlog":
-						backlogViewing = !backlogViewing
-						if backlogViewing {
-							backlogOpenedFrame = t
-						}
-					case "menu":
-						menuOpen = !menuOpen
-						if menuOpen {
-							menuOpenedFrame = t
-						}
-					case "fullscreen":
-						fmt.Printf("button.Role:%s\n", button.Role)
-						ebiten.SetFullscreen(!ebiten.IsFullscreen())
-					case "title":
-						confirmGoToTitle(r)
-					case "skip":
-						isSkip = !isSkip
-						if isSkip {
-							isAuto = false
-						}
-					case "auto":
-						isAuto = !isAuto
-						if isAuto {
-							isSkip = false
-							autoStartT = t
-						}
-					case "window":
-						textPosition.Visible = !textPosition.Visible
-					case "sleepgame":
-						// storage load + return-frame push already handled
-						// above, before the switch.
-					}
+				if fn, ok := buttonRoles[button.Role]; ok {
+					fn(r)
 				}
 				if button.Target != "" {
 					r.buttonTargetJump(button.Target)
