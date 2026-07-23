@@ -467,9 +467,7 @@ func (r *Renderer) goToTitle() {
 	textStyle = nil
 	defaultTextStyle = nil
 	menuButtonVisible = false
-	backlogViewing = false
-	menuOpen = false
-	slotPickerActive = slotPickerNone
+	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see
 	// execItem in macro.go — waiting on this exact flag, which is
