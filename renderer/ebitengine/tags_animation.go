@@ -119,25 +119,19 @@ func findAnimatable(name string) kag3.Animatable {
 // both characters and images.
 func buildAnimProps(pm map[string]string, target kag3.Animatable) ([]animProp, error) {
 	var props []animProp
-	if v, ok := pm["left"]; ok {
-		to, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, err
-		}
+	if to, ok, err := getInt(pm, "left"); err != nil {
+		return nil, err
+	} else if ok {
 		props = append(props, animProp{from: float64(target.GetLeft()), to: float64(to), apply: func(val float64) { target.SetLeft(int(val)) }})
 	}
-	if v, ok := pm["top"]; ok {
-		to, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, err
-		}
+	if to, ok, err := getInt(pm, "top"); err != nil {
+		return nil, err
+	} else if ok {
 		props = append(props, animProp{from: float64(target.GetTop()), to: float64(to), apply: func(val float64) { target.SetTop(int(val)) }})
 	}
-	if v, ok := pm["opacity"]; ok {
-		to, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, err
-		}
+	if to, ok, err := getInt(pm, "opacity"); err != nil {
+		return nil, err
+	} else if ok {
 		props = append(props, animProp{from: target.GetOpacity(), to: float64(to), apply: target.SetOpacity})
 	}
 	if v, ok := pm["scale"]; ok {
@@ -185,13 +179,9 @@ func handleAnim(ctx *tagCtx) error {
 		return fmt.Errorf("そのオブジェクトが見つかりません name=%s", name)
 	}
 
-	timeMs := 1000
-	if v, ok := object.Pm["time"]; ok {
-		ms, err := strconv.Atoi(v)
-		if err != nil {
-			return err
-		}
-		timeMs = ms
+	timeMs, err := getIntDefault(object.Pm, "time", 1000)
+	if err != nil {
+		return err
 	}
 	props, err := buildAnimProps(object.Pm, target)
 	if err != nil {

@@ -572,68 +572,67 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 		chara.Opacity = 255
 		chara.ScaleX = 1
 		chara.ScaleY = 1
-		for key, value := range object.Pm {
-			switch key {
-			case "name":
-				chara.Name = value
-			case "time":
-				chara.Time, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-			case "zindex":
-				chara.Zindex, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-			case "depth":
-				chara.Depth = value
-			case "page":
-				chara.Page = value
-			case "wait":
-				chara.Wait, err = strconv.ParseBool(value)
-				if err != nil {
-					return
-				}
-			case "face":
-				if v, ok := charas[name].Faces[value]; ok {
-					chara.Face = v
-				}
-			case "storage":
-				charaImage, _, err := ebitenutil.NewImageFromFileSystem(
-					r.fses["images"],
-					object.Pm["storage"],
-				)
-				if err != nil {
-					return nil, err
-				}
-				charas[name].Image = charaImage
-			case "refrect":
-				chara.Reflect, err = strconv.ParseBool(value)
-				if err != nil {
-					return
-				}
-			case "width":
-				chara.Width, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-			case "height":
-				chara.Height, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-			case "left":
-				chara.Left, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
-			case "top":
-				chara.Top, err = strconv.Atoi(value)
-				if err != nil {
-					return
-				}
+		pm := object.Pm
+		if v, ok := getString(pm, "name"); ok {
+			chara.Name = v
+		}
+		if v, ok, e := getInt(pm, "time"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Time = v
+		}
+		if v, ok, e := getInt(pm, "zindex"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Zindex = v
+		}
+		if v, ok := getString(pm, "depth"); ok {
+			chara.Depth = v
+		}
+		if v, ok := getString(pm, "page"); ok {
+			chara.Page = v
+		}
+		if v, ok, e := getBool(pm, "wait"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Wait = v
+		}
+		if v, ok := getString(pm, "face"); ok {
+			if fv, ok := charas[name].Faces[v]; ok {
+				chara.Face = fv
 			}
+		}
+		if v, ok := getString(pm, "storage"); ok {
+			charaImage, e := loadImage(r, "", v)
+			if e != nil {
+				return chara, e
+			}
+			charas[name].Image = charaImage
+		}
+		if v, ok, e := getBool(pm, "refrect"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Reflect = v
+		}
+		if v, ok, e := getInt(pm, "width"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Width = v
+		}
+		if v, ok, e := getInt(pm, "height"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Height = v
+		}
+		if v, ok, e := getInt(pm, "left"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Left = v
+		}
+		if v, ok, e := getInt(pm, "top"); e != nil {
+			return chara, e
+		} else if ok {
+			chara.Top = v
 		}
 	}
 	herfWidth := charas[name].Image.Bounds().Dx() / 2
@@ -668,101 +667,112 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 	return
 }
 
-func (r *Renderer) position(tagObject kag3.TagObject) (err error) {
-	for key, value := range tagObject.Pm {
-		switch key {
-		case "layer":
-			textPosition.Layer = value
-		case "page":
-			textPosition.Page = value
-		case "left":
-			textPosition.Left, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "top":
-			textPosition.Top, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "width":
-			textPosition.Width, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "height":
-			textPosition.Height, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "frame":
-			textPosition.FrameImage, _, err = ebitenutil.NewImageFromFileSystem(
-				r.fses["images"],
-				tagObject.Pm["frame"],
-			)
-			if err != nil {
-				return
-			}
-			textPosition.FrameStorage = value
-		case "color", "border_color":
-			var r, g, b int
-			r, g, b, err = parseColor(value)
-			if key == "color" {
-				textPosition.Color = color.RGBA{uint8(r), uint8(g), uint8(b), 0}
-			} else {
-				textPosition.BorderColor = color.RGBA{uint8(r), uint8(g), uint8(b), 0}
-			}
-		case "border_size":
-			textPosition.BorderSize, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "opacity":
-			textPosition.Opacity, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "marginl":
-			textPosition.MarginLeft, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "margint":
-			textPosition.MarginTop, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "marginr":
-			textPosition.MarginRight, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "marginb":
-			textPosition.MarginBottom, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "marginn":
-			textPosition.MarginN, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "radius":
-			textPosition.Radius, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "vertial", "vertical":
-			textPosition.Vertical, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "visible":
-			textPosition.Visible, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
+func (r *Renderer) position(tagObject kag3.TagObject) error {
+	pm := tagObject.Pm
+	if v, ok := getString(pm, "layer"); ok {
+		textPosition.Layer = v
+	}
+	if v, ok := getString(pm, "page"); ok {
+		textPosition.Page = v
+	}
+	if v, ok, err := getInt(pm, "left"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Left = v
+	}
+	if v, ok, err := getInt(pm, "top"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Top = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Height = v
+	}
+	if v, ok := getString(pm, "frame"); ok {
+		img, err := loadImage(r, "", v)
+		if err != nil {
+			return err
 		}
+		textPosition.FrameImage = img
+		textPosition.FrameStorage = v
+	}
+	if v, ok := getString(pm, "color"); ok {
+		r, g, b, err := parseColor(v)
+		if err != nil {
+			return err
+		}
+		textPosition.Color = color.RGBA{uint8(r), uint8(g), uint8(b), 0}
+	}
+	if v, ok := getString(pm, "border_color"); ok {
+		r, g, b, err := parseColor(v)
+		if err != nil {
+			return err
+		}
+		textPosition.BorderColor = color.RGBA{uint8(r), uint8(g), uint8(b), 0}
+	}
+	if v, ok, err := getInt(pm, "border_size"); err != nil {
+		return err
+	} else if ok {
+		textPosition.BorderSize = v
+	}
+	if v, ok, err := getInt(pm, "opacity"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Opacity = v
+	}
+	if v, ok, err := getInt(pm, "marginl"); err != nil {
+		return err
+	} else if ok {
+		textPosition.MarginLeft = v
+	}
+	if v, ok, err := getInt(pm, "margint"); err != nil {
+		return err
+	} else if ok {
+		textPosition.MarginTop = v
+	}
+	if v, ok, err := getInt(pm, "marginr"); err != nil {
+		return err
+	} else if ok {
+		textPosition.MarginRight = v
+	}
+	if v, ok, err := getInt(pm, "marginb"); err != nil {
+		return err
+	} else if ok {
+		textPosition.MarginBottom = v
+	}
+	if v, ok, err := getInt(pm, "marginn"); err != nil {
+		return err
+	} else if ok {
+		textPosition.MarginN = v
+	}
+	if v, ok, err := getInt(pm, "radius"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Radius = v
+	}
+	// "vertial" is a real-Tyrano typo (not kag3's own) — kept for
+	// compatibility with scripts that use it.
+	if v, ok, err := getBool(pm, "vertial"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Vertical = v
+	}
+	if v, ok, err := getBool(pm, "vertical"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Vertical = v
+	}
+	if v, ok, err := getBool(pm, "visible"); err != nil {
+		return err
+	} else if ok {
+		textPosition.Visible = v
 	}
 	if textPosition.Width != 0 && textPosition.Height != 0 {
 		textPosition.BackImage = ebiten.NewImage(textPosition.Width, textPosition.Height)
@@ -770,33 +780,36 @@ func (r *Renderer) position(tagObject kag3.TagObject) (err error) {
 	return nil
 }
 
-func (r *Renderer) textStyle(tagObject kag3.TagObject) (err error) {
+func (r *Renderer) textStyle(tagObject kag3.TagObject) error {
 	if textStyle == nil {
 		textStyle = &kag3.TextStyle{}
 	}
-	for key, value := range tagObject.Pm {
-		switch key {
-		case "size":
-			textStyle.Size, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "color", "edge", "shadow":
-			var r, g, b int
-			r, g, b, err = parseColor(value)
-			switch key {
-			case "color":
-				textStyle.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-			case "edge":
-				textStyle.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-			case "shadow":
-				textStyle.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-			}
-		case "bold":
-			textStyle.IsBold = true
-		case "itaric":
-			textStyle.IsItaric = true
-		}
+	pm := tagObject.Pm
+	if v, ok, err := getInt(pm, "size"); err != nil {
+		return err
+	} else if ok {
+		textStyle.Size = v
+	}
+	// parseColor's error is intentionally ignored here, matching the
+	// pre-existing behavior of this handler (see resolveFolderImage's
+	// sibling color cases elsewhere for the one place that does check it).
+	if v, ok := getString(pm, "color"); ok {
+		r, g, b, _ := parseColor(v)
+		textStyle.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+	}
+	if v, ok := getString(pm, "edge"); ok {
+		r, g, b, _ := parseColor(v)
+		textStyle.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+	}
+	if v, ok := getString(pm, "shadow"); ok {
+		r, g, b, _ := parseColor(v)
+		textStyle.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+	}
+	if _, ok := getString(pm, "bold"); ok {
+		textStyle.IsBold = true
+	}
+	if _, ok := getString(pm, "itaric"); ok {
+		textStyle.IsItaric = true
 	}
 	r.texts[tagObject.Line] = append(r.texts[tagObject.Line], Text{TextStyle: textStyle})
 	return nil
@@ -845,96 +858,109 @@ func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
 	return img, nil
 }
 
-func (r *Renderer) button(object kag3.TagObject) (err error) {
+func (r *Renderer) button(object kag3.TagObject) error {
+	pm := object.Pm
 	button := &kag3.Button{}
-	for key, value := range object.Pm {
-		switch key {
-		case "graphic":
-			imgFS, name := resolveFolderImage(r, object.Pm["folder"], object.Pm["graphic"])
-			button.Graphic, _, err = ebitenutil.NewImageFromFileSystem(imgFS, name)
-			if err != nil {
-				return
-			}
-		case "storage":
-			button.Storage = value
-		case "target":
-			button.Target = value
-		case "name":
-			button.Name = value
-		case "x":
-			button.X, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "y":
-			button.Y, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "width":
-			button.Width, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "height":
-			button.Height, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "fix":
-			button.Fix, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "role":
-			button.Role = value
-		case "hint":
-			button.Hint = value
-		case "clickse":
-			button.ClickSE = value
-		case "enterse":
-			button.EnterSE = value
-		case "leavese":
-			button.LeaveSE = value
-		case "activeimg":
-			button.ActiveImg = value
-		case "clickimg":
-			button.ClickImg = value
-		case "enterimg":
-			imgFS, name := resolveFolderImage(r, object.Pm["folder"], object.Pm["enterimg"])
-			button.EnterImg, _, err = ebitenutil.NewImageFromFileSystem(imgFS, name)
-			if err != nil {
-				return
-			}
-		case "autoimg":
-			button.AutoImg = value
-		case "skipimg":
-			button.SkipImg = value
-		case "visible":
-			button.Visible, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "auto_next":
-			button.AutoNext, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "savesnap":
-			button.SaveSnap, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "keyforcus":
-			button.KeyForcus, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "exp":
-			button.Exp = value
-		case "preexp":
-			button.PreExp = value
+	if v, ok := getString(pm, "graphic"); ok {
+		img, err := loadImage(r, pm["folder"], v)
+		if err != nil {
+			return err
 		}
+		button.Graphic = img
+	}
+	if v, ok := getString(pm, "storage"); ok {
+		button.Storage = v
+	}
+	if v, ok := getString(pm, "target"); ok {
+		button.Target = v
+	}
+	if v, ok := getString(pm, "name"); ok {
+		button.Name = v
+	}
+	if v, ok, err := getInt(pm, "x"); err != nil {
+		return err
+	} else if ok {
+		button.X = v
+	}
+	if v, ok, err := getInt(pm, "y"); err != nil {
+		return err
+	} else if ok {
+		button.Y = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		button.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		button.Height = v
+	}
+	if v, ok, err := getBool(pm, "fix"); err != nil {
+		return err
+	} else if ok {
+		button.Fix = v
+	}
+	if v, ok := getString(pm, "role"); ok {
+		button.Role = v
+	}
+	if v, ok := getString(pm, "hint"); ok {
+		button.Hint = v
+	}
+	if v, ok := getString(pm, "clickse"); ok {
+		button.ClickSE = v
+	}
+	if v, ok := getString(pm, "enterse"); ok {
+		button.EnterSE = v
+	}
+	if v, ok := getString(pm, "leavese"); ok {
+		button.LeaveSE = v
+	}
+	if v, ok := getString(pm, "activeimg"); ok {
+		button.ActiveImg = v
+	}
+	if v, ok := getString(pm, "clickimg"); ok {
+		button.ClickImg = v
+	}
+	if v, ok := getString(pm, "enterimg"); ok {
+		img, err := loadImage(r, pm["folder"], v)
+		if err != nil {
+			return err
+		}
+		button.EnterImg = img
+	}
+	if v, ok := getString(pm, "autoimg"); ok {
+		button.AutoImg = v
+	}
+	if v, ok := getString(pm, "skipimg"); ok {
+		button.SkipImg = v
+	}
+	if v, ok, err := getBool(pm, "visible"); err != nil {
+		return err
+	} else if ok {
+		button.Visible = v
+	}
+	if v, ok, err := getBool(pm, "auto_next"); err != nil {
+		return err
+	} else if ok {
+		button.AutoNext = v
+	}
+	if v, ok, err := getBool(pm, "savesnap"); err != nil {
+		return err
+	} else if ok {
+		button.SaveSnap = v
+	}
+	if v, ok, err := getInt(pm, "keyforcus"); err != nil {
+		return err
+	} else if ok {
+		button.KeyForcus = v
+	}
+	if v, ok := getString(pm, "exp"); ok {
+		button.Exp = v
+	}
+	if v, ok := getString(pm, "preexp"); ok {
+		button.PreExp = v
 	}
 	if button.Width == 0 && button.Height == 0 {
 		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
@@ -1044,84 +1070,87 @@ func (r *Renderer) setButtonImageByClass(selector, path string) {
 	}
 }
 
-func (r *Renderer) image(object kag3.TagObject) (err error) {
+func (r *Renderer) image(object kag3.TagObject) error {
+	pm := object.Pm
 	img := &kag3.Image{Opacity: 255, ScaleX: 1, ScaleY: 1}
-	for key, value := range object.Pm {
-		switch key {
-		case "layer":
-			img.Layer = value
-		case "page":
-			img.Page = value
-		case "left":
-			img.Left, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "top":
-			img.Top, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "x":
-			img.X, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "y":
-			img.Y, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "width":
-			img.Width, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "height":
-			img.Height, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "folder":
-			img.Folder = value
-		case "name":
-			img.Name = value
-		case "time":
-			img.Time, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "wait":
-			img.IsWait, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "zindex":
-			img.ZIndex, err = strconv.Atoi(value)
-			if err != nil {
-				return
-			}
-		case "depth":
-			img.Depth = value
-		case "refrect":
-			img.Reflect, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		case "pos":
-			img.Depth = value
-		case "animimg":
-			img.AnimImg, err = strconv.ParseBool(value)
-			if err != nil {
-				return
-			}
-		}
+	if v, ok := getString(pm, "layer"); ok {
+		img.Layer = v
 	}
-	imgFS, name := resolveFolderImage(r, object.Pm["folder"], object.Pm["storage"])
-	img.Image, _, err = ebitenutil.NewImageFromFileSystem(imgFS, name)
+	if v, ok := getString(pm, "page"); ok {
+		img.Page = v
+	}
+	if v, ok, err := getInt(pm, "left"); err != nil {
+		return err
+	} else if ok {
+		img.Left = v
+	}
+	if v, ok, err := getInt(pm, "top"); err != nil {
+		return err
+	} else if ok {
+		img.Top = v
+	}
+	if v, ok, err := getInt(pm, "x"); err != nil {
+		return err
+	} else if ok {
+		img.X = v
+	}
+	if v, ok, err := getInt(pm, "y"); err != nil {
+		return err
+	} else if ok {
+		img.Y = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		img.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		img.Height = v
+	}
+	if v, ok := getString(pm, "folder"); ok {
+		img.Folder = v
+	}
+	if v, ok := getString(pm, "name"); ok {
+		img.Name = v
+	}
+	if v, ok, err := getInt(pm, "time"); err != nil {
+		return err
+	} else if ok {
+		img.Time = v
+	}
+	if v, ok, err := getBool(pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		img.IsWait = v
+	}
+	if v, ok, err := getInt(pm, "zindex"); err != nil {
+		return err
+	} else if ok {
+		img.ZIndex = v
+	}
+	if v, ok := getString(pm, "depth"); ok {
+		img.Depth = v
+	}
+	if v, ok, err := getBool(pm, "refrect"); err != nil {
+		return err
+	} else if ok {
+		img.Reflect = v
+	}
+	if v, ok := getString(pm, "pos"); ok {
+		img.Depth = v
+	}
+	if v, ok, err := getBool(pm, "animimg"); err != nil {
+		return err
+	} else if ok {
+		img.AnimImg = v
+	}
+	loaded, err := loadImage(r, pm["folder"], pm["storage"])
 	if err != nil {
-		return
+		return err
 	}
+	img.Image = loaded
 	imgs = append(imgs, img)
 	return nil
 }

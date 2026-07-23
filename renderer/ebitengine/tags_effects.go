@@ -63,13 +63,9 @@ func handleCamera(ctx *tagCtx) error {
 	if len(props) == 0 {
 		return nil
 	}
-	timeMs := 1000
-	if v, ok := object.Pm["time"]; ok {
-		ms, err := strconv.Atoi(v)
-		if err != nil {
-			return err
-		}
-		timeMs = ms
+	timeMs, err := getIntDefault(object.Pm, "time", 1000)
+	if err != nil {
+		return err
 	}
 	animations["camera"] = &animation{
 		startTick: t,
@@ -78,12 +74,10 @@ func handleCamera(ctx *tagCtx) error {
 		props:     props,
 	}
 	wait := true
-	if v, ok := object.Pm["wait"]; ok {
-		w, err := strconv.ParseBool(v)
-		if err != nil {
-			return err
-		}
-		wait = w
+	if v, ok, err := getBool(object.Pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		wait = v
 	}
 	if wait {
 		waitForAnim(ctx, "camera")
@@ -133,13 +127,9 @@ func handleQuake2(ctx *tagCtx) error { return startQuake(ctx, true) }
 
 func startQuake(ctx *tagCtx, vertical bool) error {
 	object := ctx.tag
-	timeMs := 500
-	if v, ok := object.Pm["time"]; ok {
-		ms, err := strconv.Atoi(v)
-		if err != nil {
-			return err
-		}
-		timeMs = ms
+	timeMs, err := getIntDefault(object.Pm, "time", 500)
+	if err != nil {
+		return err
 	}
 	amplitude := 10.0
 	if v, ok := object.Pm["strength"]; ok {
@@ -155,12 +145,10 @@ func startQuake(ctx *tagCtx, vertical bool) error {
 	shake.vertical = vertical
 
 	wait := true
-	if v, ok := object.Pm["wait"]; ok {
-		w, err := strconv.ParseBool(v)
-		if err != nil {
-			return err
-		}
-		wait = w
+	if v, ok, err := getBool(object.Pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		wait = v
 	}
 	if wait {
 		ctx.y.Until(true, func() bool {
