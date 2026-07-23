@@ -2,11 +2,9 @@ package ebitengine
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 func init() {
@@ -40,10 +38,7 @@ func handleCharaNew(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
 	name := object.Pm["name"]
-	charaImage, _, err := ebitenutil.NewImageFromFileSystem(
-		r.fses["images"],
-		object.Pm["storage"],
-	)
+	charaImage, err := loadImage(r, "", object.Pm["storage"])
 	if err != nil {
 		return err
 	}
@@ -77,8 +72,8 @@ func handleCharaMod(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
 	name := object.Pm["name"]
-	chara, ok := charas[name]
-	if !ok {
+	chara, err := mustChara(name)
+	if err != nil {
 		fmt.Printf("chara_mod: %s は登録されていないためスキップします\n", name)
 		return nil
 	}
@@ -96,10 +91,7 @@ func handleCharaMod(ctx *tagCtx) error {
 		fmt.Printf("chara_mod: %s の表情 %s は登録されていないためスキップします\n", name, object.Pm["face"])
 		return nil
 	}
-	charaImage, _, err := ebitenutil.NewImageFromFileSystem(
-		r.fses["images"],
-		storage,
-	)
+	charaImage, err := loadImage(r, "", storage)
 	if err != nil {
 		return err
 	}
@@ -154,47 +146,34 @@ func handleCharaDelete(ctx *tagCtx) error {
 func handleCharaMove(ctx *tagCtx) error {
 	object := ctx.tag
 	name := object.Pm["name"]
-	var target *kag3.CharaShow
-	for _, c := range viewCharas {
-		if c.Name == name {
-			target = c
-			break
-		}
-	}
+	target := findViewChara(name)
 	if target == nil {
 		return fmt.Errorf("そのキャラクターは表示されてません name=%s", name)
 	}
 
+	pm := object.Pm
 	moveTime := 1000
 	wait := true
 	newLeft := target.Left
-	for key, value := range object.Pm {
-		switch key {
-		case "left":
-			v, err := strconv.Atoi(value)
-			if err != nil {
-				return err
-			}
-			newLeft = v
-		case "top":
-			v, err := strconv.Atoi(value)
-			if err != nil {
-				return err
-			}
-			target.Top = v
-		case "time":
-			v, err := strconv.Atoi(value)
-			if err != nil {
-				return err
-			}
-			moveTime = v
-		case "wait":
-			v, err := strconv.ParseBool(value)
-			if err != nil {
-				return err
-			}
-			wait = v
-		}
+	if v, ok, err := getInt(pm, "left"); err != nil {
+		return err
+	} else if ok {
+		newLeft = v
+	}
+	if v, ok, err := getInt(pm, "top"); err != nil {
+		return err
+	} else if ok {
+		target.Top = v
+	}
+	if v, ok, err := getInt(pm, "time"); err != nil {
+		return err
+	} else if ok {
+		moveTime = v
+	}
+	if v, ok, err := getBool(pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		wait = v
 	}
 	target.NewLeft = newLeft
 	target.Time = moveTime
@@ -228,11 +207,11 @@ func handleCharaLayer(ctx *tagCtx) error {
 	name := object.Pm["name"]
 	layer := object.Pm["layer"]
 	part := object.Pm["part"]
-	c, ok := charas[name]
-	if !ok {
-		return fmt.Errorf("そのキャラクターは登録されてません name=%s", name)
+	c, err := mustChara(name)
+	if err != nil {
+		return err
 	}
-	img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], object.Pm["storage"])
+	img, err := loadImage(r, "", object.Pm["storage"])
 	if err != nil {
 		return err
 	}
@@ -251,9 +230,9 @@ func handleCharaPart(ctx *tagCtx) error {
 	name := object.Pm["name"]
 	layer := object.Pm["layer"]
 	part := object.Pm["part"]
-	c, ok := charas[name]
-	if !ok {
-		return fmt.Errorf("そのキャラクターは登録されてません name=%s", name)
+	c, err := mustChara(name)
+	if err != nil {
+		return err
 	}
 	if c.ActivePart == nil {
 		c.ActivePart = map[string]string{}
@@ -267,9 +246,9 @@ func handleCharaPart(ctx *tagCtx) error {
 func handleCharaPartReset(ctx *tagCtx) error {
 	object := ctx.tag
 	name := object.Pm["name"]
-	c, ok := charas[name]
-	if !ok {
-		return fmt.Errorf("そのキャラクターは登録されてません name=%s", name)
+	c, err := mustChara(name)
+	if err != nil {
+		return err
 	}
 	layer := object.Pm["layer"]
 	if layer == "" {

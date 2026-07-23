@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 func init() {
@@ -268,17 +267,15 @@ var activeMask *maskState
 
 func handleMask(ctx *tagCtx) error {
 	object := ctx.tag
-	img, _, err := ebitenutil.NewImageFromFileSystem(ctx.r.fses["images"], object.Pm["storage"])
+	img, err := loadImage(ctx.r, "", object.Pm["storage"])
 	if err != nil {
 		return err
 	}
 	opacity := float32(1)
-	if v, ok := object.Pm["opacity"]; ok {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return err
-		}
-		opacity = float32(n) / 255
+	if v, ok, err := getInt(object.Pm, "opacity"); err != nil {
+		return err
+	} else if ok {
+		opacity = float32(v) / 255
 	}
 	activeMask = &maskState{Image: img, Opacity: opacity}
 	return nil

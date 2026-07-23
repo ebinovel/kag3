@@ -263,7 +263,7 @@ func handleSaveImg(ctx *tagCtx) error {
 	if !ok {
 		return nil
 	}
-	img, _, err := ebitenutil.NewImageFromFileSystem(ctx.r.fses["images"], v)
+	img, err := loadImage(ctx.r, "", v)
 	if err != nil {
 		return err
 	}

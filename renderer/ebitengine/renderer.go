@@ -1059,12 +1059,12 @@ func (r *Renderer) setButtonImageByClass(selector, path string) {
 			continue
 		}
 		if img == nil {
-			var err error
-			img, _, err = ebitenutil.NewImageFromFileSystem(r.fses["images"], path)
+			loaded, err := loadImage(r, "", path)
 			if err != nil {
 				fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
 				return
 			}
+			img = loaded
 		}
 		b.Graphic = img
 	}
