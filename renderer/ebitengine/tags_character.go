@@ -104,10 +104,120 @@ func handleCharaMod(ctx *tagCtx) error {
 }
 
 func handleCharaShow(ctx *tagCtx) error {
-	chara, err := ctx.r.charaShow(ctx.tag)
-	if err != nil {
+	r := ctx.r
+	object := ctx.tag
+	chara := &kag3.CharaShow{}
+	charaTick = t
+	charaNew := true
+	name := object.Pm["name"]
+	if _, err := mustChara(name); err != nil {
 		return err
 	}
+	for _, c := range viewCharas {
+		if c.Name == name && c.IsRemove {
+			c.IsRemove = false
+			charaNew = false
+			chara = c
+		}
+	}
+	if charaNew {
+		chara.Wait = true
+		chara.Time = 1000
+		chara.Opacity = 255
+		chara.ScaleX = 1
+		chara.ScaleY = 1
+		pm := object.Pm
+		if v, ok := getString(pm, "name"); ok {
+			chara.Name = v
+		}
+		if v, ok, err := getInt(pm, "time"); err != nil {
+			return err
+		} else if ok {
+			chara.Time = v
+		}
+		if v, ok, err := getInt(pm, "zindex"); err != nil {
+			return err
+		} else if ok {
+			chara.Zindex = v
+		}
+		if v, ok := getString(pm, "depth"); ok {
+			chara.Depth = v
+		}
+		if v, ok := getString(pm, "page"); ok {
+			chara.Page = v
+		}
+		if v, ok, err := getBool(pm, "wait"); err != nil {
+			return err
+		} else if ok {
+			chara.Wait = v
+		}
+		if v, ok := getString(pm, "face"); ok {
+			if fv, ok := charas[name].Faces[v]; ok {
+				chara.Face = fv
+			}
+		}
+		if v, ok := getString(pm, "storage"); ok {
+			charaImage, err := loadImage(r, "", v)
+			if err != nil {
+				return err
+			}
+			charas[name].Image = charaImage
+		}
+		if v, ok, err := getBool(pm, "refrect"); err != nil {
+			return err
+		} else if ok {
+			chara.Reflect = v
+		}
+		if v, ok, err := getInt(pm, "width"); err != nil {
+			return err
+		} else if ok {
+			chara.Width = v
+		}
+		if v, ok, err := getInt(pm, "height"); err != nil {
+			return err
+		} else if ok {
+			chara.Height = v
+		}
+		if v, ok, err := getInt(pm, "left"); err != nil {
+			return err
+		} else if ok {
+			chara.Left = v
+		}
+		if v, ok, err := getInt(pm, "top"); err != nil {
+			return err
+		} else if ok {
+			chara.Top = v
+		}
+	}
+	herfWidth := charas[name].Image.Bounds().Dx() / 2
+	charaSpace := r.manager.Config.ScreenWidth / (len(viewCharas) + 2)
+	currentLeft := charaSpace
+	if chara.Left == 0 && chara.Top == 0 {
+		chara.Left = charaSpace - herfWidth
+		chara.Top = r.manager.Config.ScreenHeight - charas[name].Image.Bounds().Dy()
+	}
+	for _, c := range viewCharas {
+		currentLeft += charaSpace
+		// c ranges over every currently-shown character, not just the one
+		// this call is about (already guarded at the top via name) — a
+		// sibling could in principle be an unreconciled load-restored entry
+		// (see reconcileViewCharas in tags_save.go), so re-check here too.
+		sibling, ok := charas[c.Name]
+		if !ok || sibling.Image == nil {
+			continue
+		}
+		left := currentLeft - (sibling.Image.Bounds().Dx() / 2)
+		c.NewLeft = left
+		if charaNew {
+			c.IsSlide = true
+		}
+	}
+	if charaNew {
+		viewCharas = append(viewCharas, chara)
+	}
+	fmt.Printf("viewCharas:%+v\n", chara)
+	fmt.Printf("viewCharas:%+v\n", viewCharas)
+
 	if chara.Wait {
 		ctx.y.Until(true, func() bool {
 			return float64(t-charaTick)/float64(chara.Time*ebiten.TPS()/1000) >= 1
