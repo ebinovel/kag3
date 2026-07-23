@@ -17,6 +17,12 @@ func init() {
 	register("clickable", handleClickable)
 }
 
+var (
+	buttons []*kag3.Button
+	glinks  []*kag3.GLink
+	links   []*kag3.Link
+)
+
 // glinkDefault* are [glink_config]'s settings, used by handleGLink for any
 // attribute a particular [glink] call doesn't specify — most notably Color,
 // since drawScene fills a glink's background with it unconditionally

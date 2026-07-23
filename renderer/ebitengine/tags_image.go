@@ -10,6 +10,8 @@ func init() {
 	register("trans", handleTrans)
 }
 
+var imgs []*kag3.Image
+
 func handleImage(ctx *tagCtx) error {
 	r := ctx.r
 	pm := ctx.tag.Pm

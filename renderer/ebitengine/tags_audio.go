@@ -45,8 +45,14 @@ var (
 	// by stepAudioFades (called from Update()). Keys: "bgm" for the current
 	// track, "bgm_old" for a track xchgbgm/fadeoutbgm is fading out on its
 	// way to being closed, "se:<buf>" for a sound effect.
-	activeFades = map[string]*audioFade{}
+	activeFades  = map[string]*audioFade{}
+	audioContext *audio.Context
+	bgmTick      int
 )
+
+func init() {
+	audioContext = audio.NewContext(44100)
+}
 
 type audioFade struct {
 	player     *audio.Player

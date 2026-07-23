@@ -14,6 +14,31 @@ func init() {
 	register("bg2", handleBG2)
 }
 
+var (
+	bg, bg2 *kag3.Background
+	bgTick  int
+	// bg2Tick drives bg2's own crossfade/slide transition independently of
+	// bg's (see [bg2] in this file), for things like weather overlays.
+	bg2Tick int
+	// backImgs/backPtexts are a simplified fore/back "page" buffer:
+	// [backlay] snapshots imgs/ptexts into them, [trans] swaps them in.
+	backImgs   []*kag3.Image
+	backPtexts map[string]*kag3.PText
+)
+
+func init() {
+	bg = &kag3.Background{
+		Time:   3000,
+		IsWait: true,
+		Method: "crossfade",
+	}
+	bg2 = &kag3.Background{
+		Time:   3000,
+		IsWait: false,
+		Method: "crossfade",
+	}
+}
+
 func handleBG(ctx *tagCtx) error {
 	return applyBGTag(ctx, bg, &bgTick)
 }

@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"strconv"
 
+	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -13,6 +14,12 @@ func init() {
 	register("position", handlePosition)
 	register("locate", handleLocate)
 	register("clearfix", handleClearFix)
+}
+
+var layopt *kag3.LayOpt
+
+func init() {
+	layopt = &kag3.LayOpt{}
 }
 
 func handleLayopt(ctx *tagCtx) error {

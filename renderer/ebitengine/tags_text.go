@@ -20,6 +20,27 @@ func init() {
 	register("ptext", handlePText)
 }
 
+var (
+	// ptexts holds every named [ptext] area, keyed by its "name"
+	// attribute — ptext is general-purpose text placement, not just the
+	// character name-plate. Which one (if any) doubles as the name-plate
+	// is set by [chara_config ptext="..."] into charaNamePText.
+	ptexts         map[string]*kag3.PText
+	charaNamePText string
+	pendingRuby    string
+	// isWait marks "the current line has finished revealing, waiting for a
+	// click to advance" — text objects block on this specifically (see [s]
+	// below and execItem in macro.go), independent of isJump.
+	isWait     bool
+	isTextEnd  bool
+	textStartT int
+	prevLine   int
+)
+
+func init() {
+	ptexts = make(map[string]*kag3.PText)
+}
+
 func handleP(ctx *tagCtx) error {
 	r := ctx.r
 	ctx.y.Until(true, isTextEnded)

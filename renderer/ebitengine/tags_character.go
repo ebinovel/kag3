@@ -23,6 +23,17 @@ func init() {
 	register("chara_part_reset", handleCharaPartReset)
 }
 
+var (
+	charas     map[string]*kag3.Character
+	viewCharas []*kag3.CharaShow
+	charaName  string
+	charaTick  int
+)
+
+func init() {
+	charas = make(map[string]*kag3.Character)
+}
+
 // mustChara looks up name in charas, returning the same error message every
 // [chara_*] handler already constructs by hand when the name isn't
 // registered ([chara_show]/[chara_layer]/[chara_layer_mod]/[chara_part]).

@@ -15,7 +15,6 @@ import (
 	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -93,40 +92,13 @@ type sleepFrame struct {
 }
 
 var (
-	isFirst                                      bool
-	isWait                                       bool
-	loop                                         func(y coro.Yield)
-	isClicked, isTextEnded                       func() bool
-	t, tick, oldTick, bgTick, charaTick, bgmTick int
-	charas                                       map[string]*kag3.Character
-	viewCharas                                   []*kag3.CharaShow
-	bg                                           *kag3.Background
-	// bg2/bg2Tick drive a second background layer composited on top of bg
-	// (see [bg2] in tags_background.go), for things like weather overlays.
-	bg2                                           *kag3.Background
-	bg2Tick                                       int
-	// backImgs/backPtexts are a simplified fore/back "page" buffer:
-	// [backlay] snapshots imgs/ptexts into them, [trans] swaps them in.
-	backImgs                                      []*kag3.Image
-	backPtexts                                    map[string]*kag3.PText
-	textPosition                                 *kag3.TextPosition
-	textStyle                                    *kag3.TextStyle
-	beforeTextSize                               float64
-	// ptexts holds every named [ptext] area, keyed by its "name"
-	// attribute — ptext is general-purpose text placement, not just the
-	// character name-plate. Which one (if any) doubles as the name-plate
-	// is set by [chara_config ptext="..."] into charaNamePText.
-	ptexts                                       map[string]*kag3.PText
-	charaNamePText                               string
-	textGlyphs                                   []text.Glyph
-	charaName                                    string
-	buttons                                      []*kag3.Button
-	imgs                                         []*kag3.Image
-	glinks                                       []*kag3.GLink
-	links                                        []*kag3.Link
-	isJump                                       bool
-	isJumped                                     func() bool
-	jumpIndex                                    int
+	isFirst                bool
+	loop                   func(y coro.Yield)
+	isClicked, isTextEnded func() bool
+	t, tick, oldTick       int
+	isJump                 bool
+	isJumped               func() bool
+	jumpIndex              int
 	// screenChanged marks that whatever is about to consume isJump represents
 	// a real screen change (a different storage loaded, or goToTitle/save-load
 	// tearing down the previous screen's state) rather than a same-storage
@@ -141,34 +113,10 @@ var (
 	// fix="true", matching the real bundled sample) on every in-scene
 	// [link]/[glink] click even though nothing about the screen changed.
 	screenChanged bool
-	audioContext                                 *audio.Context
-	layopt                                       *kag3.LayOpt
-	isTextEnd                                    bool
-	textStartT                                   int
-	prevLine                                     int
-	pendingRuby                                  string
-	isSkip                                       bool
-	isAuto                                       bool
-	autoStartT                                   int
-	co                                           *coro.Coro
+	co            *coro.Coro
 )
 
 func init() {
-	charas = make(map[string]*kag3.Character)
-	ptexts = make(map[string]*kag3.PText)
-	textPosition = &kag3.TextPosition{}
-	audioContext = audio.NewContext(44100)
-	layopt = &kag3.LayOpt{}
-	bg = &kag3.Background{
-		Time:   3000,
-		IsWait: true,
-		Method: "crossfade",
-	}
-	bg2 = &kag3.Background{
-		Time:   3000,
-		IsWait: false,
-		Method: "crossfade",
-	}
 	isClicked = func() bool {
 		return oldTick+3 >= tick
 	}

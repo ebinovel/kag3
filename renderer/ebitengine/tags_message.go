@@ -8,6 +8,7 @@ import (
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 func init() {
@@ -72,6 +73,19 @@ func handleCT(ctx *tagCtx) error {
 // defaultTextStyle is [deffont]'s configured baseline, restored by
 // [resetfont] (tags_text.go) instead of always clearing to nil.
 var defaultTextStyle *kag3.TextStyle
+
+var (
+	textPosition   *kag3.TextPosition
+	textStyle      *kag3.TextStyle
+	beforeTextSize float64
+	textGlyphs     []text.Glyph
+	isSkip, isAuto bool
+	autoStartT     int
+)
+
+func init() {
+	textPosition = &kag3.TextPosition{}
+}
 
 func handleDefFont(ctx *tagCtx) error {
 	saved := textStyle
