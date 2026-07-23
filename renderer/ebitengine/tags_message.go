@@ -76,7 +76,7 @@ var defaultTextStyle *kag3.TextStyle
 func handleDefFont(ctx *tagCtx) error {
 	saved := textStyle
 	textStyle = nil
-	if err := ctx.r.textStyle(ctx.tag); err != nil {
+	if err := applyFontAttrs(ctx); err != nil {
 		textStyle = saved
 		return err
 	}

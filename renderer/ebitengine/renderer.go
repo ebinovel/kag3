@@ -665,41 +665,6 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 	return
 }
 
-func (r *Renderer) textStyle(tagObject kag3.TagObject) error {
-	if textStyle == nil {
-		textStyle = &kag3.TextStyle{}
-	}
-	pm := tagObject.Pm
-	if v, ok, err := getInt(pm, "size"); err != nil {
-		return err
-	} else if ok {
-		textStyle.Size = v
-	}
-	// parseColor's error is intentionally ignored here, matching the
-	// pre-existing behavior of this handler (see resolveFolderImage's
-	// sibling color cases elsewhere for the one place that does check it).
-	if v, ok := getString(pm, "color"); ok {
-		r, g, b, _ := parseColor(v)
-		textStyle.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-	}
-	if v, ok := getString(pm, "edge"); ok {
-		r, g, b, _ := parseColor(v)
-		textStyle.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-	}
-	if v, ok := getString(pm, "shadow"); ok {
-		r, g, b, _ := parseColor(v)
-		textStyle.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
-	}
-	if _, ok := getString(pm, "bold"); ok {
-		textStyle.IsBold = true
-	}
-	if _, ok := getString(pm, "itaric"); ok {
-		textStyle.IsItaric = true
-	}
-	r.texts[tagObject.Line] = append(r.texts[tagObject.Line], Text{TextStyle: textStyle})
-	return nil
-}
-
 // resolveFolderImage loads a [button]-style graphic against folder=,
 // matching real Tyrano's convention that folder names a *subdirectory* of
 // the images root (e.g. folder="bgimage" -> images/bgimage/…) rather than a
