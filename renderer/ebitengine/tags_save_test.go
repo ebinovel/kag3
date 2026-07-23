@@ -188,6 +188,47 @@ func TestSaveSlotRoundTripRestoresMenuButtonVisible(t *testing.T) {
 	}
 }
 
+// TestSaveSlotRoundTripRestoresPtexts is the regression test for a real
+// reported bug: the character name-plate ptext area was at one position at
+// save time, later repositioned by a further [chara_config]/[ptext] call,
+// and loading the earlier save kept showing the *repositioned* name-plate —
+// because ptexts/charaNamePText weren't part of saveData at all, so nothing
+// reset them back to what was active when the save was actually taken.
+func TestSaveSlotRoundTripRestoresPtexts(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	ptexts = map[string]*kag3.PText{
+		"chara_name_area": {Name: "chara_name_area", X: 10, Y: 20, Text: "あかね"},
+	}
+	charaNamePText = "chara_name_area"
+	defer func() { ptexts, charaNamePText = map[string]*kag3.PText{}, "" }()
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate the story continuing past the save point and moving the
+	// name-plate to a new position (e.g. a redesigned message window).
+	ptexts["chara_name_area"] = &kag3.PText{Name: "chara_name_area", X: 100, Y: 200, Text: "あかね"}
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	got, ok := ptexts["chara_name_area"]
+	if !ok || got.X != 10 || got.Y != 20 {
+		t.Errorf("ptexts[chara_name_area] after load = %+v, want X=10 Y=20 (the position active at save time)", got)
+	}
+	if charaNamePText != "chara_name_area" {
+		t.Errorf("charaNamePText after load = %q, want %q", charaNamePText, "chara_name_area")
+	}
+}
+
 // TestApplySaveDataLoadsMenuButtonImageForFreshProcess covers the other
 // half: a fresh process never ran [showmenubutton], so menuButtonImg is
 // nil — restoring MenuButtonVisible=true alone isn't enough, since

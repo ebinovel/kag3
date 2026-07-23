@@ -177,6 +177,22 @@ type saveData struct {
 	// applySaveData resumes via jumpIndex straight into the saved position,
 	// never re-running whatever @showmenubutton call put it there.
 	MenuButtonVisible bool
+	// Ptexts is the package-level ptexts map ([ptext]/[chara_config]/[mtext]/
+	// [graph]'s underlying storage, tags_text.go) at save time. kag3.PText
+	// has no *ebiten.Image fields, so it round-trips through JSON as-is —
+	// no separate "SaveState" type needed, same reasoning as TextStyle.
+	// Without this, loading a save resumed via jumpIndex (skipping whatever
+	// [ptext]/[chara_config] calls ran earlier in the file) showed the
+	// *current* session's ptext layout instead — most visibly, a character
+	// name-plate repositioned partway through a playthrough stayed at its
+	// *new* position even when loading a save from before that change.
+	Ptexts map[string]*kag3.PText
+	// CharaNamePText is charaNamePText (tags_character.go's [chara_config
+	// ptext=...], tracking which ptexts entry doubles as the name-plate) at
+	// save time — same gap as Ptexts above; without it a load could resume
+	// pointing at a name-plate ptext area that either didn't exist yet or
+	// has since moved.
+	CharaNamePText string
 	// LastMessage is whatever text was in the message window at save time
 	// (see currentMessageText in tags_message.go) — the DATA SAVE/LOAD
 	// screen's preview line, alongside the thumbnail (see captureSnapshot).
@@ -214,8 +230,24 @@ func (r *Renderer) buildSaveData() *saveData {
 		TextStyle:         copyTextStyle(textStyle),
 		DefaultTextStyle:  copyTextStyle(defaultTextStyle),
 		MenuButtonVisible: menuButtonVisible,
+		Ptexts:            snapshotPtexts(ptexts),
+		CharaNamePText:    charaNamePText,
 		LastMessage:       currentMessageText(r),
 	}
+}
+
+// snapshotPtexts shallow-copies the ptexts map: [ptext]/[chara_config]/
+// [mtext]/[graph] always register a brand new *kag3.PText on a given name
+// rather than mutating an existing one in place (see handlePText,
+// tags_text.go), so sharing the *kag3.PText pointers themselves across a
+// [checkpoint]-then-later-[ptext] sequence is safe — only the map itself
+// needs its own identity, same idea as buildSaveData's CharaFaces copy.
+func snapshotPtexts(src map[string]*kag3.PText) map[string]*kag3.PText {
+	out := make(map[string]*kag3.PText, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 // copyTextStyle shallow-copies a *kag3.TextStyle (or returns nil for nil).
@@ -442,6 +474,15 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	textStyle = copyTextStyle(d.TextStyle)
 	defaultTextStyle = copyTextStyle(d.DefaultTextStyle)
 	menuButtonVisible = d.MenuButtonVisible
+	// nil check (not just "always assign"): a save written before Ptexts
+	// existed decodes it as nil, and assigning that would wipe out whatever
+	// ptext layout the *current* session already has — leave it alone in
+	// that case rather than making an old save regress further than "same
+	// behavior as before this fix".
+	if d.Ptexts != nil {
+		ptexts = d.Ptexts
+		charaNamePText = d.CharaNamePText
+	}
 	// menuButtonImg is loaded lazily (see handleShowMenuButton,
 	// tags_sysdesign.go) and never reset by a load — a fresh process that
 	// jumps straight to a saved position via jumpIndex never runs the
