@@ -265,6 +265,126 @@ func copyTextStyle(ts *kag3.TextStyle) *kag3.TextStyle {
 	return &cp
 }
 
+// snapshotBg captures the serializable subset of *kag3.Background into a
+// bgSaveState — the read half of buildSaveData's Bg field, split out so
+// [checkpoint]-style snapshots don't need to duplicate the field list.
+func snapshotBg(bg *kag3.Background) bgSaveState {
+	return bgSaveState{
+		Time:     bg.Time,
+		IsWait:   bg.IsWait,
+		IsCross:  bg.IsCross,
+		Position: bg.Position,
+		Method:   bg.Method,
+		IsSystem: bg.IsSystem,
+		Storage:  bg.Storage,
+	}
+}
+
+// snapshotTextPosition captures the serializable subset of
+// *kag3.TextPosition into a textPositionSaveState — the read half of
+// buildSaveData's TextPosition field.
+func snapshotTextPosition(tp *kag3.TextPosition) textPositionSaveState {
+	return textPositionSaveState{
+		Layer:        tp.Layer,
+		Page:         tp.Page,
+		Left:         tp.Left,
+		Top:          tp.Top,
+		Width:        tp.Width,
+		Height:       tp.Height,
+		Color:        tp.Color,
+		BorderColor:  tp.BorderColor,
+		BorderSize:   tp.BorderSize,
+		Opacity:      tp.Opacity,
+		MarginLeft:   tp.MarginLeft,
+		MarginTop:    tp.MarginTop,
+		MarginRight:  tp.MarginRight,
+		MarginBottom: tp.MarginBottom,
+		MarginN:      tp.MarginN,
+		Radius:       tp.Radius,
+		Vertical:     tp.Vertical,
+		Visible:      tp.Visible,
+		Gradient:     tp.Gradient,
+		FilterColor:  tp.FilterColor,
+		FrameStorage: tp.FrameStorage,
+	}
+}
+
+// applyBgFromSnapshot writes s's non-image fields onto bg, then reloads
+// Image from s.Storage (the GPU texture a bgSaveState can't carry through
+// JSON — see bgSaveState's doc comment). A no-op on the image reload when
+// s.Storage is empty (nothing was ever captured, e.g. a save predating this
+// field). The caller decides how to react to a reload failure (applySaveData
+// logs and continues rather than treating it as fatal, matching every other
+// best-effort asset reload on the load path).
+func applyBgFromSnapshot(r *Renderer, bg *kag3.Background, s bgSaveState) error {
+	bg.Time = s.Time
+	bg.IsWait = s.IsWait
+	bg.IsCross = s.IsCross
+	bg.Position = s.Position
+	bg.Method = s.Method
+	bg.IsSystem = s.IsSystem
+	if s.Storage == "" {
+		return nil
+	}
+	images := "images"
+	if s.IsSystem {
+		images = "system/images"
+	}
+	img, _, err := ebitenutil.NewImageFromFileSystem(r.fses[images], s.Storage)
+	if err != nil {
+		return err
+	}
+	bg.Image = img
+	bg.NextImage = nil
+	bg.IsEnd = true
+	bg.Storage = s.Storage
+	return nil
+}
+
+// applyTextPositionFromSnapshot writes s's non-image fields onto tp, then
+// rebuilds BackImage and reloads FrameImage from s.FrameStorage (the GPU
+// textures a textPositionSaveState can't carry through JSON — see its doc
+// comment). A no-op when s.Width and s.Height are both zero (nothing was
+// ever captured). Same caller-decides error contract as applyBgFromSnapshot.
+func applyTextPositionFromSnapshot(r *Renderer, tp *kag3.TextPosition, s textPositionSaveState) error {
+	if s.Width == 0 && s.Height == 0 {
+		return nil
+	}
+	tp.Layer = s.Layer
+	tp.Page = s.Page
+	tp.Left = s.Left
+	tp.Top = s.Top
+	tp.Width = s.Width
+	tp.Height = s.Height
+	tp.Color = s.Color
+	tp.BorderColor = s.BorderColor
+	tp.BorderSize = s.BorderSize
+	tp.Opacity = s.Opacity
+	tp.MarginLeft = s.MarginLeft
+	tp.MarginTop = s.MarginTop
+	tp.MarginRight = s.MarginRight
+	tp.MarginBottom = s.MarginBottom
+	tp.MarginN = s.MarginN
+	tp.Radius = s.Radius
+	tp.Vertical = s.Vertical
+	tp.Visible = s.Visible
+	tp.Gradient = s.Gradient
+	tp.FilterColor = s.FilterColor
+	tp.BackImage = ebiten.NewImage(tp.Width, tp.Height)
+	tp.FrameImage = nil
+	tp.FrameStorage = ""
+	if s.FrameStorage == "" {
+		return nil
+	}
+	img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], s.FrameStorage)
+	if err != nil {
+		return err
+	}
+	tp.FrameImage = img
+	tp.FrameStorage = s.FrameStorage
+	return nil
+}
+
 // reconcileViewCharas ensures every entry in restored has a matching charas
 // registration before it's allowed back into the live viewCharas — the
 // invariant the rest of the renderer (drawScene, charaShow) already assumes

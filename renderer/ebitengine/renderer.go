@@ -833,6 +833,18 @@ func resolveFolderImage(r *Renderer, folder, graphic string) (imgFS fs.FS, name 
 	return r.fses["images"], full
 }
 
+// loadImage resolves folder/storage via resolveFolderImage and loads the
+// result, folding the two-step "resolve fs.FS + path, then load" sequence
+// that's repeated at every [button]/[image]/chara call site into one call.
+func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
+	imgFS, name := resolveFolderImage(r, folder, storage)
+	img, _, err := ebitenutil.NewImageFromFileSystem(imgFS, name)
+	if err != nil {
+		return nil, err
+	}
+	return img, nil
+}
+
 func (r *Renderer) button(object kag3.TagObject) (err error) {
 	button := &kag3.Button{}
 	for key, value := range object.Pm {
@@ -1309,13 +1321,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 					colX := rightEdge - float64(col+1)*charSize
 					tOp := &text.DrawOptions{}
 					tOp.GeoM.Translate(colX, marginTop+float64(row)*charSize)
-					if textStyle != nil && textStyle.Color != nil {
-						tOp.ColorScale.ScaleWithColor(textStyle.Color)
-					} else if rs.style != nil && rs.style.Color != nil {
-						tOp.ColorScale.ScaleWithColor(rs.style.Color)
-					} else {
-						tOp.ColorScale.ScaleWithColor(color.White)
-					}
+					applyTextStyle(r, tOp, Text{TextStyle: rs.style})
 					text.Draw(buf, string(rs.ch), r.verticalFontFace, tOp)
 				}
 				colIndex += (len(runes) + charsPerCol - 1) / charsPerCol
@@ -1483,14 +1489,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 			marginLeft := x + float64(textPosition.MarginLeft)
 			marginTop := y + float64(textPosition.MarginTop) + h*float64(i+j)
 			linkOp.GeoM.Translate(marginLeft, marginTop)
-			if textStyle != nil {
-				if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
-					r.fontFace.Size = float64(textStyle.Size)
-				}
-				if textStyle.Color != nil {
-					linkOp.ColorScale.ScaleWithColor(textStyle.Color)
-				}
-			}
+			applyTextStyle(r, linkOp, Text{})
 			if !isJump {
 				text.Draw(buf, t.Val, r.fontFace, linkOp)
 			}

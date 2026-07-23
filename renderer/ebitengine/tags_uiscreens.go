@@ -35,6 +35,17 @@ func init() {
 // directly via y.Until (see handleDialog in tags_save.go), so it doesn't
 // need this separate freeze mechanism; only the button-triggered kind runs
 // outside the coroutine and needs Update() to hold the story back itself.
+// closeAllModals dismisses every modal overlay anyModalActive tracks except
+// activeDialog (goToTitle's own confirm dialog resolves separately — see its
+// call site) — the "reset all UI state" step goToTitle and similar full
+// resets need, collapsed from 3-4 separate assignments into one call.
+func closeAllModals() {
+	menuOpen = false
+	backlogViewing = false
+	slotPickerActive = slotPickerNone
+	editState = nil
+}
+
 func anyModalActive() bool {
 	return backlogViewing || menuOpen || slotPickerActive != slotPickerNone ||
 		(editState != nil && editState.Active) ||

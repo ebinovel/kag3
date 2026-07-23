@@ -25,6 +25,17 @@ func init() {
 	register("chara_part_reset", handleCharaPartReset)
 }
 
+// mustChara looks up name in charas, returning the same error message every
+// [chara_*] handler already constructs by hand when the name isn't
+// registered ([chara_show]/[chara_layer]/[chara_layer_mod]/[chara_part]).
+func mustChara(name string) (*kag3.Character, error) {
+	c, ok := charas[name]
+	if !ok {
+		return nil, fmt.Errorf("そのキャラクターは登録されてません name=%s", name)
+	}
+	return c, nil
+}
+
 func handleCharaNew(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
