@@ -200,47 +200,17 @@ func (r *Renderer) buildSaveData() *saveData {
 		}
 	}
 	return &saveData{
-		Storage:      r.currentStorage,
-		Index:        currentScriptIndex,
-		CallStack:    append([]callFrame(nil), r.callStack...),
-		SleepStack:   sleepStackToCallFrames(r.sleepStack),
-		SFVars:       r.vm.ExportSF(),
-		FVars:        r.vm.ExportF(),
-		ViewCharas:   append([]*kag3.CharaShow(nil), viewCharas...),
-		CharaStorage: charaStorage,
-		CharaFaces:   charaFaces,
-		Bg: bgSaveState{
-			Time:     bg.Time,
-			IsWait:   bg.IsWait,
-			IsCross:  bg.IsCross,
-			Position: bg.Position,
-			Method:   bg.Method,
-			IsSystem: bg.IsSystem,
-			Storage:  bg.Storage,
-		},
-		TextPosition: textPositionSaveState{
-			Layer:        textPosition.Layer,
-			Page:         textPosition.Page,
-			Left:         textPosition.Left,
-			Top:          textPosition.Top,
-			Width:        textPosition.Width,
-			Height:       textPosition.Height,
-			Color:        textPosition.Color,
-			BorderColor:  textPosition.BorderColor,
-			BorderSize:   textPosition.BorderSize,
-			Opacity:      textPosition.Opacity,
-			MarginLeft:   textPosition.MarginLeft,
-			MarginTop:    textPosition.MarginTop,
-			MarginRight:  textPosition.MarginRight,
-			MarginBottom: textPosition.MarginBottom,
-			MarginN:      textPosition.MarginN,
-			Radius:       textPosition.Radius,
-			Vertical:     textPosition.Vertical,
-			Visible:      textPosition.Visible,
-			Gradient:     textPosition.Gradient,
-			FilterColor:  textPosition.FilterColor,
-			FrameStorage: textPosition.FrameStorage,
-		},
+		Storage:           r.currentStorage,
+		Index:             currentScriptIndex,
+		CallStack:         append([]callFrame(nil), r.callStack...),
+		SleepStack:        sleepStackToCallFrames(r.sleepStack),
+		SFVars:            r.vm.ExportSF(),
+		FVars:             r.vm.ExportF(),
+		ViewCharas:        append([]*kag3.CharaShow(nil), viewCharas...),
+		CharaStorage:      charaStorage,
+		CharaFaces:        charaFaces,
+		Bg:                snapshotBg(bg),
+		TextPosition:      snapshotTextPosition(textPosition),
 		TextStyle:         copyTextStyle(textStyle),
 		DefaultTextStyle:  copyTextStyle(defaultTextStyle),
 		MenuButtonVisible: menuButtonVisible,
@@ -453,62 +423,16 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	r.vm.RestoreF(d.FVars)
 	r.vm.RestoreSF(d.SFVars)
 	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage, d.CharaFaces)
-	bg.Time = d.Bg.Time
-	bg.IsWait = d.Bg.IsWait
-	bg.IsCross = d.Bg.IsCross
-	bg.Position = d.Bg.Position
-	bg.Method = d.Bg.Method
-	bg.IsSystem = d.Bg.IsSystem
-	if d.Bg.Storage != "" {
-		images := "images"
-		if d.Bg.IsSystem {
-			images = "system/images"
-		}
-		if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses[images], d.Bg.Storage); err != nil {
-			fmt.Printf("save/load: 背景 %s の読み込みに失敗しました: %v\n", d.Bg.Storage, err)
-		} else {
-			bg.Image = img
-			bg.NextImage = nil
-			bg.IsEnd = true
-			bg.Storage = d.Bg.Storage
-		}
+	if err := applyBgFromSnapshot(r, bg, d.Bg); err != nil {
+		fmt.Printf("save/load: 背景 %s の読み込みに失敗しました: %v\n", d.Bg.Storage, err)
 	}
 	// Width/Height!=0 as the "was this actually captured" signal — same idea
-	// as Bg.Storage!="" above — so loading a save written before this field
-	// existed doesn't stomp a same-process textPosition that's already
-	// correctly configured with zeroed-out layout.
-	if d.TextPosition.Width != 0 || d.TextPosition.Height != 0 {
-		textPosition.Layer = d.TextPosition.Layer
-		textPosition.Page = d.TextPosition.Page
-		textPosition.Left = d.TextPosition.Left
-		textPosition.Top = d.TextPosition.Top
-		textPosition.Width = d.TextPosition.Width
-		textPosition.Height = d.TextPosition.Height
-		textPosition.Color = d.TextPosition.Color
-		textPosition.BorderColor = d.TextPosition.BorderColor
-		textPosition.BorderSize = d.TextPosition.BorderSize
-		textPosition.Opacity = d.TextPosition.Opacity
-		textPosition.MarginLeft = d.TextPosition.MarginLeft
-		textPosition.MarginTop = d.TextPosition.MarginTop
-		textPosition.MarginRight = d.TextPosition.MarginRight
-		textPosition.MarginBottom = d.TextPosition.MarginBottom
-		textPosition.MarginN = d.TextPosition.MarginN
-		textPosition.Radius = d.TextPosition.Radius
-		textPosition.Vertical = d.TextPosition.Vertical
-		textPosition.Visible = d.TextPosition.Visible
-		textPosition.Gradient = d.TextPosition.Gradient
-		textPosition.FilterColor = d.TextPosition.FilterColor
-		textPosition.BackImage = ebiten.NewImage(textPosition.Width, textPosition.Height)
-		textPosition.FrameImage = nil
-		textPosition.FrameStorage = ""
-		if d.TextPosition.FrameStorage != "" {
-			if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], d.TextPosition.FrameStorage); err != nil {
-				fmt.Printf("save/load: メッセージ枠 %s の読み込みに失敗しました: %v\n", d.TextPosition.FrameStorage, err)
-			} else {
-				textPosition.FrameImage = img
-				textPosition.FrameStorage = d.TextPosition.FrameStorage
-			}
-		}
+	// as Bg.Storage!="" inside applyBgFromSnapshot — so loading a save
+	// written before this field existed doesn't stomp a same-process
+	// textPosition that's already correctly configured with zeroed-out
+	// layout (see applyTextPositionFromSnapshot's own no-op guard).
+	if err := applyTextPositionFromSnapshot(r, textPosition, d.TextPosition); err != nil {
+		fmt.Printf("save/load: メッセージ枠 %s の読み込みに失敗しました: %v\n", d.TextPosition.FrameStorage, err)
 	}
 	// Copied again (not assigned directly), same reasoning as buildSaveData's
 	// copyTextStyle: [rollback] can apply the same *saveData (checkpointData)

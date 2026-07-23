@@ -556,8 +556,8 @@ func (r *Renderer) charaShow(object kag3.TagObject) (chara *kag3.CharaShow, err 
 	charaTick = t
 	charaNew := true
 	name := object.Pm["name"]
-	if _, ok := charas[name]; !ok {
-		return nil, fmt.Errorf("そのキャラクターは登録されてません name=%s", name)
+	if _, err := mustChara(name); err != nil {
+		return nil, err
 	}
 	for _, c := range viewCharas {
 		if c.Name == name && c.IsRemove {
