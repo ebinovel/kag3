@@ -156,6 +156,27 @@ type saveData struct {
 	CharaFaces   map[string]map[string]string
 	Bg           bgSaveState
 	TextPosition textPositionSaveState
+	// TextStyle/DefaultTextStyle are the package-level textStyle/
+	// defaultTextStyle vars ([font]/[deffont]/[resetfont], tags_text.go) at
+	// save time. kag3.TextStyle has no *ebiten.Image fields, so unlike
+	// TextPosition it round-trips through JSON as-is — no separate
+	// "SaveState" struct needed. Without this, loading a save taken while
+	// [font color=...] was in effect showed the *current* session's color
+	// instead (e.g. black after a later [deffont] call), because nothing
+	// reset/restored textStyle on load — applySaveData resumes via
+	// jumpIndex straight into the saved position, skipping whatever [font]
+	// tag was in scope there. nil (nothing set, or an old save predating
+	// this field) is itself a valid, safe value — the renderer's built-in
+	// default look.
+	TextStyle        *kag3.TextStyle
+	DefaultTextStyle *kag3.TextStyle
+	// MenuButtonVisible is menuButtonVisible (tags_sysdesign.go's
+	// @showmenubutton/@hidemenubutton corner icon) at save time. Without
+	// this, loading a save taken while the button was still visible left it
+	// hidden if the *current* session had since called [hidemenubutton] —
+	// applySaveData resumes via jumpIndex straight into the saved position,
+	// never re-running whatever @showmenubutton call put it there.
+	MenuButtonVisible bool
 	// LastMessage is whatever text was in the message window at save time
 	// (see currentMessageText in tags_message.go) — the DATA SAVE/LOAD
 	// screen's preview line, alongside the thumbnail (see captureSnapshot).
@@ -220,8 +241,28 @@ func (r *Renderer) buildSaveData() *saveData {
 			FilterColor:  textPosition.FilterColor,
 			FrameStorage: textPosition.FrameStorage,
 		},
-		LastMessage: currentMessageText(r),
+		TextStyle:         copyTextStyle(textStyle),
+		DefaultTextStyle:  copyTextStyle(defaultTextStyle),
+		MenuButtonVisible: menuButtonVisible,
+		LastMessage:       currentMessageText(r),
 	}
+}
+
+// copyTextStyle shallow-copies a *kag3.TextStyle (or returns nil for nil).
+// [checkpoint] keeps its *saveData in memory until [rollback] uses it (see
+// checkpointData below) rather than serializing it right away, so storing
+// the live textStyle/defaultTextStyle pointers directly would let a later
+// [font]/[deffont] call — which mutates the shared struct's fields in place
+// — silently corrupt an already-taken checkpoint. Copying just the top-level
+// struct is enough: nothing ever mutates an existing *color.RGBA in place
+// (Color/Edge/Shadow are always reassigned to a brand new pointer), so
+// sharing those is safe.
+func copyTextStyle(ts *kag3.TextStyle) *kag3.TextStyle {
+	if ts == nil {
+		return nil
+	}
+	cp := *ts
+	return &cp
 }
 
 // reconcileViewCharas ensures every entry in restored has a matching charas
@@ -347,6 +388,27 @@ func (r *Renderer) applySaveData(d *saveData) error {
 				textPosition.FrameImage = img
 				textPosition.FrameStorage = d.TextPosition.FrameStorage
 			}
+		}
+	}
+	// Copied again (not assigned directly), same reasoning as buildSaveData's
+	// copyTextStyle: [rollback] can apply the same *saveData (checkpointData)
+	// more than once, so textStyle must get its own struct instance rather
+	// than aliasing d's — otherwise a [font] call after this rollback would
+	// mutate the checkpoint itself, corrupting any later rollback to it.
+	textStyle = copyTextStyle(d.TextStyle)
+	defaultTextStyle = copyTextStyle(d.DefaultTextStyle)
+	menuButtonVisible = d.MenuButtonVisible
+	// menuButtonImg is loaded lazily (see handleShowMenuButton,
+	// tags_sysdesign.go) and never reset by a load — a fresh process that
+	// jumps straight to a saved position via jumpIndex never runs the
+	// @showmenubutton call that would normally load it, so drawMenuButton's
+	// own "menuButtonImg == nil" guard would otherwise keep the button
+	// hidden even with MenuButtonVisible restored to true.
+	if menuButtonVisible && menuButtonImg == nil {
+		if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["system/images"], "button_menu.png"); err != nil {
+			fmt.Printf("save/load: メニューボタンの読み込みに失敗しました: %v\n", err)
+		} else {
+			menuButtonImg = img
 		}
 	}
 	r.texts = make(map[int][]Text)

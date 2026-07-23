@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"image/color"
 	"io/fs"
 	"os"
 	"testing"
@@ -71,6 +72,151 @@ func TestSaveSlotRoundTrip(t *testing.T) {
 	}
 	if !isJump || jumpIndex != 42 {
 		t.Errorf("isJump/jumpIndex after load = %v/%d, want true/42", isJump, jumpIndex)
+	}
+}
+
+// TestSaveSlotRoundTripRestoresTextStyle is the regression test for a real
+// reported bug: text was white at save time, later turned black ([font]/
+// [deffont] further into the story), and loading the earlier (white) save
+// kept showing black — because textStyle/defaultTextStyle weren't part of
+// saveData at all, so nothing reset them back to what was active when the
+// save was actually taken.
+func TestSaveSlotRoundTripRestoresTextStyle(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	// bg/textPosition are package-level and may carry leftover state from
+	// an earlier test in this run — reset so buildSaveData doesn't capture
+	// a Bg.Storage/TextPosition.FrameStorage that would send applySaveData
+	// down the fs.FS-reload path this minimal renderer (no r.fses) can't
+	// serve.
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	white := &color.RGBA{0xff, 0xff, 0xff, 0xff}
+	textStyle = &kag3.TextStyle{Color: white}
+	defaultTextStyle = &kag3.TextStyle{Color: white}
+	defer func() { textStyle, defaultTextStyle = nil, nil }()
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate the story continuing past the save point and changing color.
+	black := &color.RGBA{0x00, 0x00, 0x00, 0xff}
+	textStyle = &kag3.TextStyle{Color: black}
+	defaultTextStyle = &kag3.TextStyle{Color: black}
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	if textStyle == nil || textStyle.Color == nil || *textStyle.Color != *white {
+		t.Errorf("textStyle after load = %+v, want Color=%+v (the color active at save time)", textStyle, white)
+	}
+	if defaultTextStyle == nil || defaultTextStyle.Color == nil || *defaultTextStyle.Color != *white {
+		t.Errorf("defaultTextStyle after load = %+v, want Color=%+v", defaultTextStyle, white)
+	}
+}
+
+// TestRollbackDoesNotAliasCheckpointTextStyle ensures [checkpoint]'s
+// in-memory saveData isn't corrupted by gameplay after it: a [font] call
+// following a [rollback] mutates the *live* textStyle struct in place (see
+// r.textStyle in renderer.go), so if applySaveData ever assigned d.TextStyle
+// directly instead of copying it, a second rollback to the same checkpoint
+// would incorrectly show the post-rollback color.
+func TestRollbackDoesNotAliasCheckpointTextStyle(t *testing.T) {
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	white := &color.RGBA{0xff, 0xff, 0xff, 0xff}
+	textStyle = &kag3.TextStyle{Color: white}
+	defer func() { textStyle, checkpointData = nil, nil }()
+
+	checkpointData = r.buildSaveData()
+
+	// First rollback, then simulate a [font color=...] mutating the live
+	// struct in place exactly like r.textStyle does.
+	if err := r.applySaveData(checkpointData); err != nil {
+		t.Fatalf("applySaveData (1st rollback) error: %v", err)
+	}
+	textStyle.Color = &color.RGBA{0x00, 0x00, 0x00, 0xff}
+
+	// Second rollback to the *same* checkpoint must still restore white.
+	if err := r.applySaveData(checkpointData); err != nil {
+		t.Fatalf("applySaveData (2nd rollback) error: %v", err)
+	}
+	if textStyle == nil || textStyle.Color == nil || *textStyle.Color != *white {
+		t.Errorf("textStyle after 2nd rollback = %+v, want Color=%+v (checkpoint must not have been mutated by the 1st rollback's aftermath)", textStyle, white)
+	}
+}
+
+// TestSaveSlotRoundTripRestoresMenuButtonVisible is the regression test for
+// a real reported bug: the corner @showmenubutton icon was visible at save
+// time, later hidden by [hidemenubutton] further into the story, and
+// loading the earlier save kept it hidden — because menuButtonVisible
+// wasn't part of saveData, so nothing restored it to what was active when
+// the save was actually taken.
+func TestSaveSlotRoundTripRestoresMenuButtonVisible(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	menuButtonVisible = true
+	menuButtonImg = newTestImage(10, 10) // already loaded, same-process
+	defer func() { menuButtonVisible, menuButtonImg = false, nil }()
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate the story continuing past the save point and hiding it.
+	menuButtonVisible = false
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	if !menuButtonVisible {
+		t.Error("menuButtonVisible after load = false, want true (the state active at save time)")
+	}
+}
+
+// TestApplySaveDataLoadsMenuButtonImageForFreshProcess covers the other
+// half: a fresh process never ran [showmenubutton], so menuButtonImg is
+// nil — restoring MenuButtonVisible=true alone isn't enough, since
+// drawMenuButton/handleMenuButtonClick both also gate on menuButtonImg !=
+// nil. applySaveData must load it itself.
+func TestApplySaveDataLoadsMenuButtonImageForFreshProcess(t *testing.T) {
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	menuButtonVisible, menuButtonImg = false, nil
+	defer func() {
+		bg, textPosition = &kag3.Background{}, &kag3.TextPosition{}
+		menuButtonVisible, menuButtonImg = false, nil
+	}()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"system/images": fstest.MapFS{
+		"button_menu.png": &fstest.MapFile{Data: tinyPNG(t)},
+	}}
+
+	d := &saveData{Storage: r.currentStorage, MenuButtonVisible: true}
+	if err := r.applySaveData(d); err != nil {
+		t.Fatalf("applySaveData error: %v", err)
+	}
+
+	if !menuButtonVisible {
+		t.Error("menuButtonVisible after load = false, want true")
+	}
+	if menuButtonImg == nil {
+		t.Error("menuButtonImg after load = nil, want it lazily loaded from system/images")
 	}
 }
 
