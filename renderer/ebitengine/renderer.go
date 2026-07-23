@@ -769,53 +769,9 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	drawCharacters(buf)
 	applyFukiPosition()
 	drawMessageWindow(r, buf)
-	for i, link := range links {
-		for j, t := range link.Texts {
-			linkOp := &text.DrawOptions{}
-			x, y := float64(textPosition.Left), float64(textPosition.Top)
-			_, h := text.Measure(t.Val, r.fontFace, 0)
-			marginLeft := x + float64(textPosition.MarginLeft)
-			marginTop := y + float64(textPosition.MarginTop) + h*float64(i+j)
-			linkOp.GeoM.Translate(marginLeft, marginTop)
-			applyTextStyle(r, linkOp, Text{})
-			if !isJump {
-				text.Draw(buf, t.Val, r.fontFace, linkOp)
-			}
-		}
-	}
-	for _, glink := range glinks {
-		backgroundOp := &ebiten.DrawImageOptions{}
-		backgroundOp.GeoM.Translate(float64(glink.X), float64(glink.Y))
-		img := ebiten.NewImage(glink.Width, glink.Height)
-		img.Fill(glink.Color)
-		buf.DrawImage(img, backgroundOp)
-		glinkOp := &text.DrawOptions{}
-		w, h := text.Measure(glink.Text, r.fontFace, 0)
-		glinkOp.GeoM.Translate(float64(glink.Width/2+glink.X)-(w/2), float64(glink.Height/2+glink.Y)-(h/2))
-		text.Draw(buf, glink.Text, r.fontFace, glinkOp)
-	}
-	for _, button := range buttons {
-		if button.Graphic == nil && button.EnterImg == nil {
-			// An invisible hit zone (e.g. [clickable]) — nothing to draw.
-			continue
-		}
-		buttonOp := &ebiten.DrawImageOptions{}
-		buttonOp.GeoM.Translate(float64(button.X), float64(button.Y))
-
-		mX, mY := ebiten.CursorPosition()
-		// A button with no enterimg= (e.g. config.ks's volume/speed slider
-		// buttons) just keeps showing its normal graphic on hover, rather
-		// than crash trying to draw a nil hover image. Graphic itself can
-		// also be nil (only enterimg= given, an unusual but not invalid
-		// script) — draw whichever of the two applies is actually set.
-		toDraw := button.Graphic
-		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) && button.EnterImg != nil {
-			toDraw = button.EnterImg
-		}
-		if toDraw != nil {
-			buf.DrawImage(toDraw, buttonOp)
-		}
-	}
+	drawLinks(r, buf)
+	drawGLinks(r, buf)
+	drawButtons(buf)
 	drawImages(buf)
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
