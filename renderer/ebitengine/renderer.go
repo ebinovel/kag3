@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/ebinovel/kag3"
-	"github.com/ebinovel/kag3/renderer/ebitengine/effects"
 	"github.com/eihigh/coro"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -767,50 +766,8 @@ func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
 }
 
 func (r *Renderer) drawScene(buf *ebiten.Image) {
-	if bg.Image != nil {
-		buf.DrawImage(bg.Image, &ebiten.DrawImageOptions{})
-		if bg.NextImage != nil {
-			if transition, ok := effects.Transitions[bg.Method]; ok {
-				transition.DrawBackground(buf, bg, bgTick, t, bg.Time)
-			}
-		}
-	}
-	if bg2.Image != nil {
-		buf.DrawImage(bg2.Image, &ebiten.DrawImageOptions{})
-		if bg2.NextImage != nil {
-			if transition, ok := effects.Transitions[bg2.Method]; ok {
-				transition.DrawBackground(buf, bg2, bg2Tick, t, bg2.Time)
-			}
-		}
-	}
-	for _, chara := range viewCharas {
-		// A registered=false entry here means a loaded save's character
-		// couldn't be reconciled (see reconcileViewCharas in tags_save.go)
-		// — that function is meant to filter these out before they ever
-		// reach viewCharas, but skip defensively rather than crash the
-		// whole renderer if that invariant is ever violated.
-		registered, ok := charas[chara.Name]
-		if !ok || registered.Image == nil {
-			continue
-		}
-		if chara.IsSlide {
-			e := &effects.SlideInLeft{}
-			e.Draw(buf, registered.Image, chara, charaTick, t, chara.Time)
-		} else {
-			if chara.IsRemove {
-				e := &effects.FadeOut{}
-				e.Draw(buf, registered.Image, chara.Left, chara.Top, charaTick, t, chara.Time,
-					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
-			} else {
-				e := &effects.FadeIn{}
-				e.Draw(buf, registered.Image, chara.Left, chara.Top, charaTick, t, chara.Time,
-					chara.Opacity/255, chara.ScaleX, chara.ScaleY, chara.Rotation)
-			}
-		}
-		if !chara.IsRemove {
-			drawCharaParts(buf, registered, chara.Left, chara.Top)
-		}
-	}
+	drawBackground(buf)
+	drawCharacters(buf)
 	applyFukiPosition()
 	if textPosition != nil && textPosition.Visible {
 		op := &ebiten.DrawImageOptions{}
@@ -1094,16 +1051,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 			buf.DrawImage(toDraw, buttonOp)
 		}
 	}
-	for _, img := range imgs {
-		imgOp := &ebiten.DrawImageOptions{}
-		applyPivotedImageTransform(imgOp, img.Image, img.ScaleX, img.ScaleY, img.Rotation)
-		imgOp.GeoM.Translate(float64(img.X), float64(img.Y))
-		imgOp.ColorScale.ScaleAlpha(float32(img.Opacity / 255))
-		if blend, ok := layerBlend[img.Layer]; ok {
-			imgOp.Blend = blend
-		}
-		buf.DrawImage(img.Image, imgOp)
-	}
+	drawImages(buf)
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
@@ -1120,46 +1068,6 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	// scene underneath it.
 	captureSnapshot(buf)
 	drawModal(r, buf)
-}
-
-// drawCharaParts overlays a character's currently active differential
-// parts (see [chara_layer]/[chara_part]) on top of its base image, aligned
-// to the same origin. Layers are drawn in sorted-name order for
-// determinism since Tyrano-style z-index configuration isn't implemented.
-// applyPivotedImageTransform scales/rotates op around img's own center —
-// the same convention as effects.applyPivotedTransform, duplicated here
-// (unexported there) since [image]'s Opacity/ScaleX/ScaleY/Rotation are
-// applied directly in drawScene rather than through an effects.* type.
-func applyPivotedImageTransform(op *ebiten.DrawImageOptions, img *ebiten.Image, scaleX, scaleY, rotation float64) {
-	if scaleX == 1 && scaleY == 1 && rotation == 0 {
-		return
-	}
-	w, h := img.Bounds().Dx(), img.Bounds().Dy()
-	op.GeoM.Translate(-float64(w)/2, -float64(h)/2)
-	op.GeoM.Scale(scaleX, scaleY)
-	op.GeoM.Rotate(rotation)
-	op.GeoM.Translate(float64(w)/2, float64(h)/2)
-}
-
-func drawCharaParts(screen *ebiten.Image, c *kag3.Character, left, top int) {
-	if c == nil || len(c.ActivePart) == 0 {
-		return
-	}
-	layerNames := make([]string, 0, len(c.ActivePart))
-	for layer := range c.ActivePart {
-		layerNames = append(layerNames, layer)
-	}
-	slices.Sort(layerNames)
-	for _, layer := range layerNames {
-		part := c.ActivePart[layer]
-		img, ok := c.Parts[layer][part]
-		if !ok {
-			continue
-		}
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(left), float64(top))
-		screen.DrawImage(img, op)
-	}
 }
 
 // drawPTexts renders every named [ptext] area. The one registered as the
