@@ -346,5 +346,5 @@ func handleMText(ctx *tagCtx) error {
 // character-by-character reveal, so this places a real image via the same
 // mechanism as [image] instead of literally embedding it in the text flow.
 func handleGraph(ctx *tagCtx) error {
-	return ctx.r.image(ctx.tag)
+	return handleImage(ctx)
 }

@@ -50,7 +50,116 @@ func handleGLinkConfig(ctx *tagCtx) error {
 }
 
 func handleButton(ctx *tagCtx) error {
-	return ctx.r.button(ctx.tag)
+	r := ctx.r
+	pm := ctx.tag.Pm
+	button := &kag3.Button{}
+	if v, ok := getString(pm, "graphic"); ok {
+		img, err := loadImage(r, pm["folder"], v)
+		if err != nil {
+			return err
+		}
+		button.Graphic = img
+	}
+	if v, ok := getString(pm, "storage"); ok {
+		button.Storage = v
+	}
+	if v, ok := getString(pm, "target"); ok {
+		button.Target = v
+	}
+	if v, ok := getString(pm, "name"); ok {
+		button.Name = v
+	}
+	if v, ok, err := getInt(pm, "x"); err != nil {
+		return err
+	} else if ok {
+		button.X = v
+	}
+	if v, ok, err := getInt(pm, "y"); err != nil {
+		return err
+	} else if ok {
+		button.Y = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		button.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		button.Height = v
+	}
+	if v, ok, err := getBool(pm, "fix"); err != nil {
+		return err
+	} else if ok {
+		button.Fix = v
+	}
+	if v, ok := getString(pm, "role"); ok {
+		button.Role = v
+	}
+	if v, ok := getString(pm, "hint"); ok {
+		button.Hint = v
+	}
+	if v, ok := getString(pm, "clickse"); ok {
+		button.ClickSE = v
+	}
+	if v, ok := getString(pm, "enterse"); ok {
+		button.EnterSE = v
+	}
+	if v, ok := getString(pm, "leavese"); ok {
+		button.LeaveSE = v
+	}
+	if v, ok := getString(pm, "activeimg"); ok {
+		button.ActiveImg = v
+	}
+	if v, ok := getString(pm, "clickimg"); ok {
+		button.ClickImg = v
+	}
+	if v, ok := getString(pm, "enterimg"); ok {
+		img, err := loadImage(r, pm["folder"], v)
+		if err != nil {
+			return err
+		}
+		button.EnterImg = img
+	}
+	if v, ok := getString(pm, "autoimg"); ok {
+		button.AutoImg = v
+	}
+	if v, ok := getString(pm, "skipimg"); ok {
+		button.SkipImg = v
+	}
+	if v, ok, err := getBool(pm, "visible"); err != nil {
+		return err
+	} else if ok {
+		button.Visible = v
+	}
+	if v, ok, err := getBool(pm, "auto_next"); err != nil {
+		return err
+	} else if ok {
+		button.AutoNext = v
+	}
+	if v, ok, err := getBool(pm, "savesnap"); err != nil {
+		return err
+	} else if ok {
+		button.SaveSnap = v
+	}
+	if v, ok, err := getInt(pm, "keyforcus"); err != nil {
+		return err
+	} else if ok {
+		button.KeyForcus = v
+	}
+	if v, ok := getString(pm, "exp"); ok {
+		button.Exp = v
+	}
+	if v, ok := getString(pm, "preexp"); ok {
+		button.PreExp = v
+	}
+	if button.Width == 0 && button.Height == 0 {
+		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
+	}
+	fmt.Printf("button: %+v\n", button)
+	buttons = append(buttons, button)
+	return nil
 }
 
 func handleGLink(ctx *tagCtx) error {

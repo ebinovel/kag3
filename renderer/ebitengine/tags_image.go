@@ -11,7 +11,89 @@ func init() {
 }
 
 func handleImage(ctx *tagCtx) error {
-	return ctx.r.image(ctx.tag)
+	r := ctx.r
+	pm := ctx.tag.Pm
+	img := &kag3.Image{Opacity: 255, ScaleX: 1, ScaleY: 1}
+	if v, ok := getString(pm, "layer"); ok {
+		img.Layer = v
+	}
+	if v, ok := getString(pm, "page"); ok {
+		img.Page = v
+	}
+	if v, ok, err := getInt(pm, "left"); err != nil {
+		return err
+	} else if ok {
+		img.Left = v
+	}
+	if v, ok, err := getInt(pm, "top"); err != nil {
+		return err
+	} else if ok {
+		img.Top = v
+	}
+	if v, ok, err := getInt(pm, "x"); err != nil {
+		return err
+	} else if ok {
+		img.X = v
+	}
+	if v, ok, err := getInt(pm, "y"); err != nil {
+		return err
+	} else if ok {
+		img.Y = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		img.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		img.Height = v
+	}
+	if v, ok := getString(pm, "folder"); ok {
+		img.Folder = v
+	}
+	if v, ok := getString(pm, "name"); ok {
+		img.Name = v
+	}
+	if v, ok, err := getInt(pm, "time"); err != nil {
+		return err
+	} else if ok {
+		img.Time = v
+	}
+	if v, ok, err := getBool(pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		img.IsWait = v
+	}
+	if v, ok, err := getInt(pm, "zindex"); err != nil {
+		return err
+	} else if ok {
+		img.ZIndex = v
+	}
+	if v, ok := getString(pm, "depth"); ok {
+		img.Depth = v
+	}
+	if v, ok, err := getBool(pm, "refrect"); err != nil {
+		return err
+	} else if ok {
+		img.Reflect = v
+	}
+	if v, ok := getString(pm, "pos"); ok {
+		img.Depth = v
+	}
+	if v, ok, err := getBool(pm, "animimg"); err != nil {
+		return err
+	} else if ok {
+		img.AnimImg = v
+	}
+	loaded, err := loadImage(r, pm["folder"], pm["storage"])
+	if err != nil {
+		return err
+	}
+	img.Image = loaded
+	imgs = append(imgs, img)
+	return nil
 }
 
 // handleFree releases a single named object — a [ptext] area or a [image]
