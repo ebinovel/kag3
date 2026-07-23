@@ -380,6 +380,50 @@ func TestResolveFolderImage(t *testing.T) {
 	})
 }
 
+// TestParseColor is the regression test for a real bug found while fixing
+// black<->white: the "0xRRGGBB" hex branch sliced out only the first digit
+// of each byte pair (e.g. "0x454D51" -> "4","4","5") and fed it to Atoi as
+// *decimal*, and "black" itself returned white. "white"/"pink" — also used
+// by the bundled scripts — weren't recognized as named colors at all and
+// fell into that same broken hex path. Both color="0x454D51"/"0xFAFAFA"
+// (scene1.ks's custom message window) and color="pink"/"white" are real,
+// reachable attribute values in the bundled example scripts.
+func TestParseColor(t *testing.T) {
+	cases := []struct {
+		name                string
+		in                  string
+		wantR, wantG, wantB int
+		wantErr             bool
+	}{
+		{"black", "black", 0, 0, 0, false},
+		{"white", "white", 255, 255, 255, false},
+		{"red", "red", 255, 0, 0, false},
+		{"blue", "blue", 0, 0, 255, false},
+		{"pink", "pink", 255, 192, 203, false},
+		{"hex used by scene1.ks's message window", "0x454D51", 0x45, 0x4D, 0x51, false},
+		{"hex used by scene1.ks's name plate", "0xFAFAFA", 0xFA, 0xFA, 0xFA, false},
+		{"hex with a letter in the first digit of a pair", "0xD45D51", 0xD4, 0x5D, 0x51, false},
+		{"malformed", "not-a-color", 0, 0, 0, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, g, b, err := parseColor(c.in)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("parseColor(%q) = %d,%d,%d,nil, want an error", c.in, r, g, b)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseColor(%q) unexpected error: %v", c.in, err)
+			}
+			if r != c.wantR || g != c.wantG || b != c.wantB {
+				t.Errorf("parseColor(%q) = %d,%d,%d, want %d,%d,%d", c.in, r, g, b, c.wantR, c.wantG, c.wantB)
+			}
+		})
+	}
+}
+
 // TestApplyTextStyleKeepsCurrentFontColorForInactiveLine is the regression
 // test for「こんな風に。簡単です。」disappearing: drawScene's "already
 // fully-revealed line" branch used to fall straight to v.TextStyle (always
