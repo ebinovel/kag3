@@ -17,6 +17,17 @@ import (
 // text content directly (see CLAUDE.md's ReadPixels note).
 var MessageWindowRegion = image.Rect(20, 400, 20+920, 400+200)
 
+// OpeningMessageWindowRegion is scene1.ks's *very first* [position]
+// (left=160 top=500 width=1000 height=200, set right at *start before any
+// dialogue) — different from MessageWindowRegion, which only applies from
+// partway through the script onward. Used to compare the opening line's
+// rendering across two playthroughs (see the title-return leak test):
+// this is deliberately the *first* box a fresh scene1.ks run ever shows,
+// so any textStyle/textPosition state goToTitle failed to reset would
+// show up here immediately, before scene1.ks's own [position]/[font]
+// calls have a chance to paper over it.
+var OpeningMessageWindowRegion = image.Rect(160, 500, 160+1000, 500+200)
+
 // CaptureRegion screenshots sess and crops to the logical rect region,
 // scaled the same way ClickLogical scales click coordinates (straight
 // ratio against the current client-area size).
