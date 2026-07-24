@@ -184,3 +184,74 @@ func TestTitleReturnDoesNotLeakPreviousPlaythroughStyle(t *testing.T) {
 		t.Error("scene1.ks's opening line renders differently on the 2nd playthrough — a previous playthrough's textStyle/textPosition/frame leaked through goToTitle instead of being reset")
 	}
 }
+
+// linesAfterRoleButtonsBeforeReload is scene1.ks's line count from the
+// role_button block's first line ("こんな風にゲームに必要な機能を...") to
+// a few lines further in ("はぁ、はぁ[p]") — enough to guarantee the
+// on-screen text has visibly changed before quickload jumps back, without
+// running past scene1.ks's own role_button re-registration (there is
+// none — the row is only ever set up once).
+const linesAfterRoleButtonsBeforeReload = 5
+
+// TestQuickSaveThenLoadRestoresSceneText is the E2E regression test for
+// same-process save/load: quicksave at one point in scene1.ks, advance
+// further (so the screen is showing something else), quickload, and check
+// the message window's content matches what was on screen at save time.
+// Both quicksave/quickload are same-storage operations in terms of button
+// availability up to the load itself — [p]/[l] advancement never triggers
+// screenChanged, so the role_button row (registered once, never Fix=true)
+// stays clickable right up until quickload's applySaveData call, which
+// unconditionally sets screenChanged=true and would clear it afterward
+// (renderer.go's clearNonFixButtons) — hence no attempt to click anything
+// after the load in this test.
+func TestQuickSaveThenLoadRestoresSceneText(t *testing.T) {
+	g := helpers.LaunchGame(t)
+
+	if err := helpers.ClickTitleStart(g.Session); err != nil {
+		t.Fatalf("clicking title start: %v", err)
+	}
+	if err := helpers.WaitStable(g.Session, 5*time.Second); err != nil {
+		t.Fatalf("waiting for scene1 to start: %v", err)
+	}
+
+	advanceScene1ToRoleButtons(t, g)
+	if err := helpers.WaitStable(g.Session, 3*time.Second); err != nil {
+		t.Fatalf("waiting for role_button line to settle: %v", err)
+	}
+	before, err := helpers.CaptureRegion(g.Session, helpers.MessageWindowRegion)
+	if err != nil {
+		t.Fatalf("capturing pre-save region: %v", err)
+	}
+
+	if err := helpers.ClickQuickSave(g.Session); err != nil {
+		t.Fatalf("clicking quicksave: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond) // saveSlot's file write
+
+	advance(t, g.Session, linesAfterRoleButtonsBeforeReload)
+	if err := helpers.WaitStable(g.Session, 3*time.Second); err != nil {
+		t.Fatalf("waiting for post-advance line to settle: %v", err)
+	}
+	during, err := helpers.CaptureRegion(g.Session, helpers.MessageWindowRegion)
+	if err != nil {
+		t.Fatalf("capturing mid-flow region: %v", err)
+	}
+	if helpers.RegionsEqual(before, during) {
+		t.Fatal("screen did not change after advancing further — test setup problem (adjust linesAfterRoleButtonsBeforeReload), not a kag3 bug")
+	}
+
+	if err := helpers.ClickQuickLoad(g.Session); err != nil {
+		t.Fatalf("clicking quickload: %v", err)
+	}
+	if err := helpers.WaitStable(g.Session, 5*time.Second); err != nil {
+		t.Fatalf("waiting for load to settle: %v", err)
+	}
+	after, err := helpers.CaptureRegion(g.Session, helpers.MessageWindowRegion)
+	if err != nil {
+		t.Fatalf("capturing post-load region: %v", err)
+	}
+
+	if !helpers.RegionsEqual(before, after) {
+		t.Error("message window content after quickload does not match the state at quicksave time — same-process save/load did not restore scene position")
+	}
+}
