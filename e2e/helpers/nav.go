@@ -77,3 +77,70 @@ func ClickTitleConfig(sess *driver.Session) error {
 func Advance(sess *driver.Session) error {
 	return sess.KeyPress("Enter")
 }
+
+// scene1.ks's "role_button" row (name="role_button", all button/*.png are
+// 96x26 — confirmed via `file example/resources/images/button/*.png`),
+// registered partway through scene1.ks after chara_name_area's ptext is
+// redefined at x=100 (see ClickQuickSave's doc comment for why that
+// ordering matters). Fix isn't set on any of them, so — per
+// clearNonFixButtons (renderer.go) — a screen-changing jump (a load,
+// goToTitle, or any [jump]/[call] to a different storage) clears them all;
+// only same-storage jumps ([link]/[glink] within scene1.ks) leave them in
+// place.
+const (
+	roleQuickSaveX, roleQuickSaveY = 40 + 96/2, 690 + 26/2
+	roleQuickLoadX, roleQuickLoadY = 140 + 96/2, 690 + 26/2
+	roleSaveX, roleSaveY           = 240 + 96/2, 690 + 26/2
+	roleLoadX, roleLoadY           = 340 + 96/2, 690 + 26/2
+	roleTitleX, roleTitleY         = 1140 + 96/2, 690 + 26/2
+)
+
+// ClickQuickSave clicks scene1.ks's role="quicksave" button (writes
+// slot 0 — see helpers.QuickSaveSlot). Only reachable once scene1.ks has
+// advanced past the role_button block, i.e. after chara_name_area's ptext
+// has already been redefined to x=100 — there is no in-script UI path to
+// save while it's still at its original x=180.
+func ClickQuickSave(sess *driver.Session) error {
+	return ClickLogical(sess, roleQuickSaveX, roleQuickSaveY)
+}
+
+// ClickQuickLoad clicks scene1.ks's role="quickload" button (reads
+// slot 0). This is a screen-changing jump (applySaveData sets
+// screenChanged=true unconditionally — tags_save.go), so every non-Fix
+// button including the role_button row itself is gone from the next frame
+// on; don't chain another role_button click after this without navigating
+// back to where scene1.ks re-registers them.
+func ClickQuickLoad(sess *driver.Session) error {
+	return ClickLogical(sess, roleQuickLoadX, roleQuickLoadY)
+}
+
+// ClickSave clicks scene1.ks's role="save" button (opens the slot picker,
+// same as title.ks's LOAD/CONFIG buttons' role wiring).
+func ClickSave(sess *driver.Session) error { return ClickLogical(sess, roleSaveX, roleSaveY) }
+
+// ClickLoad clicks scene1.ks's role="load" button (opens the slot picker).
+func ClickLoad(sess *driver.Session) error { return ClickLogical(sess, roleLoadX, roleLoadY) }
+
+// ClickRoleTitle clicks scene1.ks's role="title" button — opens
+// confirmGoToTitle's confirmation dialog (renderer.go), it does not jump
+// immediately.
+func ClickRoleTitle(sess *driver.Session) error { return ClickLogical(sess, roleTitleX, roleTitleY) }
+
+// Confirm dialog OK/NG button centers, computed from
+// tags_save.go's dialogButtonRects(screenW, screenH) at the fixed logical
+// 1280x720: w,h=160,50; y=screenH/2+40=400; OK.X=screenW/2-w-20=460;
+// NG.X=screenW/2+20=660. Used by confirmGoToTitle's "タイトルに戻ります。
+// よろしいですか？" dialog (role="title" — see ClickRoleTitle) and any
+// other activeDialog with OnConfirm set.
+const (
+	dialogOKX, dialogOKY = 460 + 160/2, 400 + 50/2
+	dialogNGX, dialogNGY = 660 + 160/2, 400 + 50/2
+)
+
+// ClickDialogOK clicks the OK button of whatever confirm dialog is
+// currently open (handleDialogClick, renderer.go).
+func ClickDialogOK(sess *driver.Session) error { return ClickLogical(sess, dialogOKX, dialogOKY) }
+
+// ClickDialogNG clicks the NG/cancel button of whatever confirm dialog is
+// currently open.
+func ClickDialogNG(sess *driver.Session) error { return ClickLogical(sess, dialogNGX, dialogNGY) }
