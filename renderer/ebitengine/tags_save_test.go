@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"testing/fstest"
 
@@ -20,6 +21,30 @@ func newSaveTestRendererWithVars(t *testing.T) *Renderer {
 		t.Fatalf("seeding f/sf failed: %v", err)
 	}
 	return r
+}
+
+// TestSaveDirRespectsKAG3SaveDirEnvVar covers the e2e/ harness's only way
+// to sandbox save files: it's a separate OS process, so it can't set the
+// in-package saveBaseDirOverride var the way Go tests do — KAG3_SAVE_DIR
+// has to win outright and be used verbatim (no kag3/<title>/saves suffix).
+func TestSaveDirRespectsKAG3SaveDirEnvVar(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+
+	override := filepath.Join(t.TempDir(), "custom-save-dir")
+	t.Setenv("KAG3_SAVE_DIR", override)
+
+	r := newSaveTestRendererWithVars(t)
+	got, err := saveDir(r)
+	if err != nil {
+		t.Fatalf("saveDir error: %v", err)
+	}
+	if got != override {
+		t.Errorf("saveDir() = %q, want %q (KAG3_SAVE_DIR should win over saveBaseDirOverride)", got, override)
+	}
+	if info, err := os.Stat(override); err != nil || !info.IsDir() {
+		t.Errorf("expected saveDir to create directory %q: %v", override, err)
+	}
 }
 
 func TestSaveSlotRoundTrip(t *testing.T) {

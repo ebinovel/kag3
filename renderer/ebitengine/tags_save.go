@@ -517,7 +517,20 @@ func (r *Renderer) applySaveData(d *saveData) error {
 // of the real OS config dir.
 var saveBaseDirOverride string
 
+// saveDir resolves the directory save/load slots live in. KAG3_SAVE_DIR, if
+// set, wins outright and is used as-is (no kag3/<title>/saves suffix) — an
+// external-process E2E harness (see e2e/) has no way to set the in-package
+// saveBaseDirOverride var, so this is the only way it can sandbox a real
+// build's save files away from the player's actual %AppData% profile.
+// saveBaseDirOverride (for in-package Go tests) and the OS config dir are
+// still checked, in that order, when KAG3_SAVE_DIR is unset.
 func saveDir(r *Renderer) (string, error) {
+	if v := os.Getenv("KAG3_SAVE_DIR"); v != "" {
+		if err := os.MkdirAll(v, 0o755); err != nil {
+			return "", err
+		}
+		return v, nil
+	}
 	base := saveBaseDirOverride
 	if base == "" {
 		b, err := os.UserConfigDir()

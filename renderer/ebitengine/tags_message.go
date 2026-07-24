@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"image/color"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -128,6 +129,17 @@ var (
 	defaultTextSpeedMs = 83
 	textNoWait         bool
 )
+
+// KAG3_E2E_FAST forces textNoWait on at startup — an external-process E2E
+// harness (see e2e/) has no way to send a [nowait] tag or flip the
+// in-package textNoWait var directly, and glyph-by-glyph text reveal is by
+// far the slowest thing such a harness waits on. [nowait]/[endnowait] still
+// work normally afterward; this only changes the starting value.
+func init() {
+	if os.Getenv("KAG3_E2E_FAST") != "" {
+		textNoWait = true
+	}
+}
 
 func ticksPerChar() int {
 	tpc := textSpeedMs * ebiten.TPS() / 1000
