@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -173,6 +174,20 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				}
 				segOffset := 0
 				xOffset := 0.0
+				// wrapRows/lastLineX track whichever segment was most
+				// recently processed: how many extra physical rows its own
+				// auto-wrap (the maxWidth check below) added, and the pixel
+				// width of just its *last* wrapped row. xOffset keeps
+				// accumulating the segment's full measured width (its
+				// widest wrapped row, from text.Measure) regardless — it's
+				// only ever used to position a *later* segment on the same
+				// logical line immediately after this one, which text/v2
+				// draws as a plain horizontal continuation rather than
+				// respecting an embedded "\n" itself, so it has to stay in
+				// that same coordinate space. textEnd below is the one
+				// place true wrapped position matters (see its comment).
+				wrapRows := 0
+				lastLineX := 0.0
 				for _, v := range segs {
 					if len(v.Text) == 0 {
 						continue
@@ -194,6 +209,8 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					vText := v.Text
 					w, _ := text.Measure(vText, r.fontFace, tOp.LineSpacing)
 					maxWidth := float64(textPosition.Width - textPosition.MarginLeft - textPosition.MarginRight)
+					wrapRows = 0
+					lastLineX = xOffset + w
 					if w > maxWidth {
 						rn := []rune(vText)
 						key := len(rn) - 1
@@ -207,6 +224,9 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 						}
 						vText = string(rn)
 						w, _ = text.Measure(vText, r.fontFace, tOp.LineSpacing)
+						wrapLines := strings.Split(vText, "\n")
+						wrapRows = len(wrapLines) - 1
+						lastLineX, _ = text.Measure(wrapLines[len(wrapLines)-1], r.fontFace, tOp.LineSpacing)
 					}
 					glyph := text.AppendGlyphs(nil, vText, r.fontFace, &tOp.LayoutOptions)
 					segLen := len(glyph)
@@ -237,7 +257,6 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					segOffset += segLen
 				}
 				if isTextEnd {
-					textEndX = marginLeft + xOffset
 					// marginTop+rowY+rubyLineHeight is this row's *top*
 					// (where text.Draw's own Y coordinate anchors, per
 					// text/v2's default top-left origin) — add rowHeight
@@ -246,7 +265,18 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					// row's bottom instead, so the wait-mark's rest
 					// position sits right under the actual characters
 					// rather than floating somewhere above them.
-					textEndY = marginTop + rowY + rubyLineHeight + rowHeight
+					//
+					// If the last segment processed auto-wrapped (wrapRows
+					// > 0), that "bottom" is wrapRows rows further down
+					// than a single-line segment's, and the horizontal
+					// position is lastLineX (this segment's own last
+					// wrapped row's width) — not marginLeft+xOffset, which
+					// is the *widest* row's width and landed the mark after
+					// line 1 instead of the actual last line, since
+					// xOffset accumulates via text.Measure's whole-block
+					// (max-line) width, not "how far the cursor ended up."
+					textEndX = marginLeft + lastLineX
+					textEndY = marginTop + rowY + rubyLineHeight + rowHeight + float64(wrapRows)*rowHeight
 				}
 			}
 		} else {
