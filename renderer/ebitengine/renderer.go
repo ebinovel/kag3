@@ -432,26 +432,45 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 // must resolve identically, since a line doesn't stop being e.g.
 // [deffont color=...]-styled just because it's no longer the one being
 // typed.
+//
+// r.fontFace.Size is set unconditionally on every branch below (falling
+// back to beforeTextSize whenever the resolved style leaves Size
+// unspecified/zero) — leaving it untouched when a style's Size happened to
+// be 0 used to let whatever size the *previous* segment last set leak into
+// this one (e.g. [font size=40]...[resetfont][font color=pink] kept
+// drawing the pink text at size 40, since color=pink's own style never set
+// a Size of its own to overwrite it). Callers must call this — which also
+// means r.fontFace.Size is now correct — *before* measuring/laying out the
+// segment's glyphs (text.Measure/text.AppendGlyphs in
+// drawMessageHorizontal), not after: measuring with the *previous*
+// segment's leftover size instead of this one's is what produced both the
+// reported symptoms (overlapping/too-tight spacing right after a size
+// change, and ruby text centered over the wrong width).
 func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
-	if textStyle != nil {
-		if textStyle.Size != 0 && float64(textStyle.Size) != beforeTextSize {
+	switch {
+	case textStyle != nil:
+		if textStyle.Size != 0 {
 			r.fontFace.Size = float64(textStyle.Size)
+		} else {
+			r.fontFace.Size = beforeTextSize
 		}
 		if textStyle.Color != nil {
 			tOp.ColorScale.ScaleWithColor(textStyle.Color)
 		} else {
 			tOp.ColorScale.ScaleWithColor(color.White)
 		}
-	} else if v.TextStyle != nil {
-		if v.TextStyle.Size != 0 && float64(v.TextStyle.Size) != beforeTextSize {
+	case v.TextStyle != nil:
+		if v.TextStyle.Size != 0 {
 			r.fontFace.Size = float64(v.TextStyle.Size)
+		} else {
+			r.fontFace.Size = beforeTextSize
 		}
 		if v.TextStyle.Color != nil {
 			tOp.ColorScale.ScaleWithColor(v.TextStyle.Color)
 		} else {
 			tOp.ColorScale.ScaleWithColor(color.White)
 		}
-	} else {
+	default:
 		r.fontFace.Size = beforeTextSize
 		tOp.ColorScale.ScaleWithColor(color.White)
 	}

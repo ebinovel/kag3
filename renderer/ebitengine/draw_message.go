@@ -124,6 +124,13 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 	rowY := 0.0
 	for _, lineNum := range lineNums {
 		segs := r.texts[lineNum]
+		// rowHeight tracks the tallest size any segment on this line
+		// actually resolves to (updated alongside each applyTextStyle
+		// call below) — advancing rowY by a flat beforeTextSize
+		// regardless left a [font size=40] line's descender overlapping
+		// whatever line came right after it, since the next row started
+		// at the *default* line height instead of the enlarged one.
+		rowHeight := beforeTextSize
 		hasText := false
 		for _, v := range segs {
 			if len(v.Text) > 0 {
@@ -171,6 +178,18 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 						continue
 					}
 					tOp := &text.DrawOptions{}
+					// applyTextStyle first — it's what sets r.fontFace.Size
+					// for *this* segment, and text.Measure/AppendGlyphs
+					// below read r.fontFace directly. Measuring before
+					// calling this used the previous segment's leftover
+					// size instead of this one's, both under- and
+					// over-shooting xOffset (wrong spacing/overlap right
+					// after a size change) and mis-centering this segment's
+					// ruby text over the wrong width.
+					applyTextStyle(r, tOp, v)
+					if r.fontFace.Size > rowHeight {
+						rowHeight = r.fontFace.Size
+					}
 					tOp.LineSpacing = r.fontFace.Size
 					vText := v.Text
 					w, _ := text.Measure(vText, r.fontFace, tOp.LineSpacing)
@@ -191,14 +210,13 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					}
 					glyph := text.AppendGlyphs(nil, vText, r.fontFace, &tOp.LayoutOptions)
 					segLen := len(glyph)
-					applyTextStyle(r, tOp, v)
 					segShowCount := charsToShow - segOffset
 					if segShowCount >= segLen {
 						tOp.GeoM.Reset()
 						tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)
 						text.Draw(buf, vText, r.fontFace, tOp)
 						if v.Ruby != "" {
-							rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: beforeTextSize * 0.5, Language: r.fontFace.Language}
+							rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: r.fontFace.Size * 0.5, Language: r.fontFace.Language}
 							rubyW, _ := text.Measure(v.Ruby, rubyFace, 0)
 							rubyOp := &text.DrawOptions{}
 							rubyOp.GeoM.Translate(marginLeft+xOffset+(w-rubyW)/2, marginTop+rowY)
@@ -222,13 +240,13 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					textEndX = marginLeft + xOffset
 					// marginTop+rowY+rubyLineHeight is this row's *top*
 					// (where text.Draw's own Y coordinate anchors, per
-					// text/v2's default top-left origin) — add beforeTextSize
-					// (this row's height, the same value rowY itself is
-					// incremented by below) to land on the row's bottom
-					// instead, so the wait-mark's rest position sits right
-					// under the actual characters rather than floating
-					// somewhere above them.
-					textEndY = marginTop + rowY + rubyLineHeight + beforeTextSize
+					// text/v2's default top-left origin) — add rowHeight
+					// (this row's actual height, the same value rowY
+					// itself is incremented by below) to land on the
+					// row's bottom instead, so the wait-mark's rest
+					// position sits right under the actual characters
+					// rather than floating somewhere above them.
+					textEndY = marginTop + rowY + rubyLineHeight + rowHeight
 				}
 			}
 		} else {
@@ -238,6 +256,26 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					continue
 				}
 				tOp := &text.DrawOptions{}
+				// applyTextStyle, not a bare color.White default: an
+				// already fully-revealed line must keep using
+				// whatever [font]/[deffont] color is *currently* in
+				// effect, the same as the active line resolves it —
+				// before this fix it fell straight to plain white
+				// the instant it stopped being the active line,
+				// which on a light/white message-box design (e.g.
+				// scene1.ks's [deffont color="0x454D51"] custom
+				// window) made every earlier line on the same page
+				// effectively invisible against the background as
+				// soon as the next line started revealing.
+				//
+				// Called first, before text.Measure/AppendGlyphs below —
+				// same reasoning as the active-line branch above:
+				// r.fontFace.Size has to be resolved for *this* segment
+				// before anything measures against r.fontFace.
+				applyTextStyle(r, tOp, v)
+				if r.fontFace.Size > rowHeight {
+					rowHeight = r.fontFace.Size
+				}
 				tOp.LineSpacing = r.fontFace.Size
 				vText := v.Text
 				w, _ := text.Measure(vText, r.fontFace, tOp.LineSpacing)
@@ -256,22 +294,10 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					vText = string(rn)
 					w, _ = text.Measure(vText, r.fontFace, tOp.LineSpacing)
 				}
-				// applyTextStyle, not a bare color.White default: an
-				// already fully-revealed line must keep using
-				// whatever [font]/[deffont] color is *currently* in
-				// effect, the same as the active line resolves it —
-				// before this fix it fell straight to plain white
-				// the instant it stopped being the active line,
-				// which on a light/white message-box design (e.g.
-				// scene1.ks's [deffont color="0x454D51"] custom
-				// window) made every earlier line on the same page
-				// effectively invisible against the background as
-				// soon as the next line started revealing.
-				applyTextStyle(r, tOp, v)
 				tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)
 				text.Draw(buf, vText, r.fontFace, tOp)
 				if v.Ruby != "" {
-					rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: beforeTextSize * 0.5, Language: r.fontFace.Language}
+					rubyFace := &text.GoTextFace{Source: r.fontFace.Source, Size: r.fontFace.Size * 0.5, Language: r.fontFace.Language}
 					rubyW, _ := text.Measure(v.Ruby, rubyFace, 0)
 					rubyOp := &text.DrawOptions{}
 					rubyOp.GeoM.Translate(marginLeft+xOffset+(w-rubyW)/2, marginTop+rowY)
@@ -281,6 +307,6 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				xOffset += w
 			}
 		}
-		rowY += beforeTextSize + rubyLineHeight
+		rowY += rowHeight + rubyLineHeight
 	}
 }

@@ -461,6 +461,36 @@ func TestApplyTextStyleKeepsCurrentFontColorForInactiveLine(t *testing.T) {
 	}
 }
 
+// TestApplyTextStyleDoesNotLeakSizeAcrossSegments is the regression test
+// for a real reported bug: after a "[font size=40]...[resetfont][font
+// color=pink]" sequence, the pink text kept rendering (and, worse,
+// measuring — see drawMessageHorizontal) at size 40, because a v.TextStyle
+// whose own Size was left unspecified (0, e.g. a [font] call that only
+// changed color) used to leave r.fontFace.Size completely untouched rather
+// than falling back to beforeTextSize — so it silently kept whatever the
+// *previous* segment's applyTextStyle call last set it to.
+func TestApplyTextStyleDoesNotLeakSizeAcrossSegments(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	beforeTextSize = 24
+	r.fontFace.Size = beforeTextSize
+	saved := textStyle
+	defer func() { textStyle = saved }()
+	textStyle = nil
+
+	applyTextStyle(r, &text.DrawOptions{}, Text{TextStyle: &kag3.TextStyle{Size: 40}})
+	if r.fontFace.Size != 40 {
+		t.Fatalf("fontFace.Size after size=40 segment = %v, want 40", r.fontFace.Size)
+	}
+
+	// A later segment whose own TextStyle only changes color (Size left at
+	// its zero value) must fall back to beforeTextSize, not keep 40.
+	applyTextStyle(r, &text.DrawOptions{}, Text{TextStyle: &kag3.TextStyle{Color: &color.RGBA{0xff, 0xc0, 0xcb, 0xff}}})
+	if r.fontFace.Size != beforeTextSize {
+		t.Errorf("fontFace.Size after color-only segment = %v, want beforeTextSize %v (leaked from the earlier size=40 segment instead of resetting)", r.fontFace.Size, beforeTextSize)
+	}
+}
+
 func abs32(v float32) float32 {
 	if v < 0 {
 		return -v
