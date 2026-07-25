@@ -6,59 +6,112 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ebinovel/kag3/e2e/driver"
 	"github.com/ebinovel/kag3/e2e/helpers"
 )
 
-// stepDelay is the pause after each Enter/click before the next one — kag3
-// only reads input once per Update() tick, and WinAppDriver's own action
-// dispatch has latency too; this is cheap insurance against sending two
-// inputs before the first has been processed. Not a substitute for
-// WaitStable, which is still used before any assertion.
-const stepDelay = 150 * time.Millisecond
+// stepDelay is the pause after each Enter/click before checking whether
+// the screen actually changed (see advanceOne). Click/KeyPress go straight
+// to Win32 (SetCursorPos+mouse_event, keybd_event — see
+// driver/window_windows.go), not through WinAppDriver's own
+// (non-functional in this environment) input endpoints, so each call
+// returns almost instantly; stepDelay is what actually paces the flow.
+const stepDelay = 300 * time.Millisecond
 
-// advance sends Enter and waits stepDelay — the workhorse for stepping
-// through scene1.ks's [p]/[l] lines. Under KAG3_E2E_FAST (textNoWait
-// forced true — see tags_message.go), every [p]/[l] resolves on exactly
-// one Enter with no "reveal the rest of this line first" intermediate
-// step, so counting Enters this way is meaningful.
-func advance(t *testing.T, sess interface{ KeyPress(string) error }, n int) {
+// maxAdvanceAttempts bounds advanceOne's retry loop. keybd_event
+// keystrokes were confirmed empirically to occasionally not register with
+// kag3's Update() loop (screen unchanged after the usual stepDelay) even
+// at generous delays — likely a timing race in however this environment
+// delivers the synthesized key event, not something a longer fixed delay
+// reliably avoids. Retrying (rather than trusting a single KeyPress) is
+// what actually gets a reliable result.
+const maxAdvanceAttempts = 5
+
+// advanceOne sends Enter and confirms the screen actually changed
+// (RegionsEqual on a full screenshot), retrying up to maxAdvanceAttempts
+// times if not — see maxAdvanceAttempts' doc comment for why a retry loop
+// is necessary at all. Under KAG3_E2E_FAST (textNoWait forced true — see
+// tags_message.go), every [p]/[l] resolves on exactly one *registered*
+// Enter with no "reveal the rest of this line first" intermediate step,
+// so "did the screen change" is a reliable proxy for "did the advance
+// actually happen" here.
+func advanceOne(t *testing.T, sess *driver.Session) {
 	t.Helper()
-	for i := 0; i < n; i++ {
+	before, err := sess.Screenshot()
+	if err != nil {
+		t.Fatalf("advanceOne: screenshot before: %v", err)
+	}
+	for attempt := 1; attempt <= maxAdvanceAttempts; attempt++ {
 		if err := sess.KeyPress("Enter"); err != nil {
-			t.Fatalf("advance: KeyPress Enter (%d/%d): %v", i+1, n, err)
+			t.Fatalf("advanceOne: KeyPress Enter (attempt %d/%d): %v", attempt, maxAdvanceAttempts, err)
 		}
 		time.Sleep(stepDelay)
+		after, err := sess.Screenshot()
+		if err != nil {
+			t.Fatalf("advanceOne: screenshot after (attempt %d/%d): %v", attempt, maxAdvanceAttempts, err)
+		}
+		if !helpers.RegionsEqual(before, after) {
+			return
+		}
+	}
+	t.Fatalf("advanceOne: screen did not change after %d Enter attempts", maxAdvanceAttempts)
+}
+
+// advance calls advanceOne n times — the workhorse for stepping through
+// scene1.ks's [p]/[l] lines by a known count.
+func advance(t *testing.T, sess *driver.Session, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		advanceOne(t, sess)
 	}
 }
 
 // openingLinesBeforeGlink is scene1.ks's monologue line count from *start
-// to the first [glink] choice ("もしかして、ノベルゲームの開発に興味が
-// あるの？[p]" is the 9th [p]) — hand-counted against the bundled script.
-const openingLinesBeforeGlink = 9
+// to the first [glink] choice. The 9th [p] ("もしかして、ノベルゲームの
+// 開発に興味があるの？[p]") is what's on screen when the count reaches 9,
+// but it takes a 10th Enter to actually dismiss that line and reveal the
+// glink choices — confirmed empirically frame-by-frame (each hand-counted
+// [p] corresponds to what's already showing *before* the next Enter, not
+// after it).
+const openingLinesBeforeGlink = 10
 
 // linesAfterGlinkToRoleButtons is scene1.ks's line count from
-// *selectinterest to the first [p] after the role_button block
-// ("こんな風にゲームに必要な機能を..."), padded above the hand-counted
-// ~58 for slack. Overshooting is safe here — kag3 just stops at whatever
-// [p]/[s] it reaches next — undershooting would leave the role_button row
-// unregistered, which the caller catches via the save-file check below
-// rather than by asserting screen content.
-const linesAfterGlinkToRoleButtons = 65
+// *selectinterest to "はぁ、はぁ[p]" — confirmed empirically
+// frame-by-frame, landing deliberately *past* the role_button block's own
+// first two lines and the "標準で用意されているのは、[l] / セーブ、[l] /
+// ロード、[l][cm] / タイトルへ戻る、...[p]" block that follows it, not on
+// them: [l] accumulates multiple lines into one page without a [cm]
+// between them, and a quicksave/quickload taken mid-accumulation only
+// restores the *current* line, not the ones stacked above it (kag3
+// doesn't capture partial-page accumulation state in its save format) —
+// landing past the whole [l] run avoids that gap entirely rather than
+// working around it. Overshooting further is safe — kag3 just stops at
+// whatever [p]/[s] it reaches next — undershooting would leave the
+// role_button row unregistered, which the caller catches via the
+// save-file check below rather than by asserting screen content.
+const linesAfterGlinkToRoleButtons = 69
 
 // glinkChoice1X/Y is the center of scene1.ks's first glink
-// ("はい。興味あります", x=360 width=500 y=150 — kag3.GLink has no
-// documented default height, but drawScene sizes an unset one to
-// text.Measure(...)+20 for a size=28 face, comfortably inside a
-// y+10..y+50 click target).
-const glinkChoice1X, glinkChoice1Y = 360 + 500/2, 150 + 20
+// ("はい。興味あります", x=360 width=500 y=150). Y offset (58, not
+// height/2 computed from drawGLinks' text.Measure(...)+20 formula) is an
+// empirically-measured value against an actual screenshot — the rendered
+// box's vertical center did not match a from-first-principles calculation
+// closely enough to trust, so this was recalibrated by eye instead. If
+// scene1.ks's font/glink config ever changes, re-measure against a fresh
+// screenshot rather than trusting the formula.
+const glinkChoice1X, glinkChoice1Y = 360 + 500/2, 150 + 58
 
 // advanceScene1ToRoleButtons drives a freshly-started scene1.ks from its
-// opening monologue through the glink choice to the role_button row (see
-// nav.go's ClickQuickSave doc comment for why the row only appears once
-// chara_name_area's ptext has already been redefined to x=100). Whether it
-// actually landed on the role_button row is verified by the caller
-// attempting a quicksave and checking the file was written — a wrong Enter
-// count fails loudly there rather than silently clicking empty screen.
+// opening monologue through the glink choice, past the role_button row
+// (see nav.go's ClickQuickSave doc comment for why the row only appears
+// once chara_name_area's ptext has already been redefined to x=100) and
+// past the [l]-accumulated block right after it (see
+// linesAfterGlinkToRoleButtons), landing on "はぁ、はぁ[p]" — a plain
+// single-line [p] with the role_button row still on screen and no
+// partial-page accumulation state to worry about. Whether it actually
+// landed there is verified by the caller attempting a quicksave and
+// checking the file was written — a wrong Enter count fails loudly there
+// rather than silently clicking empty screen.
 func advanceScene1ToRoleButtons(t *testing.T, g *helpers.Game) {
 	t.Helper()
 	advance(t, g.Session, openingLinesBeforeGlink)
@@ -185,13 +238,16 @@ func TestTitleReturnDoesNotLeakPreviousPlaythroughStyle(t *testing.T) {
 	}
 }
 
-// linesAfterRoleButtonsBeforeReload is scene1.ks's line count from the
-// role_button block's first line ("こんな風にゲームに必要な機能を...") to
-// a few lines further in ("はぁ、はぁ[p]") — enough to guarantee the
-// on-screen text has visibly changed before quickload jumps back, without
-// running past scene1.ks's own role_button re-registration (there is
-// none — the row is only ever set up once).
-const linesAfterRoleButtonsBeforeReload = 5
+// linesAfterRoleButtonsBeforeReload is scene1.ks's line count from
+// advanceScene1ToRoleButtons' landing point ("はぁ、はぁ[p]") to a few
+// lines further in ("さて、もちろん音楽を鳴らすこともできるよ[l][cm]") —
+// enough to guarantee the on-screen text has visibly changed before
+// quickload jumps back. Deliberately stops short of the [link] choice
+// scene1.ks reaches one line later ("それじゃあ、再生するよ？[l][cm]" then
+// [s]): advanceOne only sends Enter, and a [link] choice only resolves on
+// a click, so advancing that far would make advanceOne retry-fail with
+// "screen did not change" — confirmed empirically.
+const linesAfterRoleButtonsBeforeReload = 3
 
 // TestQuickSaveThenLoadRestoresSceneText is the E2E regression test for
 // same-process save/load: quicksave at one point in scene1.ks, advance

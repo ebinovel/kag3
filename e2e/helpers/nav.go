@@ -19,17 +19,23 @@ const (
 )
 
 // ClickLogical converts a kag3 logical coordinate (as written in a [button
-// x= y=] tag) into the session window's actual coordinate space and clicks
-// it. The conversion is a straight ratio against the current client-area
-// size (driver.Session.WindowRect), so it's correct even if the window
-// isn't exactly 1280x720 — no assumption is made that it is.
+// x= y=] tag) into an absolute screen coordinate (driver.Session.Click's
+// coordinate space — see its doc comment) and clicks it. The size part of
+// the conversion is a straight ratio against the current client-area size
+// (driver.Session.WindowRect), so it's correct even if the window isn't
+// exactly 1280x720 — no assumption is made that it is. The position part
+// adds WindowRect's own origin (r.Min): omitting that would target
+// whatever's at the *screen's* (lx,ly), not the window's — on a
+// multi-monitor desktop where the window isn't flush against (0,0) (the
+// common case), that silently clicks something else entirely instead of
+// erroring.
 func ClickLogical(sess *driver.Session, lx, ly int) error {
 	r, err := sess.WindowRect()
 	if err != nil {
 		return fmt.Errorf("ClickLogical(%d,%d): %w", lx, ly, err)
 	}
-	x := lx * r.Dx() / logicalWidth
-	y := ly * r.Dy() / logicalHeight
+	x := r.Min.X + lx*r.Dx()/logicalWidth
+	y := r.Min.Y + ly*r.Dy()/logicalHeight
 	if err := sess.Click(x, y); err != nil {
 		return fmt.Errorf("ClickLogical(%d,%d) -> window(%d,%d): %w", lx, ly, x, y, err)
 	}
