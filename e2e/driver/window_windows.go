@@ -17,6 +17,27 @@ var (
 	procGetClientRect            = user32.NewProc("GetClientRect")
 	procClientToScreen           = user32.NewProc("ClientToScreen")
 	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procSetCursorPos             = user32.NewProc("SetCursorPos")
+	procMouseEvent               = user32.NewProc("mouse_event")
+	procKeybdEvent               = user32.NewProc("keybd_event")
+	procSetWindowPos             = user32.NewProc("SetWindowPos")
+)
+
+// SetWindowPos z-order constants/flags (winuser.h). hwndTopmost/
+// hwndNotopmost are sentinel HWND values, not real handles.
+const (
+	hwndTopmost   = ^uintptr(0) // (HWND)-1
+	hwndNotopmost = ^uintptr(1) // (HWND)-2
+	swpNoMove     = 0x0002
+	swpNoSize     = 0x0001
+	swpShowWindow = 0x0040
+)
+
+// mouse_event/keybd_event flag and virtual-key constants (winuser.h).
+const (
+	mouseEventFLeftDown = 0x0002
+	mouseEventFLeftUp   = 0x0004
+	keyEventFKeyUp      = 0x0002
 )
 
 type win32Rect struct {
@@ -92,4 +113,86 @@ func clientRectOnScreen(hwnd uintptr) (image.Rectangle, error) {
 	w := int(r.Right - r.Left)
 	h := int(r.Bottom - r.Top)
 	return image.Rect(int(origin.X), int(origin.Y), int(origin.X)+w, int(origin.Y)+h), nil
+}
+
+// bringToForeground pins hwnd as an always-on-top window
+// (SetWindowPos(HWND_TOPMOST)), not just SetForegroundWindow.
+//
+// Why: on a real multi-window desktop (confirmed empirically against the
+// actual machine this runs on — a normal dev desktop with a terminal,
+// editor, browser, etc. all open), whatever process launched the test
+// (e.g. a terminal window running `go test`) is very often *already*
+// covering the same screen region the newly-launched kag3 window occupies
+// — EnumWindows' Z-order confirmed a full-screen-sized terminal window
+// sitting above kag3 in the stack. SetCursorPos+mouse_event delivers a
+// click to whatever window is topmost at that screen position, not to
+// whichever window merely has keyboard focus — so a click "at kag3's
+// button" was actually landing on the terminal sitting on top of it,
+// which is what made that terminal jump to the front. Plain
+// SetForegroundWindow does not change Z-order, only focus, so it didn't
+// fix this. HWND_TOPMOST does. See unforeground for the matching cleanup.
+func bringToForeground(hwnd uintptr) {
+	procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
+	time.Sleep(200 * time.Millisecond)
+}
+
+// unforeground undoes bringToForeground's topmost pin. Best-effort: called
+// from Session.Close() after the underlying process may already be gone,
+// in which case this is a harmless no-op (the OS has already destroyed the
+// window).
+func unforeground(hwnd uintptr) {
+	procSetWindowPos.Call(hwnd, hwndNotopmost, 0, 0, 0, 0, swpNoMove|swpNoSize)
+}
+
+// clickAtScreenPos left-clicks at an absolute screen coordinate via
+// SetCursorPos + mouse_event(LEFTDOWN/LEFTUP).
+//
+// This deliberately bypasses WinAppDriver's own click machinery (its
+// POST .../actions endpoint rejects a mouse pointer source outright —
+// "Currently only pen and touch pointer input source types are
+// supported" — and its JSON Wire Protocol fallback, POST .../moveto, was
+// confirmed empirically to move the cursor by some fraction of the
+// requested offset rather than to an absolute position, both in this
+// environment). SetCursorPos + mouse_event is what actually moves the
+// real cursor and delivers a real click here — confirmed empirically
+// against a running kag3 window: SendInput's MOUSEEVENTF_ABSOLUTE path
+// was tried first and did *not* move the cursor at all in this
+// environment, while SetCursorPos does.
+func clickAtScreenPos(hwnd uintptr, x, y int) error {
+	if ret, _, err := procSetCursorPos.Call(uintptr(int32(x)), uintptr(int32(y))); ret == 0 {
+		return fmt.Errorf("SetCursorPos(%d,%d) failed: %w", x, y, err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	procMouseEvent.Call(mouseEventFLeftDown, 0, 0, 0, 0)
+	time.Sleep(50 * time.Millisecond)
+	procMouseEvent.Call(mouseEventFLeftUp, 0, 0, 0, 0)
+	return nil
+}
+
+// virtualKeyCodes maps the handful of keys e2e tests need to their Win32
+// virtual-key code (winuser.h VK_* constants).
+var virtualKeyCodes = map[string]uintptr{
+	"Enter":  0x0D, // VK_RETURN
+	"Escape": 0x1B, // VK_ESCAPE
+	"Space":  0x20, // VK_SPACE
+	"Tab":    0x09, // VK_TAB
+}
+
+// pressKey sends a key down+up via keybd_event — same rationale as
+// clickAtScreenPos: WinAppDriver's JSON Wire Protocol POST .../keys
+// endpoint returns 200 OK but was confirmed empirically to not actually
+// deliver the keystroke to the target window in this environment (screen
+// content never changed across repeated calls), while keybd_event does.
+// hwnd must already be foreground (see clickAtScreenPos) — keybd_event
+// has no window-targeting parameter of its own, it goes to whatever
+// currently has keyboard focus.
+func pressKey(key string) error {
+	vk, ok := virtualKeyCodes[key]
+	if !ok {
+		return fmt.Errorf("unknown key %q (add it to virtualKeyCodes if needed)", key)
+	}
+	procKeybdEvent.Call(vk, 0, 0, 0)
+	time.Sleep(50 * time.Millisecond)
+	procKeybdEvent.Call(vk, 0, keyEventFKeyUp, 0)
+	return nil
 }

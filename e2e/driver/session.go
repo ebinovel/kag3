@@ -1,11 +1,18 @@
 //go:build windows
 
-// Package driver is a minimal WinAppDriver (W3C WebDriver Protocol) HTTP
-// client, scoped to exactly what's needed to drive an ebitengine window:
-// attach to a running process's window, click/key-press, and screenshot.
-// ebitengine apps have no UI Automation tree worth speaking of (a single
-// canvas), so element-based WebDriver calls (FindElement etc.) are
-// deliberately not implemented here.
+// Package driver is a minimal WinAppDriver HTTP client, scoped to exactly
+// what's needed to drive an ebitengine window: attach to a running
+// process's window, click/key-press, and screenshot. ebitengine apps have
+// no UI Automation tree worth speaking of (a single canvas), so
+// element-based WebDriver calls (FindElement etc.) are deliberately not
+// implemented here.
+//
+// WinAppDriver speaks the legacy Selenium/Appium JSON Wire Protocol
+// (request: {"desiredCapabilities":{...}}, response:
+// {"sessionId":...,"status":...,"value":...} with sessionId top-level),
+// not W3C WebDriver, despite some of its own docs showing W3C-shaped
+// examples — confirmed empirically against a real WinAppDriver 1.x
+// instance; see AttachSession's doc comment for specifics.
 package driver
 
 import (
@@ -22,8 +29,14 @@ import (
 const DefaultBaseURL = "http://127.0.0.1:4723"
 
 // Session is one attached WinAppDriver session against a single window.
+// Click/KeyPress go straight to Win32 (see window_windows.go) rather than
+// through WinAppDriver — its own input-delivery endpoints don't actually
+// work in this environment; hwnd is what makes that possible without a
+// round trip through WinAppDriver's own (equally non-functional) window
+// handle lookup.
 type Session struct {
 	ID      string
+	hwnd    uintptr
 	baseURL string
 	client  *http.Client
 	// cmd is set only when this Session started its own process (see
@@ -63,37 +76,56 @@ func NewSession(appPath string, env []string) (*Session, error) {
 // AttachSession creates a WinAppDriver session against an already-running
 // window, identified by its Win32 handle. Close() on the returned Session
 // will not kill the underlying process — the caller owns its lifetime.
+//
+// WinAppDriver speaks the legacy JSON Wire Protocol, not W3C WebDriver,
+// despite its docs' capability examples looking W3C-shaped — confirmed
+// empirically (probing http://127.0.0.1:4723/session directly): a W3C
+// {"capabilities":{"alwaysMatch":{...}}} body gets rejected with "Bad
+// capabilities. Specify either app or appTopLevelWindow to create a
+// session" even when appTopLevelWindow is right there in alwaysMatch, but
+// {"desiredCapabilities":{...}} (flat, no alwaysMatch wrapper) is accepted.
+// The success response is also JSON Wire Protocol shaped:
+// {"sessionId":"...","status":0,"value":{...}} — sessionId is top-level,
+// not nested under value like a W3C response would put it.
 func AttachSession(hwnd uintptr) (*Session, error) {
-	s := &Session{baseURL: DefaultBaseURL, client: &http.Client{Timeout: 30 * time.Second}}
+	s := &Session{hwnd: hwnd, baseURL: DefaultBaseURL, client: &http.Client{Timeout: 30 * time.Second}}
 	body := map[string]any{
-		"capabilities": map[string]any{
-			"alwaysMatch": map[string]any{
-				"platformName":             "windows",
-				"appium:appTopLevelWindow": fmt.Sprintf("%X", hwnd),
-			},
+		"desiredCapabilities": map[string]any{
+			"platformName":      "windows",
+			"appTopLevelWindow": fmt.Sprintf("%X", hwnd),
 		},
 	}
 	var resp struct {
-		Value struct {
-			SessionID string `json:"sessionId"`
-			Error     string `json:"error"`
-			Message   string `json:"message"`
+		SessionID string `json:"sessionId"`
+		Status    int    `json:"status"`
+		Value     struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
 		} `json:"value"`
 	}
 	if err := s.post("/session", body, &resp); err != nil {
 		return nil, fmt.Errorf("creating WinAppDriver session: %w", err)
 	}
-	if resp.Value.SessionID == "" {
-		return nil, fmt.Errorf("WinAppDriver returned no sessionId (error=%q message=%q) — is WinAppDriver.exe running?", resp.Value.Error, resp.Value.Message)
+	if resp.SessionID == "" {
+		return nil, fmt.Errorf("WinAppDriver returned no sessionId (status=%d error=%q message=%q) — is WinAppDriver.exe running?", resp.Status, resp.Value.Error, resp.Value.Message)
 	}
-	s.ID = resp.Value.SessionID
+	s.ID = resp.SessionID
+	// Exactly once, not on every click — see bringToForeground's doc
+	// comment (window_windows.go) for why repeating this breaks focus
+	// instead of ensuring it.
+	bringToForeground(hwnd)
 	return s, nil
 }
 
 // Close ends the WinAppDriver session and, if this Session started its own
 // process (via NewSession), kills it. Safe to call on a Session whose
-// session creation failed partway (nil ID is skipped).
+// session creation failed partway (nil ID is skipped). Also undoes
+// bringToForeground's always-on-top pin (best-effort — harmless if the
+// window's already gone by the time this runs).
 func (s *Session) Close() error {
+	if s.hwnd != 0 {
+		unforeground(s.hwnd)
+	}
 	var err error
 	if s.ID != "" {
 		err = s.delete(fmt.Sprintf("/session/%s", s.ID))
@@ -110,34 +142,7 @@ func (s *Session) Close() error {
 // e2e/helpers to convert kag3's 1280x720 logical tag coordinates
 // (button x=/y=) into real screen coordinates for Click.
 func (s *Session) WindowRect() (image.Rectangle, error) {
-	hwnd, err := s.topLevelWindow()
-	if err != nil {
-		return image.Rectangle{}, err
-	}
-	return clientRectOnScreen(hwnd)
-}
-
-// topLevelWindow re-derives the Win32 window handle WinAppDriver attached
-// to. WinAppDriver's own /window/rect endpoint reports the *outer* window
-// rect (title bar + borders included), which is the wrong reference frame
-// for converting kag3's client-area logical coordinates — so WindowRect
-// above deliberately goes through clientRectOnScreen (Win32
-// GetClientRect+ClientToScreen) instead of WinAppDriver's endpoint. This
-// means the session doesn't otherwise need to track the handle after
-// attach; re-fetching it via GET /session/{id}/window costs one extra
-// round trip but avoids a second source of truth.
-func (s *Session) topLevelWindow() (uintptr, error) {
-	var resp struct {
-		Value string `json:"value"`
-	}
-	if err := s.get(fmt.Sprintf("/session/%s/window", s.ID), &resp); err != nil {
-		return 0, err
-	}
-	var hwnd uintptr
-	if _, err := fmt.Sscanf(resp.Value, "%X", &hwnd); err != nil {
-		return 0, fmt.Errorf("parsing window handle %q: %w", resp.Value, err)
-	}
-	return hwnd, nil
+	return clientRectOnScreen(s.hwnd)
 }
 
 func (s *Session) get(path string, out any) error {
