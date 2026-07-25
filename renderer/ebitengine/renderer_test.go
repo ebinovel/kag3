@@ -553,3 +553,39 @@ func TestClearLinksOnJumpClearsNonFixButtonsForScreenChange(t *testing.T) {
 		t.Error("expected screenChanged to be consumed (cleared) by clearLinksOnJump")
 	}
 }
+
+// TestClearLinksOnJumpPreservesRestoredLinksOnLoad is the regression test
+// for a real reported bug: applySaveData restores links/glinks from a save
+// taken right after a [link] choice, but the very next Update() frame's
+// clearLinksOnJump (see TestClearLinksOnJumpKeepsButtonsForSameStorageJump
+// above — links/glinks are *always* cleared on any pending isJump,
+// regardless of screenChanged) wiped them out again before the player ever
+// saw the restored choice — the loaded position looked like it had nothing
+// left to click. preserveLinksOnJump (set by applySaveData alongside the
+// restored links/glinks) makes clearLinksOnJump skip that sweep exactly
+// once.
+func TestClearLinksOnJumpPreservesRestoredLinksOnLoad(t *testing.T) {
+	links = []*kag3.Link{{Target: "*playmusic"}}
+	glinks = []*kag3.GLink{{Target: "somewhere"}}
+	isJump = true
+	preserveLinksOnJump = true
+	screenChanged = true
+	defer func() { links, glinks, isJump, preserveLinksOnJump, screenChanged = nil, nil, false, false, false }()
+
+	clearLinksOnJump()
+
+	if links == nil || glinks == nil {
+		t.Errorf("links/glinks = %+v/%+v, want both preserved (this is the jump applySaveData restored them for)", links, glinks)
+	}
+	if preserveLinksOnJump {
+		t.Error("expected preserveLinksOnJump to be consumed (cleared) after skipping the sweep once")
+	}
+
+	// A *later* jump (e.g. the player then clicks the restored choice) must
+	// go back to clearing normally — preserveLinksOnJump only skips once.
+	isJump = true
+	clearLinksOnJump()
+	if links != nil || glinks != nil {
+		t.Errorf("links/glinks after a later jump = %+v/%+v, want cleared", links, glinks)
+	}
+}

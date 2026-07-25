@@ -262,6 +262,87 @@ func TestSaveSlotRoundTripRestoresPtexts(t *testing.T) {
 	}
 }
 
+// TestSaveSlotRoundTripRestoresTextsAndCharaName is the regression test for
+// a real reported bug: applySaveData resumes execution via jumpIndex
+// straight at the saved [p]/[s]/[l] tag, never re-running whatever
+// TextObject(s) before it in the script actually put text on screen — so
+// the message window (and the name-plate, driven separately by charaName)
+// came back completely blank after every load, not just one predating
+// this fix's own save format.
+func TestSaveSlotRoundTripRestoresTextsAndCharaName(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.texts = map[int][]Text{0: {{Text: "こんにちは"}}}
+	charaName = "akane"
+	defer func() { charaName = "" }()
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate the story continuing past the save point.
+	r.texts = map[int][]Text{0: {{Text: "違う内容"}}}
+	charaName = "yamato"
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	got, ok := r.texts[0]
+	if !ok || len(got) != 1 || got[0].Text != "こんにちは" {
+		t.Errorf("r.texts[0] after load = %+v, want [{Text: \"こんにちは\"}] (the text active at save time)", got)
+	}
+	if charaName != "akane" {
+		t.Errorf("charaName after load = %q, want %q", charaName, "akane")
+	}
+}
+
+// TestApplySaveDataRestoresLinksAndSetsPreserveFlag is the regression test
+// for a real reported bug: a save taken right after a [link] choice (e.g.
+// landing on the [s] that follows a [link]/[endlink] pair) lost the choice
+// itself on load — applySaveData resumes via jumpIndex straight at that
+// [s], never re-running the [link] tags that originally registered it.
+// applySaveData must restore links/glinks directly from the save and set
+// preserveLinksOnJump so the very next Update() frame's clearLinksOnJump
+// doesn't immediately wipe them out again (see
+// TestClearLinksOnJumpPreservesRestoredLinksOnLoad, renderer_test.go).
+func TestApplySaveDataRestoresLinksAndSetsPreserveFlag(t *testing.T) {
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	links = []*kag3.Link{{Target: "*playmusic"}}
+	glinks = nil
+	defer func() { links, glinks, preserveLinksOnJump = nil, nil, false }()
+
+	d := r.buildSaveData()
+	if len(d.Links) != 1 || d.Links[0].Target != "*playmusic" {
+		t.Fatalf("buildSaveData().Links = %+v, want a single Link{Target: \"*playmusic\"}", d.Links)
+	}
+
+	// Simulate the story continuing past the save point and clicking that
+	// very choice, which normally clears links/glinks.
+	links, glinks = nil, nil
+	preserveLinksOnJump = false
+
+	if err := r.applySaveData(d); err != nil {
+		t.Fatalf("applySaveData error: %v", err)
+	}
+
+	if len(links) != 1 || links[0].Target != "*playmusic" {
+		t.Errorf("links after applySaveData = %+v, want the saved choice restored", links)
+	}
+	if !preserveLinksOnJump {
+		t.Error("expected applySaveData to set preserveLinksOnJump so the restored choice survives the next clearLinksOnJump sweep")
+	}
+}
+
 // TestApplySaveDataLoadsMenuButtonImageForFreshProcess covers the other
 // half: a fresh process never ran [showmenubutton], so menuButtonImg is
 // nil — restoring MenuButtonVisible=true alone isn't enough, since

@@ -193,10 +193,39 @@ type saveData struct {
 	// pointing at a name-plate ptext area that either didn't exist yet or
 	// has since moved.
 	CharaNamePText string
+	// CharaName is charaName (tags_character.go's current speaker, set by
+	// the most recent "#name" line — see its doc comment for why it
+	// persists across [p]/[cm]) at save time. Without it, the name-plate
+	// ptext (driven by charaName, see ptextContent in renderer.go) came
+	// back blank after a load even once Texts below restored the dialogue
+	// itself, since charaName is tracked separately from r.texts and
+	// nothing else on the load path touches it.
+	CharaName string
 	// LastMessage is whatever text was in the message window at save time
 	// (see currentMessageText in tags_message.go) — the DATA SAVE/LOAD
 	// screen's preview line, alongside the thumbnail (see captureSnapshot).
 	LastMessage string
+	// Texts is r.texts (the current page's revealed message-window content,
+	// renderer.go) at save time. applySaveData resumes execution via
+	// jumpIndex straight at the saved position — almost always a [p]/[s]/
+	// [l] tag itself, not the TextObject(s) before it that actually put
+	// text on screen — so without this, loading (or reloading a
+	// [checkpoint]) always resumed with a *blank* message window: the tag
+	// that was blocking re-runs and blocks again, but the dialogue line(s)
+	// it was blocking *for* are never replayed. A real reported bug: the
+	// player's own save landed on an [s] right after a [link] choice, so
+	// the message text vanished *and* the choice itself did (see Links/
+	// GLinks below) — with nothing left on screen to click, loading looked
+	// like it silently did nothing at all.
+	Texts map[int][]Text
+	// Links/GLinks are the links/glinks package-level slices (tags_link.go)
+	// at save time — the actual [link]/[glink] choices visible in the
+	// message window, as opposed to Texts above (the plain dialogue text
+	// around them). Same gap as Texts: resuming via jumpIndex at a [s]
+	// sitting right after a choice's [link]/[endlink] pair never re-runs
+	// handleLink, so the choice itself would otherwise never reappear.
+	Links  []*kag3.Link
+	GLinks []*kag3.GLink
 }
 
 func (r *Renderer) buildSaveData() *saveData {
@@ -232,8 +261,31 @@ func (r *Renderer) buildSaveData() *saveData {
 		MenuButtonVisible: menuButtonVisible,
 		Ptexts:            snapshotPtexts(ptexts),
 		CharaNamePText:    charaNamePText,
+		CharaName:         charaName,
 		LastMessage:       currentMessageText(r),
+		Texts:             copyTexts(r.texts),
+		Links:             append([]*kag3.Link(nil), links...),
+		GLinks:            append([]*kag3.GLink(nil), glinks...),
 	}
+}
+
+// copyTexts deep-copies texts, including each segment's TextStyle pointer
+// — same reasoning as copyTextStyle: [checkpoint] keeps its *saveData in
+// memory and can be applied via [rollback] more than once, so sharing a
+// live *kag3.TextStyle a later [font] call might mutate in place (see
+// handleFont, tags_text.go) would silently corrupt an already-taken
+// checkpoint's text.
+func copyTexts(src map[int][]Text) map[int][]Text {
+	out := make(map[int][]Text, len(src))
+	for line, segs := range src {
+		cp := make([]Text, len(segs))
+		for i, seg := range segs {
+			cp[i] = seg
+			cp[i].TextStyle = copyTextStyle(seg.TextStyle)
+		}
+		out[line] = cp
+	}
+	return out
 }
 
 // snapshotPtexts shallow-copies the ptexts map: [ptext]/[chara_config]/
@@ -496,8 +548,33 @@ func (r *Renderer) applySaveData(d *saveData) error {
 			menuButtonImg = img
 		}
 	}
-	r.texts = make(map[int][]Text)
-	charaName = ""
+	// nil check, same reasoning as Ptexts above: a save written before
+	// Texts existed decodes it as nil, and this is the *only* thing that
+	// puts the loaded position's actual dialogue back on screen — without
+	// it, jumpIndex resumes execution at the [p]/[s]/[l] tag itself, which
+	// blocks again but never replays whatever TextObject(s) before it in
+	// the script originally revealed the text it was blocking for, so the
+	// message window came back completely blank after every load.
+	if d.Texts != nil {
+		r.texts = copyTexts(d.Texts)
+	} else {
+		r.texts = make(map[int][]Text)
+	}
+	// Same gap, for the [link]/[glink] choices actually visible in the
+	// message window rather than the plain text around them — a save
+	// landing on an [s] right after a [link]/[endlink] pair (a real
+	// reported case) never re-runs handleLink on load, so without this the
+	// choice itself silently never reappeared either, leaving nothing on
+	// screen the player could click at all.
+	if len(d.Links) > 0 || len(d.GLinks) > 0 {
+		links = append([]*kag3.Link(nil), d.Links...)
+		glinks = append([]*kag3.GLink(nil), d.GLinks...)
+		preserveLinksOnJump = true
+	} else {
+		links = nil
+		glinks = nil
+	}
+	charaName = d.CharaName
 	pendingRuby = ""
 	// true, not false — see the matching comment in goToTitle
 	// (renderer.go): a save/load/rollback triggered from the slot picker

@@ -321,8 +321,12 @@ func clearLinksOnJump() {
 	if !isJump {
 		return
 	}
-	glinks = nil
-	links = nil
+	if preserveLinksOnJump {
+		preserveLinksOnJump = false
+	} else {
+		glinks = nil
+		links = nil
+	}
 	if screenChanged {
 		clearNonFixButtons()
 		screenChanged = false

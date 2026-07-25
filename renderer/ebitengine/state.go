@@ -29,7 +29,17 @@ var (
 	// fix="true", matching the real bundled sample) on every in-scene
 	// [link]/[glink] click even though nothing about the screen changed.
 	screenChanged bool
-	co            *coro.Coro
+	// preserveLinksOnJump marks that the pending isJump is a save/load
+	// (applySaveData) restoring a saved links/glinks selection, so
+	// clearLinksOnJump's usual "any pending isJump drops links/glinks"
+	// sweep (see its own comment — normally correct, since a jump normally
+	// means whatever line owned that choice list has been advanced past)
+	// must skip *this one* jump instead of immediately wiping the very
+	// selection applySaveData just restored, one frame before the player
+	// ever sees it. Set right alongside links/glinks in applySaveData,
+	// cleared the first time clearLinksOnJump actually consumes it.
+	preserveLinksOnJump bool
+	co                  *coro.Coro
 )
 
 func init() {
