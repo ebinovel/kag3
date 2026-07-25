@@ -1,0 +1,42 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    # windows-latest, not ubuntu — ebitengine needs cgo + X11/OpenGL dev
+    # headers to even *compile* on Linux, which this workflow has never
+    # been run/verified against. Windows is this project's actual known-
+    # working dev environment (see CLAUDE.md), so it's the safe default
+    # here; a Linux job can be added later once verified to actually build.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # Scoped to the root package + renderer/... — NOT ./... — because
+      # example/ and example2/ are excluded via .git/info/exclude (see
+      # CLAUDE.md's "Repository layout gotcha"), not .gitignore, so they
+      # exist on the maintainer's machine but are never checked into git.
+      # A CI checkout never has them, and both packages' go:embed
+      # directives point at a resources/ directory that only exists
+      # locally, so `go build ./...` here would fail on packages that
+      # were never actually part of the commit being tested.
+      - name: Build
+        run: go build . ./renderer/...
+
+      - name: Vet
+        run: go vet . ./renderer/...
+
+      - name: Test
+        run: go test . ./renderer/... -count=1
