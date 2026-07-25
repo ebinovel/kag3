@@ -186,6 +186,14 @@ func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
 
 	// Simulate clicking OK on the confirm dialog while main.ks is
 	// mid-dialogue, exactly as resolveButtonDialog's OnConfirm does.
+	// goToTitle sets oldTick = tick - 4 (see its comment); this test drives
+	// co.Next() directly rather than through Update(), so tick never
+	// advances past 0 here and that offset would otherwise stick around as
+	// -4 for every later test in the package that checks isTextEnded
+	// (oldTick+3>=tick) via fakeYield — permanently false since tick only
+	// ever increases. Reset both back to neutral once this test is done
+	// with them.
+	defer func() { tick, oldTick = 0, 0 }()
 	r.goToTitle()
 
 	for i := 0; i < 10; i++ {
@@ -296,7 +304,10 @@ func TestApplySaveDataEscapesTextWaitingOnIsWait(t *testing.T) {
 	}
 
 	// Simulate picking a slot in the save/load screen while main.ks is
-	// mid-dialogue.
+	// mid-dialogue. Same tick/oldTick reset rationale as
+	// TestGoToTitleEscapesTextWaitingOnIsWait above — applySaveData sets
+	// oldTick = tick - 4 too.
+	defer func() { tick, oldTick = 0, 0 }()
 	if err := r.applySaveData(&saveData{Storage: "sub.ks", Index: 0}); err != nil {
 		t.Fatalf("applySaveData: %v", err)
 	}

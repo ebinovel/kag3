@@ -20,6 +20,14 @@ func newSaveTestRendererWithVars(t *testing.T) *Renderer {
 	if _, err := r.vm.Eval("f.hoge = 5; sf.seen = true;"); err != nil {
 		t.Fatalf("seeding f/sf failed: %v", err)
 	}
+	// applySaveData (called via loadSlot/rollback/applySaveData directly by
+	// most tests using this helper) sets oldTick = tick - 4 (see its comment
+	// in tags_save.go). These tests never drive tick forward through
+	// Update() afterward, so that offset would otherwise stick around and
+	// break later tests' isTextEnded checks (oldTick+3>=tick, permanently
+	// false once oldTick is pinned behind tick) — see the matching comment
+	// in confirm_title_flow_test.go.
+	t.Cleanup(func() { tick, oldTick = 0, 0 })
 	return r
 }
 

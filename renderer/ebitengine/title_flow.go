@@ -50,6 +50,16 @@ func (r *Renderer) goToTitle() {
 	// wait immediately (harmlessly — the destination's own first text line
 	// resets isWait=false again the moment it actually starts revealing).
 	isWait = true
+	// oldTick reset alongside isWait, for the same reason applySaveData
+	// does (tags_save.go): if the destination's first tag happens to be a
+	// [p] (unusual for a title screen, but not impossible depending on
+	// the scenario), its own y.Until(true, isTextEnded) could otherwise
+	// spuriously already be satisfied — oldTick+3>=tick can be true purely
+	// by coincidence (whatever oldTick last was, from a real click on the
+	// previous screen, ending up within 3 ticks of the current one) even
+	// though isWait being true here is forced, not a sign the player
+	// actually clicked past this line.
+	oldTick = tick - 4
 	isSkip = false
 	isAuto = false
 	jumpIndex = 0

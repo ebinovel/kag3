@@ -506,6 +506,19 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	// isWait=false would leave it stuck there forever, never reaching the
 	// pending jump at all.
 	isWait = true
+	// oldTick reset alongside isWait — see the matching comment in
+	// goToTitle for why this is necessary too, not just isWait: without
+	// it, [p]'s own y.Until(true, isTextEnded) (isTextEnded =
+	// oldTick+3>=tick && isWait) can spuriously already be satisfied the
+	// instant the jump lands on a [p] tag, since oldTick is whatever it
+	// last was set to (the most recent real click) and isWait is now
+	// forced true — if those happen to be within 3 ticks of the current
+	// tick (confirmed empirically: a same-process load taken shortly
+	// after a real click routinely lands in exactly this window), the
+	// [p]tag at the loaded position resolves immediately instead of
+	// waiting for the player to actually click, silently skipping to the
+	// next line.
+	oldTick = tick - 4
 	isSkip = false
 	isAuto = false
 	jumpIndex = d.Index

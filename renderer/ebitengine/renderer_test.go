@@ -255,6 +255,12 @@ func TestGoToTitleHidesLeftoverGameplayChrome(t *testing.T) {
 	backlogViewing = true
 	menuOpen = true
 	slotPickerActive = slotPickerSave
+	// goToTitle sets oldTick = tick - 4; this test never drives tick forward
+	// afterward, so that offset would otherwise stick around and break later
+	// tests' isTextEnded checks (oldTick+3>=tick, permanently false once
+	// oldTick is stuck behind tick) — see the matching comment in
+	// confirm_title_flow_test.go.
+	defer func() { tick, oldTick = 0, 0 }()
 
 	r.goToTitle()
 
