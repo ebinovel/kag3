@@ -106,6 +106,10 @@ func drawMessageVertical(r *Renderer, buf *ebiten.Image, x, marginTop float64, l
 			tOp.GeoM.Translate(colX, marginTop+float64(row)*charSize)
 			applyTextStyle(r, tOp, Text{TextStyle: rs.style})
 			text.Draw(buf, string(rs.ch), r.verticalFontFace, tOp)
+			if lineNum == r.line && isTextEnd && i == showCount-1 {
+				textEndX = colX
+				textEndY = marginTop + float64(row+1)*charSize
+			}
 		}
 		colIndex += (len(runes) + charsPerCol - 1) / charsPerCol
 	}
@@ -213,6 +217,18 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					}
 					xOffset += w
 					segOffset += segLen
+				}
+				if isTextEnd {
+					textEndX = marginLeft + xOffset
+					// marginTop+rowY+rubyLineHeight is this row's *top*
+					// (where text.Draw's own Y coordinate anchors, per
+					// text/v2's default top-left origin) — add beforeTextSize
+					// (this row's height, the same value rowY itself is
+					// incremented by below) to land on the row's bottom
+					// instead, so the wait-mark's rest position sits right
+					// under the actual characters rather than floating
+					// somewhere above them.
+					textEndY = marginTop + rowY + rubyLineHeight + beforeTextSize
 				}
 			}
 		} else {

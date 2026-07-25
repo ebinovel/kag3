@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"image/color"
+	"math"
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -127,9 +128,20 @@ type glyphConfig struct {
 }
 
 var (
-	glyphNormal = glyphConfig{Color: color.RGBA{255, 255, 255, 220}, Size: 12, OffsetX: -20, OffsetY: -20}
-	glyphSkip   = glyphConfig{Color: color.RGBA{255, 210, 60, 220}, Size: 12, OffsetX: -20, OffsetY: -20}
-	glyphAuto   = glyphConfig{Color: color.RGBA{90, 200, 255, 220}, Size: 12, OffsetX: -20, OffsetY: -20}
+	// OffsetY: 0 — textEndY (draw_message.go) is already the bottom edge of
+	// the current text row, so the mark's rest position (before
+	// glyphBounceOffset is added) sits flush against it with no further
+	// adjustment needed.
+	glyphNormal = glyphConfig{Color: color.RGBA{255, 255, 255, 220}, Size: 6, OffsetX: 8, OffsetY: 0}
+	glyphSkip   = glyphConfig{Color: color.RGBA{255, 210, 60, 220}, Size: 6, OffsetX: 8, OffsetY: 0}
+	glyphAuto   = glyphConfig{Color: color.RGBA{90, 200, 255, 220}, Size: 6, OffsetX: 8, OffsetY: 0}
+	// textEndX/textEndY is the screen position right after the last glyph
+	// of the currently active line, once fully revealed — set alongside
+	// isTextEnd (drawMessageHorizontal/drawMessageVertical, draw_message.go)
+	// so drawGlyph below can anchor the "click to continue" mark to the
+	// actual end of the displayed text instead of a fixed corner of the
+	// message box.
+	textEndX, textEndY float64
 )
 
 func parseGlyphConfig(pm map[string]string, cfg *glyphConfig) error {
@@ -169,9 +181,9 @@ func handleGlyphSkip(ctx *tagCtx) error { return parseGlyphConfig(ctx.tag.Pm, &g
 func handleGlyphAuto(ctx *tagCtx) error { return parseGlyphConfig(ctx.tag.Pm, &glyphAuto) }
 
 // drawGlyph is called from drawScene right after the message text itself,
-// so it sees this frame's isTextEnd. Priority: skip/auto (shown continuously
-// while that mode is active) over the plain "click to continue" dot (shown
-// only once the current line has finished revealing).
+// so it sees this frame's isTextEnd/textEndX/textEndY. Priority: skip/auto
+// (shown continuously while that mode is active) over the plain "click to
+// continue" dot (shown only once the current line has finished revealing).
 func drawGlyph(buf *ebiten.Image) {
 	if textPosition == nil || !textPosition.Visible {
 		return
@@ -190,13 +202,29 @@ func drawGlyph(buf *ebiten.Image) {
 	if cfg.Size <= 0 {
 		return
 	}
-	x := textPosition.Left + textPosition.Width + cfg.OffsetX
-	y := textPosition.Top + textPosition.Height + cfg.OffsetY
+	x := textEndX + float64(cfg.OffsetX)
+	y := textEndY + float64(cfg.OffsetY) + glyphBounceOffset()
 	mark := ebiten.NewImage(cfg.Size, cfg.Size)
 	mark.Fill(cfg.Color)
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
+	op.GeoM.Translate(x, y)
 	buf.DrawImage(mark, op)
+}
+
+// glyphBounceOffset drives the mark's idle "waiting for a click" bounce —
+// real Tyrano uses an animated nextpage.gif here, which kag3 has no bundled
+// artwork to reproduce (see glyphConfig's doc comment), so a small
+// procedural bob stands in instead. Keyed off t (every frame, ticking
+// regardless of isWait/isSkip/isAuto) rather than tick (frozen while the
+// coroutine is blocked — see the isTextEnded note in state.go) so the
+// animation itself keeps moving smoothly the whole time the mark is shown.
+func glyphBounceOffset() float64 {
+	const (
+		periodTicks = 40
+		amplitude   = 4.0
+	)
+	phase := float64(t%periodTicks) / periodTicks * 2 * math.Pi
+	return -amplitude * math.Abs(math.Sin(phase))
 }
 
 // --- cursor: custom mouse pointer ---
