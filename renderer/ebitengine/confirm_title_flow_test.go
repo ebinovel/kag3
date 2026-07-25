@@ -218,6 +218,43 @@ func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
 	}
 }
 
+// TestIsTextEndedOrJumpedReleasesOnPendingJump is the regression test for a
+// real reported bug found while E2E-testing role="title" mid-dialogue:
+// [p]'s own block (handleP, tags_text.go) waits on isTextEnded, a
+// completely separate condition from the bare TextObject wait
+// TestGoToTitleEscapesTextWaitingOnIsWait covers above. goToTitle forcing
+// isWait=true and setting isJump=true does nothing to release a coroutine
+// currently nested inside handleP's y.Until(true, ...) call — that call is
+// several stack frames below initScript's outer isJump check (macro.go),
+// which is what actually reads isJump, so isJump sitting there true is
+// simply never observed until [p]'s own condition independently becomes
+// true first. Before this fix, that took a *further* real click landing on
+// whatever screen was still showing (not yet the jump's destination),
+// consumed uselessly on the retreating source screen instead of the
+// destination's actual UI. isTextEndedOrJumped (state.go) is what handleP
+// actually blocks on; it must treat a pending isJump as sufficient on its
+// own, independent of isTextEnded's own oldTick/tick bookkeeping.
+func TestIsTextEndedOrJumpedReleasesOnPendingJump(t *testing.T) {
+	defer func() { isJump, isWait, tick, oldTick = false, false, 0, 0 }()
+
+	// isWait=true (mid-dialogue, already fully revealed) but oldTick
+	// pinned behind tick — exactly the state goToTitle/applySaveData leave
+	// behind via oldTick = tick - 4 (see their comments) to stop a
+	// freshly-loaded/jumped-to [p] from spuriously auto-completing.
+	isWait = true
+	tick = 100
+	oldTick = tick - 4
+	isJump = false
+	if isTextEndedOrJumped() {
+		t.Fatal("expected isTextEndedOrJumped = false with isTextEnded false and no pending jump")
+	}
+
+	isJump = true
+	if !isTextEndedOrJumped() {
+		t.Error("expected isTextEndedOrJumped = true once a jump is pending, even with isTextEnded still false — a pending jump abandons the *current* screen outright, so its own [p] must not block that")
+	}
+}
+
 // TestGoToTitleResetsTextPositionAndStyle is the regression test for a real
 // reported bug: finishing the story, returning to title, then choosing
 // "はじめから" a second time showed scene1.ks's very first line inside the

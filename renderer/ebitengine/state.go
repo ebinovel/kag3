@@ -10,6 +10,7 @@ var (
 	isFirst                bool
 	loop                   func(y coro.Yield)
 	isClicked, isTextEnded func() bool
+	isTextEndedOrJumped    func() bool
 	t, tick, oldTick       int
 	isJump                 bool
 	isJumped               func() bool
@@ -37,6 +38,22 @@ func init() {
 	}
 	isTextEnded = func() bool {
 		return oldTick+3 >= tick && isWait
+	}
+	// isTextEndedOrJumped is handleP's actual wait condition ([p], tags_text.go)
+	// — isTextEnded alone, plus a pending isJump. A pending jump (goToTitle,
+	// applySaveData, or any button/link/glink target jump) means the *current*
+	// screen — the one this [p] belongs to — is being abandoned outright, so
+	// its own text-wait must not block that: the coroutine is nested inside
+	// this Until call, several frames deep below initScript's outer isJump
+	// check (macro.go), so without this, isJump sitting there true does
+	// nothing at all until isTextEnded *also* becomes true on its own — which
+	// requires a further real click that has nowhere correct to land, since
+	// whatever screen it was aimed at hasn't been reached yet. isJump is
+	// consumed (reset false) by the outer loop before the destination's own
+	// first tag ever runs, so this never lets a freshly-loaded/jumped-to [p]
+	// skip its own wait — only ever the *source* screen's.
+	isTextEndedOrJumped = func() bool {
+		return isTextEnded() || isJump
 	}
 	isJumped = func() bool {
 		return isJump

@@ -43,7 +43,7 @@ func init() {
 
 func handleP(ctx *tagCtx) error {
 	r := ctx.r
-	ctx.y.Until(true, isTextEnded)
+	ctx.y.Until(true, isTextEndedOrJumped)
 	recordBacklog(r)
 	r.texts = make(map[int][]Text)
 	isWait = false
