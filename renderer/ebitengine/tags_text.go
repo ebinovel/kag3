@@ -47,7 +47,9 @@ func handleP(ctx *tagCtx) error {
 	recordBacklog(r)
 	r.texts = make(map[int][]Text)
 	isWait = false
-	charaName = ""
+	// charaName deliberately not cleared here — see its doc comment
+	// (tags_character.go): the name-plate must survive [p] to keep
+	// showing the current speaker across a multi-line "#name" block.
 	pendingRuby = ""
 	return nil
 }
@@ -73,7 +75,11 @@ func handleCM(ctx *tagCtx) error {
 	recordBacklog(r)
 	r.texts = make(map[int][]Text)
 	isWait = false
-	charaName = ""
+	// charaName deliberately not cleared here — see its doc comment
+	// (tags_character.go). scene1.ks itself relies on this: "#あかね"
+	// immediately followed by "[cm]" (still under the same speaker) would
+	// otherwise blank the name-plate right back out before the next line
+	// ever displays.
 	pendingRuby = ""
 	return nil
 }

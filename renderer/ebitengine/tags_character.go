@@ -26,8 +26,18 @@ func init() {
 var (
 	charas     map[string]*kag3.Character
 	viewCharas []*kag3.CharaShow
-	charaName  string
-	charaTick  int
+	// charaName is the current speaker, set by a "#name" line (parser.go's
+	// characterPText produces a Chara-tagged TextObject that macro.go's
+	// execItem assigns this from) and cleared by a bare "#" line the same
+	// way. It's deliberately *not* touched by [p]/[cm] (tags_text.go) —
+	// real Tyrano scripts (e.g. scene1.ks) declare "#name" once and then
+	// write several [p]-separated lines under it with no repeated "#name"
+	// in between, so it has to persist across those or the name-plate
+	// ptext (ptextContent, renderer.go) and fuki-mode positioning
+	// (applyFukiPosition, tags_message.go) would both go blank after the
+	// very first line.
+	charaName string
+	charaTick int
 )
 
 func init() {
