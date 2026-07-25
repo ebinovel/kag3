@@ -134,3 +134,69 @@ func TestExpandMacroIfElseTakesElseBranch(t *testing.T) {
 		t.Errorf("macroTestProbe = %q, want %q (a false [if] inside a macro body must still run its [else])", macroTestProbe, "else-branch")
 	}
 }
+
+// TestRubyAppliesOnlyToFirstCharacter is the regression test for a real
+// reported bug: "[ruby text=たん]単にできます" (no further tag before the
+// text object ends, so the parser hands execItem one six-rune TextObject)
+// attached "たん" to the *entire* run instead of just "単", visibly
+// centering the ruby over six characters instead of one. Real Tyrano's
+// [ruby text=...] annotates exactly the single character immediately
+// following it — appendRubyText (macro.go) splits the ruby'd rune off into
+// its own segment so drawMessage*'s per-segment centering (draw_message.go)
+// lands on just that character.
+func TestRubyAppliesOnlyToFirstCharacter(t *testing.T) {
+	r := newTestRenderer()
+	pendingRuby = ""
+	defer func() { pendingRuby = "" }()
+
+	scripts := []any{
+		kag3.TagObject{Name: "ruby", Line: 1, Pm: map[string]string{"text": "たん"}},
+		kag3.TextObject{Line: 1, Name: "text", Val: "単にできます"},
+	}
+	i := 0
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (ruby tag) error: %v", err)
+	}
+	i = 1
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (text) error: %v", err)
+	}
+
+	segs := r.texts[1]
+	if len(segs) != 2 {
+		t.Fatalf("r.texts[1] = %+v, want 2 segments (ruby'd first rune + plain rest)", segs)
+	}
+	if segs[0].Text != "単" || segs[0].Ruby != "たん" {
+		t.Errorf("segs[0] = %+v, want Text=単 Ruby=たん", segs[0])
+	}
+	if segs[1].Text != "にできます" || segs[1].Ruby != "" {
+		t.Errorf("segs[1] = %+v, want Text=にできます Ruby=\"\"", segs[1])
+	}
+}
+
+// TestRubyOnSingleCharacterStaysOneSegment makes sure the split above only
+// happens when there's actually more than one rune to split off — a
+// single-character run like "[ruby text=かん]簡" needs no second segment.
+func TestRubyOnSingleCharacterStaysOneSegment(t *testing.T) {
+	r := newTestRenderer()
+	pendingRuby = ""
+	defer func() { pendingRuby = "" }()
+
+	scripts := []any{
+		kag3.TagObject{Name: "ruby", Line: 1, Pm: map[string]string{"text": "かん"}},
+		kag3.TextObject{Line: 1, Name: "text", Val: "簡"},
+	}
+	i := 0
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (ruby tag) error: %v", err)
+	}
+	i = 1
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (text) error: %v", err)
+	}
+
+	segs := r.texts[1]
+	if len(segs) != 1 || segs[0].Text != "簡" || segs[0].Ruby != "かん" {
+		t.Errorf("r.texts[1] = %+v, want a single Text{Text: \"簡\", Ruby: \"かん\"}", segs)
+	}
+}

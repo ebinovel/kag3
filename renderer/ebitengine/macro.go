@@ -40,23 +40,27 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 			charaName = object.Chara.Name
 		}
 		if len(r.texts[object.Line]) == 0 {
-			r.texts[object.Line] = append(
-				r.texts[object.Line],
-				Text{Text: object.Val, Ruby: pendingRuby},
-			)
+			r.texts[object.Line] = appendRubyText(r.texts[object.Line], object.Val, pendingRuby)
 			pendingRuby = ""
 		} else {
-			if r.texts[object.Line][len(r.texts[object.Line])-1].Text == "" {
-				r.texts[object.Line][len(r.texts[object.Line])-1].Text = object.Val
-				if pendingRuby != "" {
-					r.texts[object.Line][len(r.texts[object.Line])-1].Ruby = pendingRuby
-					pendingRuby = ""
+			last := len(r.texts[object.Line]) - 1
+			if r.texts[object.Line][last].Text == "" {
+				// Filling in a [font]/[deffont]-created empty marker
+				// segment in place (see applyTextStyle's doc comment) —
+				// same ruby-splitting as appendRubyText below, just
+				// written into the existing slot instead of appending.
+				runes := []rune(object.Val)
+				if pendingRuby != "" && len(runes) > 1 {
+					r.texts[object.Line][last].Text = string(runes[0])
+					r.texts[object.Line][last].Ruby = pendingRuby
+					r.texts[object.Line] = append(r.texts[object.Line], Text{Text: string(runes[1:])})
+				} else {
+					r.texts[object.Line][last].Text = object.Val
+					r.texts[object.Line][last].Ruby = pendingRuby
 				}
+				pendingRuby = ""
 			} else {
-				r.texts[object.Line] = append(
-					r.texts[object.Line],
-					Text{Text: object.Val, Ruby: pendingRuby},
-				)
+				r.texts[object.Line] = appendRubyText(r.texts[object.Line], object.Val, pendingRuby)
 				pendingRuby = ""
 			}
 		}
@@ -98,6 +102,27 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 		}
 	}
 	return nil
+}
+
+// appendRubyText appends a new Text segment for val, splitting off a
+// non-empty ruby onto just its first rune. Real Tyrano's [ruby text=...]
+// annotates exactly the single character immediately after it — parsing
+// only sees tag/text boundaries, though, so "[ruby text=たん]単にできます"
+// (no further tag until the line ends) parses as one six-rune TextObject,
+// and attaching the ruby to the whole thing would center "たん" over all
+// six characters instead of just "単". Splitting here keeps drawMessage*'s
+// per-segment ruby centering (draw_message.go) correct without it having
+// to know anything about this.
+func appendRubyText(line []Text, val, ruby string) []Text {
+	if ruby != "" {
+		if runes := []rune(val); len(runes) > 1 {
+			return append(line,
+				Text{Text: string(runes[0]), Ruby: ruby},
+				Text{Text: string(runes[1:])},
+			)
+		}
+	}
+	return append(line, Text{Text: val, Ruby: ruby})
 }
 
 // maxMacroDepth guards against runaway/self-recursive macro expansion.
