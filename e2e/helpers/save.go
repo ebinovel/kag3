@@ -10,9 +10,12 @@ import (
 )
 
 // Reserved slot numbers, mirroring renderer/ebitengine/tags_save.go's
-// manualSaveSlot/quickSaveSlot/autoSaveSlot constants — kag3 has no
-// showsave/showload UI wired into the bundled example scenarios yet, so
-// e2e flows use these fixed slots via role="save"/"quicksave" buttons.
+// manualSaveSlot/quickSaveSlot/autoSaveSlot constants. ManualSaveSlot is
+// what the quick menu's slot picker writes to via its first row (see
+// nav.go's ClickSlotPickerRow1) — the current example has no
+// role="save"/"quicksave" [button] to target QuickSaveSlot/AutoSaveSlot
+// directly, they're listed here only to mirror the renderer-side
+// constants.
 const (
 	ManualSaveSlot = 1
 	QuickSaveSlot  = 0

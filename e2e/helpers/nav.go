@@ -44,18 +44,20 @@ func ClickLogical(sess *driver.Session, lx, ly int) error {
 
 // Title screen button centers, computed from example/resources/senarios/
 // title.ks's [button x= y=] top-left coordinates plus half the actual
-// graphic size (all five title/button_*.png are 360x74 — confirmed via
+// graphic size (all four title/button_*.png are 360x74 — confirmed via
 // `file example/resources/images/title/button_*.png`). Re-derive if
-// title.ks or its button graphics change.
+// title.ks or its button graphics change. title.ks has no CG/replay
+// buttons (the bundled TyranoScript sample's cg.ks/replay.ks were dropped
+// when this became an original game) — don't add ClickTitleCG/Replay back
+// without a matching [button] in title.ks.
 const (
 	titleStartX, titleStartY   = 135 + 360/2, 230 + 74/2
-	titleLoadX, titleLoadY     = 135 + 360/2, 320 + 74/2
-	titleCGX, titleCGY         = 135 + 360/2, 410 + 74/2
-	titleReplayX, titleReplayY = 135 + 360/2, 500 + 74/2
-	titleConfigX, titleConfigY = 135 + 360/2, 590 + 74/2
+	titleLoadX, titleLoadY     = 135 + 360/2, 340 + 74/2
+	titleDemoX, titleDemoY     = 135 + 360/2, 450 + 74/2
+	titleConfigX, titleConfigY = 135 + 360/2, 560 + 74/2
 )
 
-// ClickTitleStart clicks title.ks's "はじめから" button (target="gamestart"
+// ClickTitleStart clicks title.ks's "START" button (target="gamestart"
 // -> scene1.ks).
 func ClickTitleStart(sess *driver.Session) error { return ClickLogical(sess, titleStartX, titleStartY) }
 
@@ -63,13 +65,9 @@ func ClickTitleStart(sess *driver.Session) error { return ClickLogical(sess, tit
 // slot picker).
 func ClickTitleLoad(sess *driver.Session) error { return ClickLogical(sess, titleLoadX, titleLoadY) }
 
-// ClickTitleCG clicks title.ks's CG button (storage="cg.ks").
-func ClickTitleCG(sess *driver.Session) error { return ClickLogical(sess, titleCGX, titleCGY) }
-
-// ClickTitleReplay clicks title.ks's REPLAY button (storage="replay.ks").
-func ClickTitleReplay(sess *driver.Session) error {
-	return ClickLogical(sess, titleReplayX, titleReplayY)
-}
+// ClickTitleDemo clicks title.ks's DEMO button (target="demostart" ->
+// hub.ks, the tag-feature demo hub).
+func ClickTitleDemo(sess *driver.Session) error { return ClickLogical(sess, titleDemoX, titleDemoY) }
 
 // ClickTitleConfig clicks title.ks's CONFIG button (role="sleepgame",
 // storage="config.ks").
@@ -84,59 +82,80 @@ func Advance(sess *driver.Session) error {
 	return sess.KeyPress("Enter")
 }
 
-// scene1.ks's "role_button" row (name="role_button", all button/*.png are
-// 96x26 — confirmed via `file example/resources/images/button/*.png`),
-// registered partway through scene1.ks after chara_name_area's ptext is
-// redefined at x=100 (see ClickQuickSave's doc comment for why that
-// ordering matters). Fix isn't set on any of them, so — per
-// clearNonFixButtons (renderer.go) — a screen-changing jump (a load,
-// goToTitle, or any [jump]/[call] to a different storage) clears them all;
-// only same-storage jumps ([link]/[glink] within scene1.ks) leave them in
-// place.
+// The quick menu (opened via the hamburger button, bottom-right corner) is
+// how "たそがれ図書室" exposes save/load/title-return in-game — unlike the
+// bundled TyranoScript sample's scene1.ks, the current scene1.ks/hub.ks/
+// demo_*.ks register no role="save"/"quicksave"/"title" [button] of their
+// own, so there's nothing resembling a role_button row to click directly
+// anymore; everything routes through this menu instead. Coordinates are
+// exported (not just wrapped in a Click* func below) so callers that need
+// clickAndWaitChanged-style retry logic (flows_test.go) can drive
+// ClickLogical themselves. See renderer/ebitengine/tags_sysdesign.go's
+// menuButtonRect (the 64x64 button_menu.png icon at
+// (ScreenWidth-64-20, ScreenHeight-64-20)) and tags_save.go's
+// quickMenuButtons() (five 520x70 rows at X=380, Y=190+i*(70+25) for
+// i=0..4: SAVE/LOAD/HIDE MESSAGE/SKIP/BACK TO TITLE).
 const (
-	roleQuickSaveX, roleQuickSaveY = 40 + 96/2, 690 + 26/2
-	roleQuickLoadX, roleQuickLoadY = 140 + 96/2, 690 + 26/2
-	roleSaveX, roleSaveY           = 240 + 96/2, 690 + 26/2
-	roleLoadX, roleLoadY           = 340 + 96/2, 690 + 26/2
-	roleTitleX, roleTitleY         = 1140 + 96/2, 690 + 26/2
+	MenuButtonX, MenuButtonY         = 1196 + 64/2, 636 + 64/2
+	QuickMenuSaveX, QuickMenuSaveY   = 380 + 520/2, 190 + 70/2
+	QuickMenuLoadX, QuickMenuLoadY   = 380 + 520/2, 190 + 1*(70+25) + 70/2
+	QuickMenuTitleX, QuickMenuTitleY = 380 + 520/2, 190 + 4*(70+25) + 70/2
 )
 
-// ClickQuickSave clicks scene1.ks's role="quicksave" button (writes
-// slot 0 — see helpers.QuickSaveSlot). Only reachable once scene1.ks has
-// advanced past the role_button block, i.e. after chara_name_area's ptext
-// has already been redefined to x=100 — there is no in-script UI path to
-// save while it's still at its original x=180.
-func ClickQuickSave(sess *driver.Session) error {
-	return ClickLogical(sess, roleQuickSaveX, roleQuickSaveY)
+// ClickMenuButton opens the quick menu — a no-op if it's not currently
+// visible (menuButtonVisible false, or the menu is already open — see
+// handleMenuButtonClick, tags_sysdesign.go).
+func ClickMenuButton(sess *driver.Session) error { return ClickLogical(sess, MenuButtonX, MenuButtonY) }
+
+// ClickQuickMenuSave clicks the open quick menu's SAVE row, which opens
+// the slot picker in save mode (openSlotPicker(slotPickerSave) —
+// tags_sysdesign.go). Follow up with ClickSlotPickerRow1 (or another
+// row) to actually write a slot.
+func ClickQuickMenuSave(sess *driver.Session) error {
+	return ClickLogical(sess, QuickMenuSaveX, QuickMenuSaveY)
 }
 
-// ClickQuickLoad clicks scene1.ks's role="quickload" button (reads
-// slot 0). This is a screen-changing jump (applySaveData sets
-// screenChanged=true unconditionally — tags_save.go), so every non-Fix
-// button including the role_button row itself is gone from the next frame
-// on; don't chain another role_button click after this without navigating
-// back to where scene1.ks re-registers them.
-func ClickQuickLoad(sess *driver.Session) error {
-	return ClickLogical(sess, roleQuickLoadX, roleQuickLoadY)
+// ClickQuickMenuLoad clicks the open quick menu's LOAD row, opening the
+// slot picker in load mode.
+func ClickQuickMenuLoad(sess *driver.Session) error {
+	return ClickLogical(sess, QuickMenuLoadX, QuickMenuLoadY)
 }
 
-// ClickSave clicks scene1.ks's role="save" button (opens the slot picker,
-// same as title.ks's LOAD/CONFIG buttons' role wiring).
-func ClickSave(sess *driver.Session) error { return ClickLogical(sess, roleSaveX, roleSaveY) }
-
-// ClickLoad clicks scene1.ks's role="load" button (opens the slot picker).
-func ClickLoad(sess *driver.Session) error { return ClickLogical(sess, roleLoadX, roleLoadY) }
-
-// ClickRoleTitle clicks scene1.ks's role="title" button — opens
-// confirmGoToTitle's confirmation dialog (renderer.go), it does not jump
+// ClickQuickMenuTitle clicks the open quick menu's "BACK TO TITLE" row —
+// opens confirmGoToTitle's confirmation dialog (renderer.go), same as
+// ClickDialogOK below is meant to follow up on; it does not jump
 // immediately.
-func ClickRoleTitle(sess *driver.Session) error { return ClickLogical(sess, roleTitleX, roleTitleY) }
+func ClickQuickMenuTitle(sess *driver.Session) error {
+	return ClickLogical(sess, QuickMenuTitleX, QuickMenuTitleY)
+}
+
+// Slot picker layout — see tags_uiscreens.go's slotPickerRowX/Y0/W/H/Gap
+// (X=130 Y0=170 W=1000 H=120 gap=10) and backButtonRect (100x100
+// menu_button_close.png at (ScreenWidth-100-20, 35)). Row i (0-indexed) is
+// slot i+1 (slotPickerRows) — row 1 is slot ManualSaveSlot (save.go).
+const (
+	SlotPickerRow1X, SlotPickerRow1Y = 130 + 1000/2, 170 + 120/2
+	SlotPickerBackX, SlotPickerBackY = 1160 + 100/2, 35 + 100/2
+)
+
+// ClickSlotPickerRow1 clicks the slot picker's first row — save slot
+// ManualSaveSlot — writing or reading it depending on whether the picker
+// is currently in save or load mode (handleSlotPickerClick,
+// tags_uiscreens.go).
+func ClickSlotPickerRow1(sess *driver.Session) error {
+	return ClickLogical(sess, SlotPickerRow1X, SlotPickerRow1Y)
+}
+
+// ClickSlotPickerBack closes the slot picker without saving/loading.
+func ClickSlotPickerBack(sess *driver.Session) error {
+	return ClickLogical(sess, SlotPickerBackX, SlotPickerBackY)
+}
 
 // Confirm dialog OK/NG button centers, computed from
 // tags_save.go's dialogButtonRects(screenW, screenH) at the fixed logical
 // 1280x720: w,h=160,50; y=screenH/2+40=400; OK.X=screenW/2-w-20=460;
 // NG.X=screenW/2+20=660. Used by confirmGoToTitle's "タイトルに戻ります。
-// よろしいですか？" dialog (role="title" — see ClickRoleTitle) and any
+// よろしいですか？" dialog (opened via ClickQuickMenuTitle above) and any
 // other activeDialog with OnConfirm set.
 const (
 	dialogOKX, dialogOKY = 460 + 160/2, 400 + 50/2
