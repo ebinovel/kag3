@@ -443,7 +443,8 @@ func applyTextPositionFromSnapshot(r *Renderer, tp *kag3.TextPosition, s textPos
 // registration before it's allowed back into the live viewCharas — the
 // invariant the rest of the renderer (drawScene, charaShow) already assumes
 // [chara_show] enforces. Anything already registered (a same-process load)
-// is left untouched; anything missing is re-registered from charaStorage if
+// has its Image/Storage reloaded to match c.Storage (see the loop body's
+// comment for why); anything missing is re-registered from charaStorage if
 // possible, or dropped (logged, not panicked) if its path is missing or the
 // file can't be read.
 //
@@ -456,7 +457,27 @@ func applyTextPositionFromSnapshot(r *Renderer, tp *kag3.TextPosition, s textPos
 func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage map[string]string, charaFaces map[string]map[string]string) []*kag3.CharaShow {
 	kept := restored[:0]
 	for _, c := range restored {
-		if _, ok := charas[c.Name]; ok {
+		if reg, ok := charas[c.Name]; ok {
+			// drawCharacters (draw_chara.go) draws charas[name].Image, not
+			// anything on c (CharaShow) itself — a separate "currently
+			// showing" pointer [chara_mod] etc. update directly
+			// (handleCharaMod), which never touches the matching
+			// viewCharas/CharaShow entry's own Face/Storage fields (they
+			// stay whatever [chara_show] originally set, typically empty —
+			// see charaStorage's doc comment for where the *real* current
+			// value lives instead). Left alone, a same-process load would
+			// keep whatever face the *current* session had showing at load
+			// time instead of the one active at save time — reload it here
+			// from charaStorage[c.Name] (buildSaveData's charas[name].Storage
+			// snapshot) to match, same as handleCharaMod's own face switch.
+			if want := charaStorage[c.Name]; want != "" && want != reg.Storage {
+				if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], want); err != nil {
+					fmt.Printf("save/load: %s の画像 %s の読み込みに失敗したため表情を復元できません: %v\n", c.Name, want, err)
+				} else {
+					reg.Image = img
+					reg.Storage = want
+				}
+			}
 			kept = append(kept, c)
 			continue
 		}

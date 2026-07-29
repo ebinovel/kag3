@@ -45,8 +45,26 @@ func handleP(ctx *tagCtx) error {
 	r := ctx.r
 	ctx.y.Until(true, isTextEndedOrJumped)
 	recordBacklog(r)
-	r.texts = make(map[int][]Text)
-	isWait = false
+	// A pending isJump (goToTitle, applySaveData, or any [link]/[glink]/
+	// [button target=] jump) means this [p]'s own screen is being abandoned
+	// outright — see isTextEndedOrJumped's doc comment (state.go). Clearing
+	// r.texts/isWait unconditionally here is fine for an ordinary
+	// same-storage jump (whatever the destination shows next puts up its
+	// own text before its own next [p]), but a same-process load
+	// (applySaveData) already wrote the *destination*'s restored
+	// r.texts/isWait by the time this runs — its isJump releases whatever
+	// [p] the coroutine happened to be blocked on well before jumpIndex is
+	// even consumed by initScript's outer loop (macro.go), i.e. before the
+	// destination's own tags ever run — so clearing here would immediately
+	// wipe out the just-restored state before the player ever sees it,
+	// leaving the message window (and the loaded line's dialogue) blank
+	// after every load. Skip the clear whenever a jump is why this [p] let
+	// go; a real page-boundary reset still happens naturally for every
+	// ordinary (non-jump) [p].
+	if !isJump {
+		r.texts = make(map[int][]Text)
+		isWait = false
+	}
 	// charaName deliberately not cleared here — see its doc comment
 	// (tags_character.go): the name-plate must survive [p] to keep
 	// showing the current speaker across a multi-line "#name" block.
