@@ -191,6 +191,74 @@ func TestFilterAndFreeFilter(t *testing.T) {
 	}
 }
 
+func TestFilterCSSAdjustmentsParseAndTriggerShader(t *testing.T) {
+	activeFilter = nil
+	tag := kag3.TagObject{Name: "filter", Pm: map[string]string{
+		"grayscale":  "50%",
+		"sepia":      "0.5",
+		"saturate":   "2",
+		"hue":        "90",
+		"invert":     "1",
+		"brightness": "1.2",
+		"contrast":   "0.8",
+		"blur":       "4",
+	}}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("filter dispatch error: %v", err)
+	}
+	if activeFilter == nil {
+		t.Fatal("expected activeFilter to be set")
+	}
+	if activeFilter.Grayscale != 0.5 {
+		t.Errorf("Grayscale = %v, want 0.5 (from \"50%%\")", activeFilter.Grayscale)
+	}
+	if activeFilter.Sepia != 0.5 {
+		t.Errorf("Sepia = %v, want 0.5", activeFilter.Sepia)
+	}
+	if activeFilter.Saturate != 2 {
+		t.Errorf("Saturate = %v, want 2", activeFilter.Saturate)
+	}
+	if activeFilter.HueDeg != 90 {
+		t.Errorf("HueDeg = %v, want 90", activeFilter.HueDeg)
+	}
+	if activeFilter.Invert != 1 {
+		t.Errorf("Invert = %v, want 1", activeFilter.Invert)
+	}
+	if activeFilter.Brightness != 1.2 {
+		t.Errorf("Brightness = %v, want 1.2", activeFilter.Brightness)
+	}
+	if activeFilter.Contrast != 0.8 {
+		t.Errorf("Contrast = %v, want 0.8", activeFilter.Contrast)
+	}
+	if activeFilter.Blur != 4 {
+		t.Errorf("Blur = %v, want 4", activeFilter.Blur)
+	}
+	if !activeFilter.needsShader() {
+		t.Error("expected needsShader() to be true with CSS adjustments active")
+	}
+
+	freeTag := kag3.TagObject{Name: "free_filter"}
+	if err := dispatchTag(newTestRenderer(), fakeYield(), freeTag, &i, 0); err != nil {
+		t.Fatalf("free_filter dispatch error: %v", err)
+	}
+	if activeFilter != nil {
+		t.Error("expected activeFilter to be cleared")
+	}
+}
+
+func TestFilterPlainTintDoesNotNeedShader(t *testing.T) {
+	activeFilter = nil
+	tag := kag3.TagObject{Name: "filter", Pm: map[string]string{"color": "0x808080", "opacity": "128"}}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("filter dispatch error: %v", err)
+	}
+	if activeFilter.needsShader() {
+		t.Error("a plain color/opacity filter should not require the shader path")
+	}
+}
+
 func TestMaskAndMaskOff(t *testing.T) {
 	activeMask = nil
 	r := newTestRendererWithImageFS(t, map[string][]byte{"mask.png": tinyPNG(t)})

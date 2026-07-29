@@ -7,6 +7,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io/fs"
+	"math"
 	"path"
 	"slices"
 	"strconv"
@@ -402,19 +403,41 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	renderBuffer.Clear()
 	r.drawScene(renderBuffer)
 
-	op := &ebiten.DrawImageOptions{}
+	var geoM ebiten.GeoM
 	cx, cy := float64(w)/2, float64(h)/2
-	op.GeoM.Translate(-cx, -cy)
-	op.GeoM.Scale(camera.Scale, camera.Scale)
-	op.GeoM.Translate(cx, cy)
-	op.GeoM.Translate(camera.X, camera.Y)
+	geoM.Translate(-cx, -cy)
+	geoM.Scale(camera.Scale, camera.Scale)
+	geoM.Translate(cx, cy)
+	geoM.Translate(camera.X, camera.Y)
 	sx, sy := currentShakeOffset()
-	op.GeoM.Translate(sx, sy)
-	if activeFilter != nil {
-		op.ColorScale.ScaleWithColor(activeFilter.Tint)
-		op.ColorScale.ScaleAlpha(activeFilter.Alpha)
+	geoM.Translate(sx, sy)
+
+	if activeFilter != nil && activeFilter.needsShader() {
+		shaderOp := &ebiten.DrawRectShaderOptions{GeoM: geoM}
+		shaderOp.ColorScale.ScaleWithColor(activeFilter.Tint)
+		shaderOp.ColorScale.ScaleAlpha(activeFilter.Alpha)
+		shaderOp.Images[0] = renderBuffer
+		hueRad := float64(activeFilter.HueDeg) * math.Pi / 180
+		shaderOp.Uniforms = map[string]any{
+			"Grayscale":  activeFilter.Grayscale,
+			"Sepia":      activeFilter.Sepia,
+			"Saturate":   activeFilter.Saturate,
+			"HueSin":     float32(math.Sin(hueRad)),
+			"HueCos":     float32(math.Cos(hueRad)),
+			"Invert":     activeFilter.Invert,
+			"Brightness": activeFilter.Brightness,
+			"Contrast":   activeFilter.Contrast,
+			"BlurRadius": activeFilter.Blur,
+		}
+		screen.DrawRectShader(w, h, compiledFilterShader(), shaderOp)
+	} else {
+		op := &ebiten.DrawImageOptions{GeoM: geoM}
+		if activeFilter != nil {
+			op.ColorScale.ScaleWithColor(activeFilter.Tint)
+			op.ColorScale.ScaleAlpha(activeFilter.Alpha)
+		}
+		screen.DrawImage(renderBuffer, op)
 	}
-	screen.DrawImage(renderBuffer, op)
 
 	if activeMask != nil {
 		maskOp := &ebiten.DrawImageOptions{}

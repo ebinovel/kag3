@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -219,20 +220,45 @@ func handleFreeLayerMode(ctx *tagCtx) error {
 	return nil
 }
 
-// activeFilter is a simplified stand-in for Tyrano's CSS-style [filter]:
-// a color tint and opacity applied to the whole composited frame. True
-// blur/hue-rotate/etc. would need a custom Kage shader, which is out of
-// scope here.
+// activeFilter is Tyrano's CSS-style [filter]: a color tint + opacity
+// (applied directly via ebiten.ColorScale, see Renderer.Draw) plus the
+// CSS-Filter-Effects-style adjustments (grayscale/sepia/saturate/hue/
+// invert/brightness/contrast/blur) applied via filterShaderSrc
+// (filter_shader.go) whenever any of them differs from its identity value —
+// see needsShader. Splitting it this way keeps the common case (just a
+// tint, e.g. a night-time [filter color=...]) on the cheap ColorScale path
+// instead of always paying for a shader draw.
+//
+// opacity/color's 0-255 scale (rather than official Tyrano's 0-100 for
+// [filter opacity=]) intentionally matches [mask opacity=]'s existing 0-255
+// convention elsewhere in this file, for internal consistency.
 type filterState struct {
 	Tint  color.Color
 	Alpha float32
+
+	Grayscale  float32 // 0-1
+	Sepia      float32 // 0-1
+	Saturate   float32 // 1 = unchanged, matches CSS saturate()'s default
+	HueDeg     float32 // degrees, matches CSS hue-rotate()
+	Invert     float32 // 0-1
+	Brightness float32 // 1 = unchanged
+	Contrast   float32 // 1 = unchanged
+	Blur       float32 // pixels, 0 = off
+}
+
+// needsShader reports whether any CSS-Filter-Effects-style adjustment is
+// active, i.e. whether Draw must route through filterShaderSrc instead of
+// the plain ColorScale tint/opacity path.
+func (f *filterState) needsShader() bool {
+	return f.Grayscale != 0 || f.Sepia != 0 || f.Saturate != 1 || f.HueDeg != 0 ||
+		f.Invert != 0 || f.Brightness != 1 || f.Contrast != 1 || f.Blur != 0
 }
 
 var activeFilter *filterState
 
 func handleFilter(ctx *tagCtx) error {
 	object := ctx.tag
-	f := &filterState{Tint: color.White, Alpha: 1}
+	f := &filterState{Tint: color.White, Alpha: 1, Saturate: 1, Brightness: 1, Contrast: 1}
 	if v, ok := object.Pm["color"]; ok {
 		r, g, b, err := parseColor(v)
 		if err != nil {
@@ -247,8 +273,74 @@ func handleFilter(ctx *tagCtx) error {
 		}
 		f.Alpha = float32(n) / 255
 	}
+	if v, ok, err := getFilterPercent(object.Pm, "grayscale"); err != nil {
+		return err
+	} else if ok {
+		f.Grayscale = v
+	}
+	if v, ok, err := getFilterPercent(object.Pm, "sepia"); err != nil {
+		return err
+	} else if ok {
+		f.Sepia = v
+	}
+	if v, ok, err := getFilterPercent(object.Pm, "saturate"); err != nil {
+		return err
+	} else if ok {
+		f.Saturate = v
+	}
+	if v, ok := object.Pm["hue"]; ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return err
+		}
+		f.HueDeg = float32(n)
+	}
+	if v, ok, err := getFilterPercent(object.Pm, "invert"); err != nil {
+		return err
+	} else if ok {
+		f.Invert = v
+	}
+	if v, ok, err := getFilterPercent(object.Pm, "brightness"); err != nil {
+		return err
+	} else if ok {
+		f.Brightness = v
+	}
+	if v, ok, err := getFilterPercent(object.Pm, "contrast"); err != nil {
+		return err
+	} else if ok {
+		f.Contrast = v
+	}
+	if v, ok := object.Pm["blur"]; ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return err
+		}
+		f.Blur = float32(n)
+	}
 	activeFilter = f
 	return nil
+}
+
+// getFilterPercent reads a CSS-filter()-style percentage/ratio attribute:
+// Tyrano/CSS both accept either a bare number (1 = 100% = fully applied,
+// matching e.g. grayscale(1) / saturate(2)) or a "NN%" suffix (grayscale(50%)).
+func getFilterPercent(pm map[string]string, key string) (float32, bool, error) {
+	v, ok := pm[key]
+	if !ok {
+		return 0, false, nil
+	}
+	if s, isPercent := strings.CutSuffix(v, "%"); isPercent {
+		n, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, false, err
+		}
+		return float32(n) / 100, true, nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return float32(n), true, nil
 }
 
 func handleFreeFilter(ctx *tagCtx) error {
