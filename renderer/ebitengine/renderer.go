@@ -120,6 +120,33 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	return
 }
 
+// StartAtLabel makes the script loop begin at the named label instead of
+// index 0. It must be called between NewRenderer and the first Update():
+// initScript's loop checks isJump unconditionally at the top of its very
+// first iteration (see its own doc comment), so a pending jump set here
+// beforehand is picked up before anything else executes.
+//
+// name may be given with or without its leading "*", matching how
+// handleJump ([jump]'s own handler) looks labels up — r.labels is keyed
+// on kag3.LabelInfo's bare name, but callers (like kag3-runner's -label
+// flag) may pass either form.
+//
+// Returns false, doing nothing, if name isn't a known label — the caller
+// is expected to report that rather than silently starting at the top of
+// the script.
+func (r *Renderer) StartAtLabel(name string) bool {
+	v, ok := r.labels[name]
+	if !ok {
+		v, ok = r.labels[strings.TrimPrefix(name, "*")]
+	}
+	if !ok {
+		return false
+	}
+	jumpIndex = v.Index
+	isJump = true
+	return true
+}
+
 func doNext() bool {
 	return inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
 }

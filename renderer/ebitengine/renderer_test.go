@@ -589,3 +589,53 @@ func TestClearLinksOnJumpPreservesRestoredLinksOnLoad(t *testing.T) {
 		t.Errorf("links/glinks after a later jump = %+v/%+v, want cleared", links, glinks)
 	}
 }
+
+// TestStartAtLabel is the deliverable for ebinovel-editor's "preview from
+// this label" toolbar action: calling StartAtLabel between NewRenderer and
+// the first Update must arm the same jumpIndex/isJump pair initScript's
+// loop checks on its very first iteration, exactly like a mid-script
+// [jump] would.
+func TestStartAtLabel(t *testing.T) {
+	r := newTestRenderer()
+	r.labels = map[string]kag3.LabelInfo{"scene2": {Name: "scene2", Index: 42}}
+	jumpIndex, isJump = 0, false
+
+	if !r.StartAtLabel("scene2") {
+		t.Fatal("StartAtLabel(\"scene2\") = false, want true")
+	}
+	if !isJump || jumpIndex != 42 {
+		t.Fatalf("isJump/jumpIndex = %v/%d, want true/42", isJump, jumpIndex)
+	}
+}
+
+// TestStartAtLabelAcceptsLeadingAsterisk mirrors handleJump's own
+// with-or-without-"*" lookup (tags_flow.go): editors and authors alike tend
+// to write label names as "*scene2", so StartAtLabel accepts that form too
+// rather than requiring the caller to strip it first.
+func TestStartAtLabelAcceptsLeadingAsterisk(t *testing.T) {
+	r := newTestRenderer()
+	r.labels = map[string]kag3.LabelInfo{"scene2": {Name: "scene2", Index: 7}}
+	jumpIndex, isJump = 0, false
+
+	if !r.StartAtLabel("*scene2") {
+		t.Fatal("StartAtLabel(\"*scene2\") = false, want true")
+	}
+	if !isJump || jumpIndex != 7 {
+		t.Fatalf("isJump/jumpIndex = %v/%d, want true/7", isJump, jumpIndex)
+	}
+}
+
+// TestStartAtLabelUnknownLabel must report failure rather than silently
+// leaving isJump untouched and letting the caller assume it worked.
+func TestStartAtLabelUnknownLabel(t *testing.T) {
+	r := newTestRenderer()
+	r.labels = map[string]kag3.LabelInfo{"scene2": {Name: "scene2", Index: 42}}
+	jumpIndex, isJump = 0, false
+
+	if r.StartAtLabel("does-not-exist") {
+		t.Fatal("StartAtLabel(\"does-not-exist\") = true, want false")
+	}
+	if isJump {
+		t.Error("StartAtLabel on an unknown label must not leave isJump set")
+	}
+}
