@@ -40,3 +40,29 @@ func TestDispatchTagUnknownTagDoesNotHaltExecution(t *testing.T) {
 		t.Fatalf("r.texts[1] = %+v, want a single Text{Text: \"still runs\"}", got)
 	}
 }
+
+// TestRegisteredTagNamesMatchesHandlers guards RegisteredTagNames/
+// IsRegisteredTag against drifting from the handlers map they read: every
+// registered tag (a few representative, stable ones — "bg", "jump", "p")
+// must be reported, and a name nothing registers must not be.
+func TestRegisteredTagNamesMatchesHandlers(t *testing.T) {
+	names := RegisteredTagNames()
+	if len(names) != len(handlers) {
+		t.Fatalf("len(RegisteredTagNames()) = %d, want %d (len(handlers))", len(names), len(handlers))
+	}
+	seen := make(map[string]bool, len(names))
+	for _, n := range names {
+		seen[n] = true
+	}
+	for _, want := range []string{"bg", "jump", "p", "playbgm"} {
+		if !seen[want] {
+			t.Errorf("RegisteredTagNames() missing %q", want)
+		}
+		if !IsRegisteredTag(want) {
+			t.Errorf("IsRegisteredTag(%q) = false, want true", want)
+		}
+	}
+	if IsRegisteredTag("totally_unimplemented_tag") {
+		t.Error(`IsRegisteredTag("totally_unimplemented_tag") = true, want false`)
+	}
+}

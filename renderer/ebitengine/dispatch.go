@@ -36,6 +36,30 @@ func register(name string, h tagHandler) {
 	handlers[name] = h
 }
 
+// RegisteredTagNames returns every tag name with a built-in handler, in no
+// particular order. It exists so external tooling (the ebinovel-editor
+// project's tag catalog, in particular) can check its own tag list against
+// what this engine actually implements without hand-copying handlers'
+// names — a hand-copied list silently drifts the moment a tag is added,
+// renamed, or removed here.
+func RegisteredTagNames() []string {
+	names := make([]string, 0, len(handlers))
+	for name := range handlers {
+		names = append(names, name)
+	}
+	return names
+}
+
+// IsRegisteredTag reports whether name has a built-in handler (as opposed
+// to being unrecognized, or only resolvable as a user-defined [macro] —
+// dispatchTag's macro fallback happens per-scenario against
+// Manager.Macros, which this function has no access to and so can't
+// account for).
+func IsRegisteredTag(name string) bool {
+	_, ok := handlers[name]
+	return ok
+}
+
 // dispatchTag looks up and runs the handler for a tag. If no built-in
 // handler is registered, a user-defined [macro] of the same name is tried
 // next. depth counts macro-expansion nesting (0 at the top level) and is
