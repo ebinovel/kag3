@@ -8,7 +8,7 @@ import (
 
 func TestHandleBG2SetsNextImageAndTick(t *testing.T) {
 	bg2 = &kag3.Background{}
-	r := newTestRendererWithImageFS(t, map[string][]byte{"weather.png": tinyPNG(t)})
+	r := newTestRendererWithImageFS(t, map[string][]byte{"bg/weather.png": tinyPNG(t)})
 	tag := kag3.TagObject{Name: "bg2", Pm: map[string]string{"storage": "weather.png", "method": "crossfade"}}
 	i := 0
 	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {

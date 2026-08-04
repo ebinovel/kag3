@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"fmt"
+	"path"
 	"slices"
 	"strconv"
 
@@ -112,19 +113,37 @@ func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 			}
 		}
 	}
+	// Real TyranoScript's [bg storage=] is relative to its own bgimage/
+	// folder, never spelled out by the author — matching that (and this
+	// editor's own images/bg/ project convention, see
+	// internal/project/asset.go's ImageSubdirs in ebinovel-editor) means
+	// storage="room.jpg" alone must resolve to images/bg/room.jpg, not
+	// require storage="bg/room.jpg". Only applies to the plain project
+	// "images" root; system=true switches to system/images, which has no
+	// such bg/ subfolder convention (it holds UI chrome like buttons and
+	// cursors), so an author-provided path there is used exactly as
+	// written.
+	storagePath := object.Pm["storage"]
+	if storagePath != "" && images == "images" {
+		storagePath = path.Join("bg", storagePath)
+	}
 	var err error
 	target.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
 		r.fses[images],
-		object.Pm["storage"],
+		storagePath,
 	)
 	if err != nil {
 		return err
 	}
-	// Storage tracks whatever's currently requested, independent of
-	// whether the transition has visually finished — save/load (see
-	// tags_save.go) uses it to reconstruct the background image in a
-	// fresh process, where NextImage/Image can't be persisted directly.
-	target.Storage = object.Pm["storage"]
+	// Storage tracks whatever's currently requested (the *resolved*
+	// images/-relative path, including the bg/ prefix above — NOT the
+	// raw author-written attribute), independent of whether the
+	// transition has visually finished — save/load (see tags_save.go)
+	// uses it to reconstruct the background image in a fresh process,
+	// where NextImage/Image can't be persisted directly, by feeding it
+	// straight back into the same fs.FS lookup (applyBgFromSnapshot)
+	// with no further resolution of its own.
+	target.Storage = storagePath
 	// [mode_effect enabled="false"] (tags_sysdesign.go) skips the animated
 	// crossfade/etc. entirely: swap straight to the new image instead of
 	// staging it as NextImage for drawScene's transition to animate.

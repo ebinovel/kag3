@@ -209,7 +209,7 @@ func TestModeEffectDisablesInstantBackgroundSwap(t *testing.T) {
 		t.Fatal("expected mode_effect enabled=false to clear effectsEnabled")
 	}
 
-	r := newTestRendererWithImageFS(t, map[string][]byte{"bg.png": tinyPNG(t)})
+	r := newTestRendererWithImageFS(t, map[string][]byte{"bg/bg.png": tinyPNG(t)})
 	bg = &kag3.Background{Time: 3000, IsWait: true, Method: "crossfade"}
 	bgTag := kag3.TagObject{Name: "bg", Pm: map[string]string{"storage": "bg.png"}}
 	if err := dispatchTag(r, fakeYield(), bgTag, &i, 0); err != nil {
