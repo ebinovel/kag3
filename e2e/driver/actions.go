@@ -8,7 +8,7 @@ import "fmt"
 // (SetForegroundWindow + SetCursorPos + mouse_event — see clickAtScreenPos
 // in window_windows.go for why this goes around WinAppDriver's own click
 // machinery entirely rather than through it). x/y are absolute screen
-// coordinates — e2e/helpers.ClickLogical is what converts kag3's 1280x720
+// coordinates — e2e/helpers.ClickLogical is what converts kag3's 1920x1080
 // logical tag coordinates into this space using Session.WindowRect's
 // client-area origin.
 func (s *Session) Click(x, y int) error {

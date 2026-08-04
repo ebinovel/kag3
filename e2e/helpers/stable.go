@@ -24,7 +24,7 @@ import (
 // resting at a [p]/[s] wait, literally no two consecutive frames are
 // pixel-identical and the old byte-exact WaitStable could never return
 // short of its timeout. The mark is a handful of pixels out of a
-// 1280x720+ screenshot, so capping the allowed differing-pixel fraction
+// 1920x1080+ screenshot, so capping the allowed differing-pixel fraction
 // comfortably distinguishes "just the glyph bouncing" from "a real scene
 // transition still in progress" without needing to know the mark's
 // on-screen position.

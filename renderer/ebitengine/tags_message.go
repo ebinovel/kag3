@@ -251,10 +251,22 @@ func handlePositionFilter(ctx *tagCtx) error {
 	return nil
 }
 
+// backlogEntry is one recorded line: the speaker name (charaName at record
+// time, empty for narration/monologue — drawBacklog, tags_save.go, renders
+// that case as "──") and the dialogue text itself, kept separate so the
+// redesigned backlog screen can lay them out in a fixed-width name column
+// distinct from the text column.
+type backlogEntry struct {
+	Name string
+	Text string
+}
+
 // backlog is a plain append-only transcript of dialogue chunks, recorded
-// by recordBacklog whenever [p]/[cm]/[er]/[ct] clears the text buffer.
+// by recordBacklog whenever [p]/[cm]/[er]/[ct] clears the text buffer. Not
+// part of SaveData (tags_save.go) — purely transient, in-memory, reset like
+// menuOpen/slotPickerActive on process start.
 var (
-	backlog       []string
+	backlog       []backlogEntry
 	backlogPaused bool
 )
 
@@ -263,7 +275,7 @@ func recordBacklog(r *Renderer) {
 		return
 	}
 	if s := currentMessageText(r); s != "" {
-		backlog = append(backlog, s)
+		backlog = append(backlog, backlogEntry{Name: charaName, Text: s})
 	}
 }
 
@@ -297,13 +309,14 @@ func handleEndNoLog(ctx *tagCtx) error {
 }
 
 // handlePushLog always appends regardless of backlogPaused — it's an
-// explicit, deliberate log entry, not automatic dialogue recording.
+// explicit, deliberate log entry, not automatic dialogue recording. Pushed
+// with an empty Name (rendered as narration, same as a bare "#" line).
 func handlePushLog(ctx *tagCtx) error {
 	text := ctx.tag.Pm["text"]
 	if text == "" {
 		return nil
 	}
-	backlog = append(backlog, text)
+	backlog = append(backlog, backlogEntry{Text: text})
 	return nil
 }
 

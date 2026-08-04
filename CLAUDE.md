@@ -29,12 +29,13 @@ To smoke-test a change end-to-end, build and run `./example` (it opens a real wi
 go build -o /tmp/kag3example.exe ./example
 ```
 
-There is no way to script mouse/keyboard input against a running ebitengine window in *this*
-sandboxed dev environment — interactive verification of UI changes has to be done by the user, or
-by the `e2e/` WinAppDriver suite (see "E2E tests" below), which needs a real Windows desktop and
-can't run here either. Prefer writing a unit test that drives the same code path directly (see the
-package-level globals note under "Execution model" below) over claiming a UI fix works without
-having verified it either way.
+This dev environment has a real Windows desktop and a WinAppDriver instance already running
+(reachable at `http://127.0.0.1:4723/status` — check with the PowerShell tool if in doubt) — the
+built `example.exe` can actually be launched and its window driven end-to-end, including through the
+`e2e/` suite (see "E2E tests" below). Prefer writing a unit test that drives the same code path
+directly (see the package-level globals note under "Execution model" below) for fast, deterministic
+coverage first, but don't claim a UI fix works without actually verifying it — run the built binary
+and/or the relevant `e2e/` test rather than assuming.
 
 ## Repository layout gotcha
 
@@ -144,13 +145,27 @@ the external freeze.
 ## E2E tests (`e2e/`)
 
 `e2e/` is a **separate Go module** (its own `go.mod`) — not part of `go test ./...` from the repo
-root, and not runnable from this sandboxed dev environment. It builds `example/` into a real `.exe`
-and drives the actual window via [WinAppDriver](https://github.com/microsoft/WinAppDriver) (window
-attach + screenshots only — its own click/key endpoints don't work reliably here, so those go
-through direct Win32 calls instead, `e2e/driver/window_windows.go`) to catch bugs headless unit
-tests can't: save/load round-trips, title-return state leaks, same-process quickload. Needs a real
-Windows desktop with WinAppDriver installed — hand off to the user, or say explicitly that an `e2e/`
-change needs manual confirmation. Full setup/known caveats are in `e2e/README.md`.
+root. It builds `example/` into a real `.exe` and drives the actual window via
+[WinAppDriver](https://github.com/microsoft/WinAppDriver) (window attach + screenshots only — its
+own click/key endpoints don't work reliably here, so those go through direct Win32 calls instead,
+`e2e/driver/window_windows.go`) to catch bugs headless unit tests can't: save/load round-trips,
+title-return state leaks, same-process quickload.
+
+This dev environment has a real Windows desktop and WinAppDriver is already running — `e2e/` is
+runnable here (via the Bash tool, same as any other `go test`). Before running it, rebuild the test
+binary whenever `example/` or anything under its embedded `resources/` changes —
+`example/resources.go`'s `//go:embed resources` bakes the whole resource tree into the binary at
+build time, so editing files under `example/resources/` (including the git-excluded ones, see
+"Repository layout gotcha" above) has no effect on `e2e/` until rebuilt:
+
+```sh
+go build -o e2e/testdata/kag3example.exe ./example
+cd e2e && go test ./... -v
+```
+
+If a given run reports WinAppDriver unreachable, or the environment genuinely lacks a real desktop,
+fall back to handing off to the user or saying explicitly that the change needs manual confirmation.
+Full setup/known caveats are in `e2e/README.md`.
 
 kag3 itself has exactly two env var hooks for it, both no-ops unless set: `KAG3_SAVE_DIR` (absolute
 override for `saveDir()`, `tags_save.go` — lets an external test process sandbox saves the way

@@ -555,6 +555,24 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	if d.Ptexts != nil {
 		ptexts = d.Ptexts
 		charaNamePText = d.CharaNamePText
+		// BgImage is excluded from JSON (kag3.PText's json:"-" tag) — reload
+		// it from BgStorage for every restored ptext area that has one, same
+		// pattern as TextPosition.FrameStorage/FrameImage just above. Needed
+		// even for a same-process load: d.Ptexts came from json.Unmarshal
+		// (buildSaveData/saveSlot round-trip through the file on disk), so
+		// BgImage is always nil/zero-value here regardless of process
+		// lifetime, never the live *ebiten.Image the current session loaded.
+		for _, pt := range ptexts {
+			if pt.BgStorage == "" {
+				continue
+			}
+			img, err := loadImage(r, "", pt.BgStorage)
+			if err != nil {
+				fmt.Printf("save/load: %s の背景画像の読み込みに失敗しました: %v\n", pt.BgStorage, err)
+				continue
+			}
+			pt.BgImage = img
+		}
 	}
 	// menuButtonImg is loaded lazily (see handleShowMenuButton,
 	// tags_sysdesign.go) and never reset by a load — a fresh process that
@@ -916,11 +934,15 @@ func drawModalRect(buf *ebiten.Image, face *text.GoTextFace, m modalRect) {
 	text.Draw(buf, m.Label, face, top)
 }
 
+// dialogButtonRects computes the OK/NG buttons centered below the dialog
+// text. w/h/the button gap and the +60 vertical offset are ×1.5 of the
+// original 1280x720-tuned values (X/Y positioning itself was already
+// screenW/screenH-relative and needed no change).
 func dialogButtonRects(screenW, screenH int) (ok, ng modalRect) {
-	w, h := 160, 50
-	y := screenH/2 + 40
-	ok = modalRect{Label: dialogOKLabelOr(), X: screenW/2 - w - 20, Y: y, W: w, H: h}
-	ng = modalRect{Label: dialogNGLabelOr(), X: screenW/2 + 20, Y: y, W: w, H: h}
+	w, h := 240, 75
+	y := screenH/2 + 60
+	ok = modalRect{Label: dialogOKLabelOr(), X: screenW/2 - w - 30, Y: y, W: w, H: h}
+	ng = modalRect{Label: dialogNGLabelOr(), X: screenW/2 + 30, Y: y, W: w, H: h}
 	return
 }
 
@@ -971,53 +993,349 @@ func drawDialog(r *Renderer, buf *ebiten.Image) {
 	drawModalRect(buf, r.fontFace, ng)
 }
 
-// --- backlog (button role="backlog") ---
+// --- backlog (button role="backlog"/LOG in the operation row) ---
+//
+// Redesigned per the "3a バックログ" mockup: full-screen dim, a header
+// ("BACKLOG"/履歴 + 閉じる✕), a fixed-width name column distinct from the
+// text column (recordBacklog, tags_message.go, now keeps them separate),
+// recency-fade opacity on the oldest few visible rows, a proportional
+// scrollbar, and a footer with scroll/navigation hints. Coordinates are
+// the source design's own 1920x1080 pixel values, unscaled — see the
+// design plan's "画面解像度" note (example/ now runs at 1920x1080).
 
 var (
 	backlogViewing     bool
 	backlogOpenedFrame int
+	// backlogScrollY is how far scrolled *up* from the newest entry (0 =
+	// showing the most recent entries at the bottom, the default/rest
+	// state) — the opposite sense from slotPickerScrollY (which measures
+	// down from the top), because backlog reads newest-at-bottom like a
+	// chat transcript.
+	backlogScrollY   float64
+	backlogDragging  bool
+	backlogDragLastY int
 )
+
+const (
+	backlogScrollStep = 40.0
+
+	backlogPaddingTop       = 56.0
+	backlogPaddingLeftRight = 96.0
+	backlogPaddingBottom    = 44.0
+	backlogHeaderTitleSize  = 34.0
+	backlogHeaderSubSize    = 20.0
+	backlogHeaderPaddingGap = 20.0
+	backlogHeaderPaddingBtm = 20.0
+	backlogCloseSize        = 22.0
+	backlogBodyPaddingTop   = 34.0
+	backlogNameColW         = 220.0
+	backlogColGap           = 40.0
+	backlogNameFontSize     = 26.0
+	backlogTextFontSize     = 30.0
+	backlogTextLineHeight   = 1.7
+	backlogScrollbarColGap  = 28.0
+	backlogScrollbarW       = 6.0
+	backlogFooterPaddingTop = 20.0
+	backlogFooterMarginTop  = 14.0
+	backlogFooterFontSize   = 20.0
+	backlogFooterItemGap    = 26.0
+)
+
+var (
+	backlogDimColor          = color.RGBA{0x0a, 0x0c, 0x10, 0xe6} // rgba(10,12,16,0.9)
+	backlogHeaderBorderColor = color.RGBA{0x8f, 0xc0, 0xd8, 0x66} // rgba(143,192,216,0.4)
+	backlogTitleColor        = color.RGBA{0xf2, 0xf5, 0xf8, 0xff}
+	backlogSubColor          = color.RGBA{0x8a, 0x94, 0x9e, 0xff}
+	backlogCloseColor        = color.RGBA{0xd5, 0xdd, 0xe4, 0xff}
+	backlogNameColor         = color.RGBA{0x8f, 0xc0, 0xd8, 0xff}
+	backlogNarrationColor    = color.RGBA{0x8a, 0x94, 0x9e, 0xff}
+	backlogTextColor         = color.RGBA{0xe6, 0xeb, 0xf0, 0xff}
+	backlogScrollTrackColor  = color.RGBA{0x8f, 0xc0, 0xd8, 0x2e} // rgba(143,192,216,0.18)
+	backlogScrollThumbColor  = color.RGBA{0x8f, 0xc0, 0xd8, 0xff}
+	backlogFooterBorderColor = color.RGBA{0x8f, 0xc0, 0xd8, 0x40} // rgba(143,192,216,0.25)
+	backlogFooterDimColor    = color.RGBA{0x8a, 0x94, 0x9e, 0xff}
+	backlogFooterTextColor   = color.RGBA{0xd5, 0xdd, 0xe4, 0xff}
+	// backlogFadeSteps are the opacities applied to the oldest few visible
+	// rows (top of the viewport), newest-first fading in from there —
+	// matches the mockup's 0.45/0.6/0.8/1.0 sample. Rows beyond this are
+	// fully opaque.
+	backlogFadeSteps = []float32{0.45, 0.6, 0.8, 1.0}
+)
+
+// backlogEntryHeight is a fixed per-row height (text column's line-height
+// at its font size) — entries aren't word-wrapped (matching this package's
+// existing "no clipping, no wrap" simplicity elsewhere for secondary UI),
+// so this is exact, not an estimate.
+const backlogEntryHeight = backlogTextFontSize * backlogTextLineHeight
+
+func backlogContentHeight() float64 {
+	if len(backlog) == 0 {
+		return 0
+	}
+	return float64(len(backlog)) * backlogEntryHeight
+}
+
+func backlogMaxScroll(viewportH float64) float64 {
+	max := backlogContentHeight() - viewportH
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
+func clampBacklogScroll(viewportH float64) {
+	max := backlogMaxScroll(viewportH)
+	if backlogScrollY > max {
+		backlogScrollY = max
+	}
+	if backlogScrollY < 0 {
+		backlogScrollY = 0
+	}
+}
+
+func backlogFace(r *Renderer, size float64) *text.GoTextFace {
+	return &text.GoTextFace{Source: r.fontFace.Source, Size: size, Language: r.fontFace.Language}
+}
+
+// backlogNameDisplay is the name column's text for entry — "──" (dimmed)
+// for a nameless/narration entry ([pushlog] or a bare "#" line), matching
+// the source design's placeholder-narration style.
+func backlogNameDisplay(name string) (string, color.RGBA) {
+	if name == "" {
+		return "──", backlogNarrationColor
+	}
+	return name, backlogNameColor
+}
 
 func drawBacklog(r *Renderer, buf *ebiten.Image) {
 	w, h := buf.Bounds().Dx(), buf.Bounds().Dy()
-	dim := ebiten.NewImage(w, h)
-	dim.Fill(color.RGBA{0, 0, 0, 200})
-	buf.DrawImage(dim, &ebiten.DrawImageOptions{})
+	fillRect(buf, 0, 0, float64(w), float64(h), backlogDimColor)
 
-	margin := 40.0
-	lineHeight := r.fontFace.Size + 8
-	// Most recent entries at the bottom, like a chat transcript — show as
-	// many as fit, walking backward from the end of backlog.
-	maxLines := int((float64(h) - 2*margin) / lineHeight)
-	start := len(backlog) - maxLines
-	if start < 0 {
-		start = 0
+	contentX := backlogPaddingLeftRight
+	contentRight := float64(w) - backlogPaddingLeftRight
+	contentW := contentRight - contentX
+
+	// --- header ---
+	titleFace := backlogFace(r, backlogHeaderTitleSize)
+	titleW, titleH := text.Measure("BACKLOG", titleFace, 0)
+	titleOp := &text.DrawOptions{}
+	titleOp.GeoM.Translate(contentX, backlogPaddingTop)
+	titleOp.ColorScale.ScaleWithColor(backlogTitleColor)
+	text.Draw(buf, "BACKLOG", titleFace, titleOp)
+
+	subFace := backlogFace(r, backlogHeaderSubSize)
+	subOp := &text.DrawOptions{}
+	subOp.GeoM.Translate(contentX+titleW+backlogHeaderPaddingGap, backlogPaddingTop+(titleH-backlogHeaderSubSize))
+	subOp.ColorScale.ScaleWithColor(backlogSubColor)
+	text.Draw(buf, "履歴", subFace, subOp)
+
+	const closeLabel = "閉じる ✕"
+	closeFace := backlogFace(r, backlogCloseSize)
+	closeW, _ := text.Measure(closeLabel, closeFace, 0)
+	closeOp := &text.DrawOptions{}
+	closeOp.GeoM.Translate(contentRight-closeW, backlogPaddingTop+(titleH-backlogCloseSize))
+	closeOp.ColorScale.ScaleWithColor(backlogCloseColor)
+	text.Draw(buf, closeLabel, closeFace, closeOp)
+
+	headerBottom := backlogPaddingTop + titleH + backlogHeaderPaddingBtm
+	fillRect(buf, contentX, headerBottom, contentW, 1, backlogHeaderBorderColor)
+
+	// --- footer ---
+	footerFace := backlogFace(r, backlogFooterFontSize)
+	const scrollHint = "ホイール／ドラッグでスクロール"
+	_, footerH := text.Measure(scrollHint, footerFace, 0)
+	footerBorderY := float64(h) - backlogPaddingBottom - footerH - backlogFooterPaddingTop
+	fillRect(buf, contentX, footerBorderY, contentW, 1, backlogFooterBorderColor)
+	footerTextY := footerBorderY + backlogFooterPaddingTop
+	hintOp := &text.DrawOptions{}
+	hintOp.GeoM.Translate(contentX, footerTextY)
+	hintOp.ColorScale.ScaleWithColor(backlogFooterDimColor)
+	text.Draw(buf, scrollHint, footerFace, hintOp)
+
+	const backHint = "右クリックで戻る"
+	const latestHint = "最新へ ▼"
+	backW, _ := text.Measure(backHint, footerFace, 0)
+	latestW, _ := text.Measure(latestHint, footerFace, 0)
+	backOp := &text.DrawOptions{}
+	backOp.GeoM.Translate(contentRight-backW, footerTextY)
+	backOp.ColorScale.ScaleWithColor(backlogFooterTextColor)
+	text.Draw(buf, backHint, footerFace, backOp)
+	latestOp := &text.DrawOptions{}
+	latestOp.GeoM.Translate(contentRight-backW-backlogFooterItemGap-latestW, footerTextY)
+	latestOp.ColorScale.ScaleWithColor(backlogFooterTextColor)
+	text.Draw(buf, latestHint, footerFace, latestOp)
+
+	// --- body: scrollable name/text columns + scrollbar ---
+	bodyTop := headerBottom + backlogBodyPaddingTop
+	bodyBottom := footerBorderY - backlogFooterMarginTop
+	viewportH := bodyBottom - bodyTop
+	if viewportH < 0 {
+		viewportH = 0
 	}
-	y := margin
-	for _, line := range backlog[start:] {
-		op := &text.DrawOptions{}
-		op.ColorScale.ScaleWithColor(color.White)
-		op.GeoM.Translate(margin, y)
-		text.Draw(buf, line, r.fontFace, op)
-		y += lineHeight
+	clampBacklogScroll(viewportH)
+
+	textColW := contentW - backlogNameColW - backlogColGap - backlogScrollbarColGap - backlogScrollbarW
+	nameFace := backlogFace(r, backlogNameFontSize)
+	textFace := backlogFace(r, backlogTextFontSize)
+
+	contentH := backlogContentHeight()
+	// scrollTop is the content-space Y of the viewport's own top edge:
+	// content is bottom-anchored (newest entry's bottom sits at
+	// bodyBottom) when backlogScrollY == 0, and moves up as it increases.
+	scrollTop := contentH - viewportH - backlogScrollY
+
+	for i, entry := range backlog {
+		rowTop := float64(i) * backlogEntryHeight
+		y := bodyTop + (rowTop - scrollTop)
+		if y+backlogEntryHeight < bodyTop || y > bodyBottom {
+			continue
+		}
+		// Fade the first few rows *from the top of the viewport*, not by
+		// absolute recency — matches the mockup's "fades in as you scroll
+		// up toward older lines" read (the bottom-most/newest rows are
+		// always fully opaque regardless of scroll position).
+		rowIndexFromViewportTop := int((y - bodyTop) / backlogEntryHeight)
+		alpha := float32(1.0)
+		if rowIndexFromViewportTop >= 0 && rowIndexFromViewportTop < len(backlogFadeSteps) {
+			alpha = backlogFadeSteps[rowIndexFromViewportTop]
+		}
+
+		name, nameColor := backlogNameDisplay(entry.Name)
+		nameColor.A = uint8(float32(nameColor.A) * alpha)
+		nameOp := &text.DrawOptions{}
+		nameOp.GeoM.Translate(contentX, y)
+		nameOp.ColorScale.ScaleWithColor(nameColor)
+		text.Draw(buf, name, nameFace, nameOp)
+
+		txtColor := backlogTextColor
+		txtColor.A = uint8(float32(txtColor.A) * alpha)
+		textOp := &text.DrawOptions{}
+		textOp.GeoM.Translate(contentX+backlogNameColW+backlogColGap, y)
+		textOp.ColorScale.ScaleWithColor(txtColor)
+		txt := entry.Text
+		if w, _ := text.Measure(txt, textFace, 0); w > textColW {
+			// No word-wrap for backlog text (matches the rest of this
+			// package's secondary-UI simplicity) — truncate instead of
+			// overflowing into the scrollbar column.
+			for len([]rune(txt)) > 0 {
+				rn := []rune(txt)
+				txt = string(rn[:len(rn)-1])
+				if ww, _ := text.Measure(txt+"…", textFace, 0); ww <= textColW {
+					txt += "…"
+					break
+				}
+			}
+		}
+		text.Draw(buf, txt, textFace, textOp)
+	}
+
+	if max := backlogMaxScroll(viewportH); max > 0 {
+		trackX := contentRight - backlogScrollbarW
+		fillRect(buf, trackX, bodyTop, backlogScrollbarW, viewportH, backlogScrollTrackColor)
+		thumbH := viewportH * viewportH / contentH
+		if thumbH < 20 {
+			thumbH = 20
+		}
+		if thumbH > viewportH {
+			thumbH = viewportH
+		}
+		// backlogScrollY == 0 anchors the thumb to the bottom (newest
+		// visible) — the inverse of scrollY's own top-anchored sense.
+		thumbY := bodyTop + (viewportH-thumbH)*(1-backlogScrollY/max)
+		fillRect(buf, trackX, thumbY, backlogScrollbarW, thumbH, backlogScrollThumbColor)
+	}
+}
+
+// handleBacklogClick drives the backlog screen's input: wheel/drag-to-scroll,
+// the header's 閉じる✕ button, and any-other-click/right-click to close
+// (preserving the pre-redesign "any click dismisses" behavior for clicks
+// that land outside the close button, except on the very frame the screen
+// opened — that click is the button press that opened it).
+func (r *Renderer) handleBacklogClick() {
+	w, h := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
+	footerFace := backlogFace(r, backlogFooterFontSize)
+	_, footerH := text.Measure("ホイール／ドラッグでスクロール", footerFace, 0)
+	footerBorderY := float64(h) - backlogPaddingBottom - footerH - backlogFooterPaddingTop
+	titleFace := backlogFace(r, backlogHeaderTitleSize)
+	_, titleH := text.Measure("BACKLOG", titleFace, 0)
+	headerBottom := backlogPaddingTop + titleH + backlogHeaderPaddingBtm
+	bodyTop := headerBottom + backlogBodyPaddingTop
+	viewportH := footerBorderY - backlogFooterMarginTop - bodyTop
+	if viewportH < 0 {
+		viewportH = 0
+	}
+
+	if _, wheelY := ebiten.Wheel(); wheelY != 0 {
+		backlogScrollY += wheelY * backlogScrollStep
+		clampBacklogScroll(viewportH)
+	}
+
+	mX, mY := ebiten.CursorPosition()
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		if !backlogDragging {
+			backlogDragging = true
+			backlogDragLastY = mY
+		} else if mY != backlogDragLastY {
+			// Dragging down reveals older entries (content moves down with
+			// the pointer), so backlogScrollY — which measures up from the
+			// newest entry — increases.
+			backlogScrollY += float64(backlogDragLastY - mY)
+			backlogDragLastY = mY
+			clampBacklogScroll(viewportH)
+		}
+	} else {
+		backlogDragging = false
+	}
+
+	if t == backlogOpenedFrame {
+		return
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		backlogViewing = false
+		return
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		contentRight := float64(w) - backlogPaddingLeftRight
+		closeFace := backlogFace(r, backlogCloseSize)
+		closeW, _ := text.Measure("閉じる ✕", closeFace, 0)
+		closeX := contentRight - closeW
+		closeY := backlogPaddingTop + (titleH - backlogCloseSize)
+		if isColision(mX, mY, int(closeX), int(closeY), int(closeW), int(backlogCloseSize)) {
+			backlogViewing = false
+			return
+		}
+		if !backlogDragging {
+			backlogViewing = false
+		}
 	}
 }
 
 // --- quick menu (button role="menu") ---
 //
+// Deprecated: reachable only via role="menu" or the (also deprecated)
+// [showmenubutton] corner icon (tags_sysdesign.go) — the redesigned message
+// window's own operation row (tags_oprow.go) now covers everything this
+// popup offered (SAVE/LOAD/SKIP/BACK TO TITLE) except HIDE MESSAGE
+// (case 2 below; still just buttonRoles["window"]'s toggle, reachable via a
+// script-placed [button role="window"] if needed). Left implemented, not
+// deleted, for any script that still opens it directly.
+//
 // Laid out to match real Tyrano's own system menu screen (built from the
 // same bundled resources/system/images assets: bg_base.png, label_menu.png,
 // menu_button_close.png for the "BACK" button top-right — same as the slot
 // picker's — and the five menu_button_*/menu_message_close.png pill
-// buttons), at a 1280x720 canvas. scene1.ks already places individual
+// buttons), at a 1920x1080 canvas (×1.5 from the original 1280x720 layout —
+// both these position/size constants and the underlying
+// resources/system/images/*.png assets were scaled together, see the
+// upscale note in the project history). scene1.ks already places individual
 // save/load/skip/auto/backlog buttons directly on screen too, so this
 // doesn't need a "閉じる" item of its own — the top-right BACK button
 // covers that, consistently with the slot picker.
 const (
-	quickMenuLabelX, quickMenuLabelY    = 10, 10
-	quickMenuButtonX, quickMenuButtonY0 = 380, 190
-	quickMenuButtonW, quickMenuButtonH  = 520, 70
-	quickMenuButtonGap                  = 25
+	quickMenuLabelX, quickMenuLabelY    = 15, 15
+	quickMenuButtonX, quickMenuButtonY0 = 570, 285
+	quickMenuButtonW, quickMenuButtonH  = 780, 105
+	quickMenuButtonGap                  = 38
 )
 
 var (

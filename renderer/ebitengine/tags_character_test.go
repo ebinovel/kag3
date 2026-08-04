@@ -209,6 +209,52 @@ func TestHandlePTextStoresByNameWithoutClobbering(t *testing.T) {
 	}
 }
 
+func TestHandlePTextBgLoadsBackgroundImage(t *testing.T) {
+	ptexts = map[string]*kag3.PText{}
+	r := newTestRendererWithImageFS(t, map[string][]byte{"ui/name_tab.png": tinyPNG(t)})
+
+	tag := kag3.TagObject{Name: "ptext", Pm: map[string]string{"name": "chara_name_area", "text": "凪", "bg": "ui/name_tab.png"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("dispatchTag error: %v", err)
+	}
+	pt, ok := ptexts["chara_name_area"]
+	if !ok {
+		t.Fatal("expected chara_name_area to be registered")
+	}
+	if pt.BgStorage != "ui/name_tab.png" {
+		t.Errorf("BgStorage = %q, want ui/name_tab.png", pt.BgStorage)
+	}
+	if pt.BgImage == nil {
+		t.Error("expected BgImage to be loaded")
+	}
+}
+
+func TestHandlePTextWithoutBgLeavesBgImageNil(t *testing.T) {
+	ptexts = map[string]*kag3.PText{}
+	r := newTestRenderer()
+
+	tag := kag3.TagObject{Name: "ptext", Pm: map[string]string{"name": "plain", "text": "hello"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("dispatchTag error: %v", err)
+	}
+	if pt := ptexts["plain"]; pt.BgImage != nil || pt.BgStorage != "" {
+		t.Errorf("ptexts[plain] = %+v, want BgImage/BgStorage unset when bg= is not given", pt)
+	}
+}
+
+func TestHandlePTextBgMissingFileErrors(t *testing.T) {
+	ptexts = map[string]*kag3.PText{}
+	r := newTestRendererWithImageFS(t, map[string][]byte{})
+
+	tag := kag3.TagObject{Name: "ptext", Pm: map[string]string{"name": "chara_name_area", "text": "凪", "bg": "does_not_exist.png"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err == nil {
+		t.Error("expected an error when bg= names a file that doesn't exist")
+	}
+}
+
 func TestCharaLayerPartAndReset(t *testing.T) {
 	charas["akane"] = &kag3.Character{Name: "akane"}
 	r := newTestRendererWithImageFS(t, map[string][]byte{"face_smile.png": tinyPNG(t)})

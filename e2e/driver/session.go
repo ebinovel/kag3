@@ -139,7 +139,7 @@ func (s *Session) Close() error {
 
 // WindowRect returns the session window's client area (the actual drawable
 // surface — see clientRectOnScreen) in screen coordinates. Used by
-// e2e/helpers to convert kag3's 1280x720 logical tag coordinates
+// e2e/helpers to convert kag3's 1920x1080 logical tag coordinates
 // (button x=/y=) into real screen coordinates for Click.
 func (s *Session) WindowRect() (image.Rectangle, error) {
 	return clientRectOnScreen(s.hwnd)

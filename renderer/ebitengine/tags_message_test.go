@@ -232,8 +232,8 @@ func TestBacklogRecordingAndPause(t *testing.T) {
 	if err := dispatchTag(r, fakeYield(), pTag, &i, 0); err != nil {
 		t.Fatalf("p dispatch error: %v", err)
 	}
-	if len(backlog) != 1 || backlog[0] != "hello world" {
-		t.Fatalf("backlog = %+v, want [\"hello world\"]", backlog)
+	if len(backlog) != 1 || backlog[0].Text != "hello world" {
+		t.Fatalf("backlog = %+v, want one entry with Text=\"hello world\"", backlog)
 	}
 
 	nolog := kag3.TagObject{Name: "nolog"}
@@ -258,8 +258,8 @@ func TestBacklogRecordingAndPause(t *testing.T) {
 	if err := dispatchTag(r, fakeYield(), push, &i, 0); err != nil {
 		t.Fatalf("pushlog dispatch error: %v", err)
 	}
-	if backlog[len(backlog)-1] != "manual entry" {
-		t.Errorf("last backlog entry = %q, want %q (pushlog should ignore nolog)", backlog[len(backlog)-1], "manual entry")
+	if got := backlog[len(backlog)-1].Text; got != "manual entry" {
+		t.Errorf("last backlog entry.Text = %q, want %q (pushlog should ignore nolog)", got, "manual entry")
 	}
 }
 

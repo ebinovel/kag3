@@ -72,14 +72,15 @@ func TestManualNewGameWalkthrough(t *testing.T) {
 	press(25)
 	shot("04_choice.png")
 
-	// glink "行く", measured center (610,260) confirmed via pixel analysis
-	// of the rendered blue box. Retry a few times — clicks in this
-	// environment occasionally don't register (same class of flakiness as
-	// advanceOne's Enter retries elsewhere in this package).
+	// glink "行く" (scene2.ks: x=540 width=750 y=300 at 1920x1080 scale),
+	// center (915,390) — ×1.5 from the original 1280x720-scale measured
+	// center (610,260). Retry a few times — clicks in this environment
+	// occasionally don't register (same class of flakiness as advanceOne's
+	// Enter retries elsewhere in this package).
 	clicked := false
 	for attempt := 0; attempt < 5 && !clicked; attempt++ {
 		before, _ := sess.Screenshot()
-		if err := helpers.ClickLogical(sess, 610, 260); err != nil {
+		if err := helpers.ClickLogical(sess, 915, 390); err != nil {
 			t.Fatalf("click glink go (attempt %d): %v", attempt, err)
 		}
 		time.Sleep(800 * time.Millisecond)
@@ -108,11 +109,11 @@ func TestManualNewGameWalkthrough(t *testing.T) {
 	press(6)
 	shot("07_ending.png")
 
-	// ending_a's "タイトルへ戻る" glink (x=360 width=500 y=500)
+	// ending_a's "タイトルへ戻る" glink (x=540 width=750 y=750 at 1920x1080 scale)
 	clicked = false
 	for attempt := 0; attempt < 5 && !clicked; attempt++ {
 		before, _ := sess.Screenshot()
-		if err := helpers.ClickLogical(sess, 360+500/2, 500+30); err != nil {
+		if err := helpers.ClickLogical(sess, 540+750/2, 750+45); err != nil {
 			t.Fatalf("click ending totitle (attempt %d): %v", attempt, err)
 		}
 		time.Sleep(800 * time.Millisecond)
@@ -131,7 +132,7 @@ func TestManualNewGameWalkthrough(t *testing.T) {
 	shot("08_back_to_title.png")
 
 	// title.ks's DEMO button (x=135 y=450, matches button_start's size 360x74)
-	if err := helpers.ClickLogical(sess, 135+180, 450+37); err != nil {
+	if err := helpers.ClickLogical(sess, 203+180, 675+37); err != nil {
 		t.Fatalf("click demo button: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
@@ -210,8 +211,8 @@ func TestManualRouteB(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 
 	press(25)
-	// glink "今日はやめておく" (x=360 y=300 width=500)
-	clickGlinkRetry(t, sess, 610, 330, "glink go_home")
+	// glink "今日はやめておく" (x=540 y=450 width=750 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 915, 495, "glink go_home")
 	shot("b01_after_choice.png")
 
 	// scene3b.ks has 8 [p]s; one more past the 8th fires its @jump into
@@ -223,7 +224,7 @@ func TestManualRouteB(t *testing.T) {
 	press(6)
 	shot("b03_ending.png")
 
-	clickGlinkRetry(t, sess, 360+500/2, 500+30, "ending_b totitle")
+	clickGlinkRetry(t, sess, 540+750/2, 750+45, "ending_b totitle")
 	time.Sleep(1500 * time.Millisecond)
 	shot("b04_back_to_title.png")
 }
@@ -274,7 +275,7 @@ func TestManualHubDemos(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// title.ks's DEMO button -> hub.ks
-	if err := helpers.ClickLogical(sess, 135+180, 450+37); err != nil {
+	if err := helpers.ClickLogical(sess, 203+180, 675+37); err != nil {
 		t.Fatalf("click demo button: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
@@ -283,8 +284,8 @@ func TestManualHubDemos(t *testing.T) {
 	press(2)
 	shot("h01_hub.png")
 
-	// "① テキスト装飾" glink (x=160 y=120 width=460)
-	clickGlinkRetry(t, sess, 160+230, 120+20, "hub to_text")
+	// "① テキスト装飾" glink (x=240 y=180 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 240+345, 180+30, "hub to_text")
 	shot("h02z_text_demo_first_line.png")
 	press(1)
 	shot("h02y_text_demo_line2.png")
@@ -296,21 +297,21 @@ func TestManualHubDemos(t *testing.T) {
 	shot("h02a_text_demo_last_line.png")
 	press(1)
 	shot("h02_text_demo.png")
-	// "ハブへ戻る" glink (x=440 y=560 width=400)
-	clickGlinkRetry(t, sess, 440+200, 560+20, "demo_text to_hub")
+	// "ハブへ戻る" glink (x=660 y=840 width=600 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 660+300, 840+30, "demo_text to_hub")
 	time.Sleep(1000 * time.Millisecond)
 
 	// back at hub — reveal glinks again.
 	press(2)
 	shot("h03_hub_again.png")
 
-	// "⑤ 選択肢分岐" glink (x=660 y=120 width=460)
-	clickGlinkRetry(t, sess, 660+230, 120+20, "hub to_choice")
+	// "⑤ 選択肢分岐" glink (x=990 y=180 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 990+345, 180+30, "hub to_choice")
 	// demo_choice.ks has 2 [p]s before its "犬派"/"猫派" glinks.
 	press(3)
 	shot("h04_choice_demo.png")
-	// "犬派" glink (x=360 y=150 width=500)
-	clickGlinkRetry(t, sess, 360+250, 150+20, "demo_choice dog")
+	// "犬派" glink (x=540 y=225 width=750 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 540+375, 225+30, "demo_choice dog")
 	shot("h05_dog_chosen.png")
 	// One more press to move past "犬派を選びました。" and reveal the
 	// [link] demo's first line ("［link］は…") — just confirms this line
@@ -374,44 +375,44 @@ func TestManualHubRemainingDemos(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// title.ks's DEMO button -> hub.ks
-	if err := helpers.ClickLogical(sess, 135+180, 450+37); err != nil {
+	if err := helpers.ClickLogical(sess, 203+180, 675+37); err != nil {
 		t.Fatalf("click demo button: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
 	press(2)
 
-	// "② キャラクター表示・表情・移動" glink (x=160 y=190 width=460)
-	clickGlinkRetry(t, sess, 160+230, 190+20, "hub to_chara")
+	// "② キャラクター表示・表情・移動" glink (x=240 y=285 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 240+345, 285+30, "hub to_chara")
 	// demo_chara.ks has 12 [p]s before its "ハブへ戻る" glink.
 	press(13)
 	shot("r01_chara_demo.png")
-	// "ハブへ戻る" glink (x=440 y=550 width=400)
-	clickGlinkRetry(t, sess, 440+200, 550+20, "demo_chara to_hub")
+	// "ハブへ戻る" glink (x=660 y=825 width=600 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 660+300, 825+30, "demo_chara to_hub")
 	time.Sleep(1000 * time.Millisecond)
 	press(2)
 
-	// "③ 背景・画面転換" glink (x=160 y=260 width=460)
-	clickGlinkRetry(t, sess, 160+230, 260+20, "hub to_bg")
+	// "③ 背景・画面転換" glink (x=240 y=390 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 240+345, 390+30, "hub to_bg")
 	// demo_bg.ks has 7 [p]s before its "ハブへ戻る" glink.
 	press(8)
 	shot("r02_bg_demo.png")
-	// "ハブへ戻る" glink (x=440 y=610 width=400)
-	clickGlinkRetry(t, sess, 440+200, 610+20, "demo_bg to_hub")
+	// "ハブへ戻る" glink (x=660 y=915 width=600 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 660+300, 915+30, "demo_bg to_hub")
 	time.Sleep(1000 * time.Millisecond)
 	press(2)
 
-	// "④ 音声(BGM/効果音)" glink (x=160 y=330 width=460)
-	clickGlinkRetry(t, sess, 160+230, 330+20, "hub to_audio")
+	// "④ 音声(BGM/効果音)" glink (x=240 y=495 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 240+345, 495+30, "hub to_audio")
 	// demo_audio.ks has 7 [p]s before its "ハブへ戻る" glink.
 	press(8)
 	shot("r03_audio_demo.png")
-	// "ハブへ戻る" glink (x=440 y=610 width=400)
-	clickGlinkRetry(t, sess, 440+200, 610+20, "demo_audio to_hub")
+	// "ハブへ戻る" glink (x=660 y=915 width=600 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 660+300, 915+30, "demo_audio to_hub")
 	time.Sleep(1000 * time.Millisecond)
 	press(2)
 
-	// "⑥ セーブ・ロード" glink (x=660 y=190 width=460)
-	clickGlinkRetry(t, sess, 660+230, 190+20, "hub to_save")
+	// "⑥ セーブ・ロード" glink (x=990 y=285 width=690 at 1920x1080 scale)
+	clickGlinkRetry(t, sess, 990+345, 285+30, "hub to_save")
 	// demo_save.ks: exact press count to its glink is uncertain (it has a
 	// real mid-file [s] wait, unlike the other demos) — press generously
 	// and screenshot to see exactly where we land.
@@ -419,12 +420,14 @@ func TestManualHubRemainingDemos(t *testing.T) {
 	shot("r04_save_demo.png")
 }
 
-// TestManualConfigAndMenu is a regression check for the config screen and
-// the built-in quick menu / save-load slot picker, all of which just had
-// their TyranoScript-sourced art (example/resources/images/config/,
-// resources/system/images/) replaced with original placeholders. Also
+// TestManualConfigAndMenu is a regression check for the config screen,
+// whose TyranoScript-sourced art (example/resources/images/config/,
+// resources/system/images/) was replaced with original placeholders. Also
 // exercises config.ks's *load_img (set1.png/set2.png), which referenced
-// files that never actually existed in this project before today.
+// files that never actually existed in this project before today. The
+// quick menu / save-load slot picker this test used to also cover was
+// dropped when the corner menu button (@showmenubutton) was removed from
+// demo_save.ks — see the comment at the end of this test.
 func TestManualConfigAndMenu(t *testing.T) {
 	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
 	if outDir == "" {
@@ -467,41 +470,42 @@ func TestManualConfigAndMenu(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// title.ks's CONFIG button (role="sleepgame" storage="config.ks",
-	// x=135 y=560 width=360 height=74).
-	if err := helpers.ClickLogical(sess, 135+180, 560+37); err != nil {
+	// x=203 y=840 width=360 height=74 at 1920x1080 scale).
+	if err := helpers.ClickLogical(sess, 203+180, 840+37); err != nil {
 		t.Fatalf("click config button: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
 	shot("c01_config_screen.png")
 
-	// config.ks's own "Back" button (c_btn_back.png, x=1160 y=20, 100x100).
+	// config.ks's own "Back" button (c_btn_back.png, x=1160 y=20, 100x100)
+	// — config.ks itself was not touched by the 1920x1080 redesign (out of
+	// scope, see the design plan), so this literal coordinate is unchanged.
 	clickGlinkRetry(t, sess, 1160+50, 20+50, "config back")
 	time.Sleep(1500 * time.Millisecond)
 	shot("c02_back_to_title.png")
 
 	// title.ks's DEMO button -> hub.ks -> "⑥ セーブ・ロード" -> demo_save.ks,
 	// which calls @showmenubutton right away.
-	if err := helpers.ClickLogical(sess, 135+180, 450+37); err != nil {
+	if err := helpers.ClickLogical(sess, 203+180, 675+37); err != nil {
 		t.Fatalf("click demo button: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
 	press(2)
-	clickGlinkRetry(t, sess, 660+230, 190+20, "hub to_save")
+	clickGlinkRetry(t, sess, 990+345, 285+30, "hub to_save")
 	time.Sleep(1500 * time.Millisecond)
 	shot("c03_demo_save.png")
 
-	// menuButtonRect: 64x64 at (1280-64-20, 720-64-20) = (1196, 636).
-	clickGlinkRetry(t, sess, 1196+32, 636+32, "quick menu button")
-	shot("c04_quick_menu.png")
-
-	// Quick menu's SAVE row: X=380 W=520 Y=190 H=70 -> center (640, 225).
-	clickGlinkRetry(t, sess, 380+260, 190+35, "quick menu SAVE")
-	shot("c05_save_slot_picker.png")
-
-	// Slot picker's back/close button: 100x100 at
-	// (1280-100-20, 35) = (1160, 35) -> center (1210, 85).
-	clickGlinkRetry(t, sess, 1160+50, 35+50, "slot picker back")
-	shot("c06_back_to_demo_save.png")
+	// The corner quick-menu button (button_menu.png / @showmenubutton) no
+	// longer appears here — demo_save.ks dropped its @showmenubutton call
+	// once the redesigned message window's own operation row covered
+	// SAVE/LOAD/Title (see scene1.ks/demo_save.ks's comments and
+	// helpers.OpRowSaveX/Y in nav.go). demo_save.ks's own [position] wasn't
+	// updated to the 1920x1080 redesign (out of scope), so the operation
+	// row's exact hit-box here differs from scene1.ks's OpRowSaveX/Y —
+	// re-derive against demo_save.ks's own [position] if this flow needs
+	// covering again; skipped for now since TestQuickSaveThenLoadRestoresSceneText
+	// (flows_test.go) already exercises the same save/load-slot-picker path
+	// end to end against scene1.ks.
 }
 
 // TestManualTitleLoadButton spot-checks title.ks's LOAD button (role="load"),

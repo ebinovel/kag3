@@ -21,9 +21,14 @@ func fakeYield() coro.Yield {
 
 func newTestRenderer() *Renderer {
 	return &Renderer{
-		texts:   make(map[int][]Text),
-		vm:      newVM(),
-		manager: &kag3.Manager{Macros: make(map[string]*kag3.Macro)},
+		texts: make(map[int][]Text),
+		vm:    newVM(),
+		// Config is a real (zero-value) *kag3.Config, not nil — real
+		// NewRenderer always has one (Load/LoadDefault populate it before a
+		// Renderer ever exists), and code paths that read
+		// r.manager.Config.* (e.g. ContinueMarkStyle in draw_message.go)
+		// would otherwise nil-panic under this package's tests.
+		manager: &kag3.Manager{Macros: make(map[string]*kag3.Macro), Config: &kag3.Config{}},
 	}
 }
 

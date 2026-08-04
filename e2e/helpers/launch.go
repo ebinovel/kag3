@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package helpers wraps e2e/driver with kag3-specific conveniences: launching
-// the game with a sandboxed save dir, converting kag3's 1280x720 logical tag
+// the game with a sandboxed save dir, converting kag3's 1920x1080 logical tag
 // coordinates (button x=/y=) to driver.Session click coordinates, waiting for
 // animation to settle, and reading save slot JSON directly.
 package helpers

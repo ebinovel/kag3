@@ -10,18 +10,19 @@ import (
 
 // MessageWindowRegion is the logical-coordinate rect scene1.ks's message
 // box occupies — set once, right at *start before any dialogue
-// (left=160 top=500 width=1000 height=200), and never repositioned again
-// for the rest of the script (unlike the bundled TyranoScript sample's
-// scene1.ks, which redesigned it partway through — "たそがれ図書室"'s
-// scene1.ks doesn't). Comparing this region across two screenshots is how
-// flow tests check "is the same line of dialogue showing" without OCR —
-// kag3 has no way to read back rendered text content directly (see
-// CLAUDE.md's ReadPixels note). Being the very first [position] a fresh
-// run ever shows, it also doubles as the most sensitive place to catch a
-// leaked textStyle/textPosition from a previous playthrough (see the
-// title-return leak test) — scene1.ks's own [position] call hasn't had a
-// chance to paper over anything yet.
-var MessageWindowRegion = image.Rect(160, 500, 160+1000, 500+200)
+// (left=96 top=736 width=1728 height=300, the redesigned message window's
+// geometry at 1920x1080 — see the design plan's "画面の背景色を新デザイン
+// に変更" note), and never repositioned again for the rest of the script
+// (unlike the bundled TyranoScript sample's scene1.ks, which redesigned it
+// partway through — "たそがれ図書室"'s scene1.ks doesn't). Comparing this
+// region across two screenshots is how flow tests check "is the same line
+// of dialogue showing" without OCR — kag3 has no way to read back rendered
+// text content directly (see CLAUDE.md's ReadPixels note). Being the very
+// first [position] a fresh run ever shows, it also doubles as the most
+// sensitive place to catch a leaked textStyle/textPosition from a previous
+// playthrough (see the title-return leak test) — scene1.ks's own
+// [position] call hasn't had a chance to paper over anything yet.
+var MessageWindowRegion = image.Rect(96, 736, 96+1728, 736+300)
 
 // CaptureRegion screenshots sess and crops to the logical rect region,
 // scaled the same way ClickLogical scales click coordinates (straight

@@ -49,3 +49,40 @@ func TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine(t *testing.T) {
 		t.Errorf("textEndX = %v, want ~%v (width of the second wrapped row \"えお\", not the whole block's widest row)", textEndX, lastLineWidth)
 	}
 }
+
+// TestDrawMessageHorizontalAppliesLineHeightRatio is the regression test for
+// the redesigned message window's line-height (bodyLineHeightRatio,
+// draw_messagebox.go): advancing from one [p]-separated line (lineNum) to
+// the next must move down by rowHeight*bodyLineHeightRatio, not a bare
+// rowHeight — unlike TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine
+// above, which covers a *single* line auto-wrapping into multiple physical
+// rows (unaffected by this ratio), this covers two separate lineNums.
+func TestDrawMessageHorizontalAppliesLineHeightRatio(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	beforeTextSize = r.fontFace.Size
+	defer func() { isWait, isTextEnd, textEndX, textEndY = false, false, 0, 0 }()
+
+	// Wide enough that neither line wraps.
+	wideWidth, _ := text.Measure("あああああああああああ", r.fontFace, r.fontFace.Size)
+	textPosition = &kag3.TextPosition{Visible: true, Width: int(wideWidth) + 100, Height: 1000}
+	defer func() { textPosition = nil }()
+
+	r.texts = map[int][]Text{
+		0: {{Text: "あ"}},
+		1: {{Text: "い"}},
+	}
+	r.line = 1
+	isWait = true // line 1 already fully revealed and waiting
+
+	buf := newTestImage(int(wideWidth)+100, 1000)
+	drawMessageHorizontal(r, buf, 0, 0, []int{0, 1}, 9999)
+
+	if !isTextEnd {
+		t.Fatal("expected isTextEnd = true")
+	}
+	wantY := beforeTextSize*bodyLineHeightRatio + beforeTextSize
+	if math.Abs(textEndY-wantY) > 0.5 {
+		t.Errorf("textEndY = %v, want ~%v (line 0's height*bodyLineHeightRatio + line 1's own height)", textEndY, wantY)
+	}
+}

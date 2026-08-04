@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/ebinovel/kag3"
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
@@ -638,4 +639,41 @@ func TestStartAtLabelUnknownLabel(t *testing.T) {
 	if isJump {
 		t.Error("StartAtLabel on an unknown label must not leave isJump set")
 	}
+}
+
+// TestDrawPTextsWithBgImageDoesNotPanic covers the [ptext bg=] background
+// image draw path (drawPTexts) added alongside the redesigned message
+// window's name tab — a headless no-panic check, not a pixel comparison,
+// matching this package's existing test style.
+func TestDrawPTextsWithBgImageDoesNotPanic(t *testing.T) {
+	defer func() { ptexts, charaName, charaNamePText = map[string]*kag3.PText{}, "", "" }()
+
+	bg := ebiten.NewImage(300, 60)
+	ptexts = map[string]*kag3.PText{
+		"chara_name_area": {Name: "chara_name_area", X: 136, Y: 693, BgImage: bg},
+	}
+	charaNamePText = "chara_name_area"
+	charaName = "凪"
+
+	face := newTestFontFace(t)
+	buf := newTestImage(1920, 1080)
+	drawPTexts(buf, face)
+}
+
+// TestDrawPTextsSkipsBgImageWhenContentEmpty is the monologue-suppression
+// check: an empty resolved content (charaName == "") must skip the
+// background image entirely, not leave an orphaned tab graphic on screen.
+func TestDrawPTextsSkipsBgImageWhenContentEmpty(t *testing.T) {
+	defer func() { ptexts, charaName, charaNamePText = map[string]*kag3.PText{}, "", "" }()
+
+	bg := ebiten.NewImage(300, 60)
+	ptexts = map[string]*kag3.PText{
+		"chara_name_area": {Name: "chara_name_area", X: 136, Y: 693, BgImage: bg},
+	}
+	charaNamePText = "chara_name_area"
+	charaName = "" // monologue: no speaker
+
+	face := newTestFontFace(t)
+	buf := newTestImage(1920, 1080)
+	drawPTexts(buf, face) // must not panic; nothing asserted beyond that (no-op path)
 }

@@ -262,6 +262,57 @@ func TestSaveSlotRoundTripRestoresPtexts(t *testing.T) {
 	}
 }
 
+// TestSaveSlotRoundTripReloadsPtextBgImage is the regression test for a
+// real crash: kag3.PText.BgImage ([ptext bg=], tags_text.go) is a raw
+// *ebiten.Image, which used to round-trip straight through the save JSON
+// like every other PText field. json.Unmarshal produced a zero-value
+// Image indistinguishable from a disposed one (not nil), and the first
+// drawPTexts call after any load — even same-process — panicked with
+// "ebiten: the given image to DrawImage must not be disposed". BgImage now
+// carries `json:"-"` and must be reloaded from BgStorage explicitly after
+// Ptexts is restored, the same pattern already used for
+// TextPosition.FrameStorage/FrameImage.
+func TestSaveSlotRoundTripReloadsPtextBgImage(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	defer func() { bg, textPosition = &kag3.Background{}, &kag3.TextPosition{} }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.fses = map[string]fs.FS{"images": fstest.MapFS{"ui/name_tab.png": &fstest.MapFile{Data: tinyPNG(t)}}}
+	ptexts = map[string]*kag3.PText{
+		"chara_name_area": {
+			Name: "chara_name_area", X: 10, Y: 20, Text: "あかね",
+			BgStorage: "ui/name_tab.png", BgImage: newTestImage(300, 60),
+		},
+	}
+	charaNamePText = "chara_name_area"
+	defer func() { ptexts, charaNamePText = map[string]*kag3.PText{}, "" }()
+
+	if err := r.saveSlot(manualSaveSlot); err != nil {
+		t.Fatalf("saveSlot error: %v", err)
+	}
+
+	// Simulate the story continuing past the save point (or a fresh
+	// process): BgImage is whatever json.Unmarshal produced for it
+	// (effectively unusable, since it's excluded from JSON), not the live
+	// image the session originally loaded.
+	ptexts["chara_name_area"] = &kag3.PText{Name: "chara_name_area", X: 999, Y: 999, Text: "wrong"}
+
+	if err := r.loadSlot(manualSaveSlot); err != nil {
+		t.Fatalf("loadSlot error: %v", err)
+	}
+
+	got, ok := ptexts["chara_name_area"]
+	if !ok {
+		t.Fatal("expected chara_name_area to be restored")
+	}
+	if got.BgImage == nil {
+		t.Fatal("expected BgImage to be reloaded from BgStorage after loadSlot, got nil — drawPTexts would silently skip the background instead of crashing, but the name tab would be missing")
+	}
+}
+
 // TestSaveSlotRoundTripRestoresTextsAndCharaName is the regression test for
 // a real reported bug: applySaveData resumes execution via jumpIndex
 // straight at the saved [p]/[s]/[l] tag, never re-running whatever
@@ -841,4 +892,112 @@ func TestApplySaveDataFromOldSaveFormatDoesNotClobberTextPosition(t *testing.T) 
 	if !textPosition.Visible || textPosition.Width != 1000 {
 		t.Errorf("textPosition after loading an old-format save = %+v, want unchanged (Visible=true Width=1000)", textPosition)
 	}
+}
+
+func TestRecordBacklogCapturesNameAndText(t *testing.T) {
+	backlog, backlogPaused = nil, false
+	defer func() { backlog, backlogPaused, charaName = nil, false, "" }()
+
+	r := newTestRenderer()
+	r.texts = map[int][]Text{0: {{Text: "こんにちは"}}}
+	charaName = "凪"
+	recordBacklog(r)
+
+	if len(backlog) != 1 {
+		t.Fatalf("backlog = %+v, want 1 entry", backlog)
+	}
+	if backlog[0].Name != "凪" || backlog[0].Text != "こんにちは" {
+		t.Errorf("backlog[0] = %+v, want Name=凪 Text=こんにちは", backlog[0])
+	}
+
+	// Monologue (no speaker): Name stays empty.
+	r.texts = map[int][]Text{0: {{Text: "静かな部屋"}}}
+	charaName = ""
+	recordBacklog(r)
+	if len(backlog) != 2 || backlog[1].Name != "" || backlog[1].Text != "静かな部屋" {
+		t.Errorf("backlog[1] = %+v, want Name=\"\" Text=静かな部屋", backlog[1])
+	}
+}
+
+func TestHandlePushLogAppendsNamelessEntry(t *testing.T) {
+	backlog = nil
+	defer func() { backlog = nil }()
+
+	tag := kag3.TagObject{Name: "pushlog", Pm: map[string]string{"text": "manual entry"}}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("dispatchTag error: %v", err)
+	}
+	if len(backlog) != 1 || backlog[0].Name != "" || backlog[0].Text != "manual entry" {
+		t.Errorf("backlog = %+v, want one nameless entry \"manual entry\"", backlog)
+	}
+}
+
+func TestBacklogScrollClampAndWraparound(t *testing.T) {
+	backlog = make([]backlogEntry, 10)
+	defer func() { backlog, backlogScrollY = nil, 0 }()
+
+	const viewportH = 100.0 // fits fewer than 10 rows at backlogEntryHeight each
+
+	backlogScrollY = -50
+	clampBacklogScroll(viewportH)
+	if backlogScrollY != 0 {
+		t.Errorf("scrollY after clamping a negative value = %v, want 0", backlogScrollY)
+	}
+
+	backlogScrollY = 999999
+	clampBacklogScroll(viewportH)
+	want := backlogMaxScroll(viewportH)
+	if backlogScrollY != want {
+		t.Errorf("scrollY after clamping an overlarge value = %v, want max %v", backlogScrollY, want)
+	}
+}
+
+func TestBacklogNameDisplayFallsBackToNarrationDash(t *testing.T) {
+	if name, _ := backlogNameDisplay("凪"); name != "凪" {
+		t.Errorf("backlogNameDisplay(凪) name = %q, want 凪", name)
+	}
+	if name, col := backlogNameDisplay(""); name != "──" || col != backlogNarrationColor {
+		t.Errorf("backlogNameDisplay(\"\") = %q/%v, want ──/%v", name, col, backlogNarrationColor)
+	}
+}
+
+func TestDrawBacklogNoPanic(t *testing.T) {
+	savedBacklog, savedScrollY := backlog, backlogScrollY
+	defer func() { backlog, backlogScrollY = savedBacklog, savedScrollY }()
+
+	backlog = []backlogEntry{
+		{Name: "凪", Text: "こんにちは"},
+		{Text: "静かな部屋だった"},
+	}
+	backlogScrollY = 0
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.manager.Config = &kag3.Config{ScreenWidth: 1920, ScreenHeight: 1080}
+	buf := newTestImage(1920, 1080)
+	drawBacklog(r, buf) // must not panic
+}
+
+func TestHandleBacklogClickClosesOnCloseButton(t *testing.T) {
+	savedBacklogViewing, savedOpenedFrame := backlogViewing, backlogOpenedFrame
+	savedDragging := backlogDragging
+	defer func() {
+		backlogViewing, backlogOpenedFrame, backlogDragging = savedBacklogViewing, savedOpenedFrame, savedDragging
+	}()
+
+	backlogViewing = true
+	backlogOpenedFrame = t2Sentinel() // definitely not the current frame
+	backlogDragging = false
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.manager.Config = &kag3.Config{ScreenWidth: 1920, ScreenHeight: 1080}
+
+	r.handleBacklogClick() // no real click state in a headless test: must not panic and must not force-close
+}
+
+// t2Sentinel returns a frame counter value guaranteed to differ from the
+// package-level tick t at call time, for tests that need backlogOpenedFrame
+// to definitely not match the current frame.
+func t2Sentinel() int {
+	return t - 1000000
 }

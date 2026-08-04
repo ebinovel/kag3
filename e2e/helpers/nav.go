@@ -9,13 +9,13 @@ import (
 )
 
 // logicalWidth/logicalHeight are kag3's fixed design resolution — see
-// config.go's LoadDefault() (ScreenWidth=1280, ScreenHeight=720) and
-// example/resources/config.toml, which doesn't override them. Every
+// example/resources/config.toml's ScreenWidth=1920/ScreenHeight=1080
+// (overriding config.go's LoadDefault() 1280x720 default). Every
 // button x=/y=/width=/height= in the bundled .ks scenarios is expressed in
 // this coordinate space, regardless of the actual window size or DPI.
 const (
-	logicalWidth  = 1280
-	logicalHeight = 720
+	logicalWidth  = 1920
+	logicalHeight = 1080
 )
 
 // ClickLogical converts a kag3 logical coordinate (as written in a [button
@@ -23,7 +23,7 @@ const (
 // coordinate space — see its doc comment) and clicks it. The size part of
 // the conversion is a straight ratio against the current client-area size
 // (driver.Session.WindowRect), so it's correct even if the window isn't
-// exactly 1280x720 — no assumption is made that it is. The position part
+// exactly 1920x1080 — no assumption is made that it is. The position part
 // adds WindowRect's own origin (r.Min): omitting that would target
 // whatever's at the *screen's* (lx,ly), not the window's — on a
 // multi-monitor desktop where the window isn't flush against (0,0) (the
@@ -43,18 +43,20 @@ func ClickLogical(sess *driver.Session, lx, ly int) error {
 }
 
 // Title screen button centers, computed from example/resources/senarios/
-// title.ks's [button x= y=] top-left coordinates plus half the actual
-// graphic size (all four title/button_*.png are 360x74 — confirmed via
-// `file example/resources/images/title/button_*.png`). Re-derive if
-// title.ks or its button graphics change. title.ks has no CG/replay
-// buttons (the bundled TyranoScript sample's cg.ks/replay.ks were dropped
-// when this became an original game) — don't add ClickTitleCG/Replay back
-// without a matching [button] in title.ks.
+// title.ks's [button x= y=] top-left coordinates (1920x1080-scale, ×1.5
+// from the original 1280x720 layout) plus half the actual graphic size
+// (all four title/button_*.png are 360x74 — confirmed via
+// `file example/resources/images/title/button_*.png`; the button graphics
+// themselves were not upscaled, only the [button] x=/y= positions were).
+// Re-derive if title.ks or its button graphics change. title.ks has no
+// CG/replay buttons (the bundled TyranoScript sample's cg.ks/replay.ks
+// were dropped when this became an original game) — don't add
+// ClickTitleCG/Replay back without a matching [button] in title.ks.
 const (
-	titleStartX, titleStartY   = 135 + 360/2, 230 + 74/2
-	titleLoadX, titleLoadY     = 135 + 360/2, 340 + 74/2
-	titleDemoX, titleDemoY     = 135 + 360/2, 450 + 74/2
-	titleConfigX, titleConfigY = 135 + 360/2, 560 + 74/2
+	titleStartX, titleStartY   = 203 + 360/2, 345 + 74/2
+	titleLoadX, titleLoadY     = 203 + 360/2, 510 + 74/2
+	titleDemoX, titleDemoY     = 203 + 360/2, 675 + 74/2
+	titleConfigX, titleConfigY = 203 + 360/2, 840 + 74/2
 )
 
 // ClickTitleStart clicks title.ks's "START" button (target="gamestart"
@@ -82,41 +84,45 @@ func Advance(sess *driver.Session) error {
 	return sess.KeyPress("Enter")
 }
 
-// The quick menu (opened via the hamburger button, bottom-right corner) is
-// how "たそがれ図書室" exposes save/load/title-return in-game — unlike the
-// bundled TyranoScript sample's scene1.ks, the current scene1.ks/hub.ks/
-// demo_*.ks register no role="save"/"quicksave"/"title" [button] of their
-// own, so there's nothing resembling a role_button row to click directly
-// anymore; everything routes through this menu instead. Coordinates are
-// exported (not just wrapped in a Click* func below) so callers that need
-// clickAndWaitChanged-style retry logic (flows_test.go) can drive
-// ClickLogical themselves. See renderer/ebitengine/tags_sysdesign.go's
-// menuButtonRect (the 64x64 button_menu.png icon at
-// (ScreenWidth-64-20, ScreenHeight-64-20)) and tags_save.go's
-// quickMenuButtons() (five 520x70 rows at X=380, Y=190+i*(70+25) for
-// i=0..4: SAVE/LOAD/HIDE MESSAGE/SKIP/BACK TO TITLE).
+// Deprecated: the quick menu (opened via the hamburger button, bottom-right
+// corner) was how "たそがれ図書室" used to expose save/load/title-return —
+// scene1.ks/demo_save.ks no longer call @showmenubutton (the redesigned
+// message window's own operation row, OpRow* below, covers the same
+// ground), so this corner button never appears in the bundled example
+// anymore and ClickMenuButton is a no-op there. [showmenubutton]/
+// role="menu" themselves are still implemented engine-side (not deleted —
+// see tags_sysdesign.go/tags_save.go), so these helpers are kept for any
+// script that still calls them directly, but flows_test.go no longer uses
+// them. See renderer/ebitengine/tags_sysdesign.go's menuButtonRect (the
+// 96x96 button_menu.png icon — upscaled ×1.5 from 64x64 — at
+// (ScreenWidth-96-30, ScreenHeight-96-30) = (1794,954) with
+// ScreenWidth/Height=1920x1080) and tags_save.go's quickMenuButtons() (five
+// 780x105 rows — upscaled ×1.5 from 520x70 — at a fixed X=570,
+// Y=285+i*(105+38) for i=0..4: SAVE/LOAD/HIDE MESSAGE/SKIP/BACK TO TITLE —
+// these five don't depend on ScreenWidth/Height at all).
 const (
-	MenuButtonX, MenuButtonY         = 1196 + 64/2, 636 + 64/2
-	QuickMenuSaveX, QuickMenuSaveY   = 380 + 520/2, 190 + 70/2
-	QuickMenuLoadX, QuickMenuLoadY   = 380 + 520/2, 190 + 1*(70+25) + 70/2
-	QuickMenuTitleX, QuickMenuTitleY = 380 + 520/2, 190 + 4*(70+25) + 70/2
+	MenuButtonX, MenuButtonY         = 1794 + 96/2, 954 + 96/2
+	QuickMenuSaveX, QuickMenuSaveY   = 570 + 780/2, 285 + 105/2
+	QuickMenuLoadX, QuickMenuLoadY   = 570 + 780/2, 285 + 1*(105+38) + 105/2
+	QuickMenuTitleX, QuickMenuTitleY = 570 + 780/2, 285 + 4*(105+38) + 105/2
 )
 
 // ClickMenuButton opens the quick menu — a no-op if it's not currently
 // visible (menuButtonVisible false, or the menu is already open — see
-// handleMenuButtonClick, tags_sysdesign.go).
+// handleMenuButtonClick, tags_sysdesign.go). Deprecated — see the const
+// block above.
 func ClickMenuButton(sess *driver.Session) error { return ClickLogical(sess, MenuButtonX, MenuButtonY) }
 
 // ClickQuickMenuSave clicks the open quick menu's SAVE row, which opens
 // the slot picker in save mode (openSlotPicker(slotPickerSave) —
 // tags_sysdesign.go). Follow up with ClickSlotPickerRow1 (or another
-// row) to actually write a slot.
+// row) to actually write a slot. Deprecated — see the const block above.
 func ClickQuickMenuSave(sess *driver.Session) error {
 	return ClickLogical(sess, QuickMenuSaveX, QuickMenuSaveY)
 }
 
 // ClickQuickMenuLoad clicks the open quick menu's LOAD row, opening the
-// slot picker in load mode.
+// slot picker in load mode. Deprecated — see the const block above.
 func ClickQuickMenuLoad(sess *driver.Session) error {
 	return ClickLogical(sess, QuickMenuLoadX, QuickMenuLoadY)
 }
@@ -124,18 +130,54 @@ func ClickQuickMenuLoad(sess *driver.Session) error {
 // ClickQuickMenuTitle clicks the open quick menu's "BACK TO TITLE" row —
 // opens confirmGoToTitle's confirmation dialog (renderer.go), same as
 // ClickDialogOK below is meant to follow up on; it does not jump
-// immediately.
+// immediately. Deprecated — see the const block above.
 func ClickQuickMenuTitle(sess *driver.Session) error {
 	return ClickLogical(sess, QuickMenuTitleX, QuickMenuTitleY)
 }
 
-// Slot picker layout — see tags_uiscreens.go's slotPickerRowX/Y0/W/H/Gap
-// (X=130 Y0=170 W=1000 H=120 gap=10) and backButtonRect (100x100
-// menu_button_close.png at (ScreenWidth-100-20, 35)). Row i (0-indexed) is
-// slot i+1 (slotPickerRows) — row 1 is slot ManualSaveSlot (save.go).
+// The redesigned message window's persistent operation row (tags_oprow.go)
+// replaces the quick menu above as the actual entry point scene1.ks now
+// exposes for SAVE/LOAD/Title. Centers computed via opRowLayout/
+// opRowOrigin against scene1.ks's own [position] (left=96 top=736
+// width=1728 height=300 marginright=56) and the built-in font — re-derive
+// (e.g. temporarily add a t.Logf of opRowLayout's output to a Go test in
+// renderer/ebitengine) if scene1.ks's [position] or the operation row's
+// button set changes; unlike the quick menu's fixed pixel grid, this
+// row is right-aligned and its item widths depend on font metrics, so
+// there's no simple formula to hand-derive these from.
 const (
-	SlotPickerRow1X, SlotPickerRow1Y = 130 + 1000/2, 170 + 120/2
-	SlotPickerBackX, SlotPickerBackY = 1160 + 100/2, 35 + 100/2
+	OpRowSaveX, OpRowSaveY   = 1530, 709
+	OpRowLoadX, OpRowLoadY   = 1606, 709
+	OpRowTitleX, OpRowTitleY = 1745, 709
+)
+
+// ClickOpRowSave clicks the operation row's SAVE label (buttonRoles["save"]
+// — opens the slot picker in save mode, same as the deprecated quick
+// menu's SAVE row). Follow up with ClickSlotPickerRow1.
+func ClickOpRowSave(sess *driver.Session) error { return ClickLogical(sess, OpRowSaveX, OpRowSaveY) }
+
+// ClickOpRowLoad clicks the operation row's LOAD label, opening the slot
+// picker in load mode.
+func ClickOpRowLoad(sess *driver.Session) error { return ClickLogical(sess, OpRowLoadX, OpRowLoadY) }
+
+// ClickOpRowTitle clicks the operation row's "Title" label — opens
+// confirmGoToTitle's confirmation dialog, same as ClickDialogOK below is
+// meant to follow up on; it does not jump immediately.
+func ClickOpRowTitle(sess *driver.Session) error {
+	return ClickLogical(sess, OpRowTitleX, OpRowTitleY)
+}
+
+// Slot picker layout — see tags_uiscreens.go's slotPickerRowX/Y0/W/H/Gap
+// (X=195 Y0=255 W=1500 H=180 gap=15, fixed regardless of ScreenWidth/
+// Height — ×1.5 from the original 1280x720 layout, with saveslot.png
+// upscaled to match so it isn't stretched) and backButtonRect (150x150
+// menu_button_close.png — upscaled ×1.5 from 100x100 — at
+// (ScreenWidth-150-30, 52) — with ScreenWidth=1920, that's (1740, 52)).
+// Row i (0-indexed) is slot i+1 (slotPickerRows) — row 1 is slot
+// ManualSaveSlot (save.go).
+const (
+	SlotPickerRow1X, SlotPickerRow1Y = 195 + 1500/2, 255 + 180/2
+	SlotPickerBackX, SlotPickerBackY = 1740 + 150/2, 52 + 150/2
 )
 
 // ClickSlotPickerRow1 clicks the slot picker's first row — save slot
@@ -153,13 +195,14 @@ func ClickSlotPickerBack(sess *driver.Session) error {
 
 // Confirm dialog OK/NG button centers, computed from
 // tags_save.go's dialogButtonRects(screenW, screenH) at the fixed logical
-// 1280x720: w,h=160,50; y=screenH/2+40=400; OK.X=screenW/2-w-20=460;
-// NG.X=screenW/2+20=660. Used by confirmGoToTitle's "タイトルに戻ります。
-// よろしいですか？" dialog (opened via ClickQuickMenuTitle above) and any
-// other activeDialog with OnConfirm set.
+// 1920x1080 (w/h/gaps ×1.5 from the original 1280x720 layout): w,h=240,75;
+// y=screenH/2+60=600; OK.X=screenW/2-w-30=690; NG.X=screenW/2+30=990. Used
+// by confirmGoToTitle's "タイトルに戻ります。よろしいですか？" dialog
+// (opened via ClickQuickMenuTitle above) and any other activeDialog with
+// OnConfirm set.
 const (
-	dialogOKX, dialogOKY = 460 + 160/2, 400 + 50/2
-	dialogNGX, dialogNGY = 660 + 160/2, 400 + 50/2
+	dialogOKX, dialogOKY = 690 + 240/2, 600 + 75/2
+	dialogNGX, dialogNGY = 990 + 240/2, 600 + 75/2
 )
 
 // ClickDialogOK clicks the OK button of whatever confirm dialog is

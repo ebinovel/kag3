@@ -105,24 +105,26 @@ func handleShowLog(ctx *tagCtx) error {
 // Tyrano's own DATA SAVE/DATA LOAD screen (built from the same bundled
 // resources/system/images assets: bg_base.png, label_save.png/
 // label_load.png, menu_button_close.png, saveslot.png, thumbnail.png) at a
-// 1280x720 canvas. slotPickerRowH/W deliberately equal saveslot.png's native
+// 1920x1080 canvas (×1.5 from the original 1280x720 layout — the
+// resources/system/images/*.png assets were upscaled 1.5x alongside these
+// constants). slotPickerRowH/W deliberately equal saveslot.png's native
 // size so it's never stretched.
 const (
-	slotPickerTitleX, slotPickerTitleY           = 20, 15
-	slotPickerBackMargin, slotPickerBackY        = 20, 35
-	slotPickerRowX, slotPickerRowY0              = 130, 170
-	slotPickerRowW, slotPickerRowH               = 1000, 120
-	slotPickerRowGap                             = 10
-	slotPickerViewportBottomMargin               = 20
-	slotPickerThumbInsetX, slotPickerThumbInsetY = 15, 12
-	slotPickerThumbW, slotPickerThumbH           = 166, 96
-	slotPickerTextInsetX, slotPickerTextInsetY   = 210, 45
+	slotPickerTitleX, slotPickerTitleY           = 30, 22
+	slotPickerBackMargin, slotPickerBackY        = 30, 52
+	slotPickerRowX, slotPickerRowY0              = 195, 255
+	slotPickerRowW, slotPickerRowH               = 1500, 180
+	slotPickerRowGap                             = 15
+	slotPickerViewportBottomMargin               = 30
+	slotPickerThumbInsetX, slotPickerThumbInsetY = 22, 18
+	slotPickerThumbW, slotPickerThumbH           = 249, 144
+	slotPickerTextInsetX, slotPickerTextInsetY   = 315, 68
 	// slotPickerMessageInsetY positions row.Message (the save's preview
 	// text — see slotRowInfo) just below the date/time line.
-	slotPickerMessageInsetY   = 80
-	slotPickerScrollStep      = 40
-	slotPickerScrollbarW      = 12
-	slotPickerScrollbarMargin = 30
+	slotPickerMessageInsetY   = 120
+	slotPickerScrollStep      = 60
+	slotPickerScrollbarW      = 18
+	slotPickerScrollbarMargin = 45
 )
 
 // slotPickerScrollY is how far the row list has been scrolled down (0 = top).
@@ -578,9 +580,12 @@ func drawEditBox(r *Renderer, buf *ebiten.Image) {
 	if editState == nil || !editState.Active {
 		return
 	}
-	w, h := 460, 50
+	// w/h/the bottom margin are ×1.5 of the original 1280x720-tuned values
+	// (690x75, 240px from the bottom) — x/y positioning itself was already
+	// screenW/screenH-relative and needed no change.
+	w, h := 690, 75
 	x := r.manager.Config.ScreenWidth/2 - w/2
-	y := r.manager.Config.ScreenHeight - 160
+	y := r.manager.Config.ScreenHeight - 240
 	box := ebiten.NewImage(w, h)
 	box.Fill(color.RGBA{255, 255, 255, 240})
 	op := &ebiten.DrawImageOptions{}
@@ -593,7 +598,7 @@ func drawEditBox(r *Renderer, buf *ebiten.Image) {
 	}
 	top := &text.DrawOptions{}
 	top.ColorScale.ScaleWithColor(color.Black)
-	top.GeoM.Translate(float64(x)+12, float64(y)+12)
+	top.GeoM.Translate(float64(x)+18, float64(y)+18)
 	text.Draw(buf, display, r.fontFace, top)
 }
 

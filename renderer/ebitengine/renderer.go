@@ -213,14 +213,11 @@ func (r *Renderer) Update() {
 		r.handleSlotPickerClick()
 	case menuOpen:
 		r.handleQuickMenuClick(screenW, screenH)
+	case backlogViewing:
+		r.handleBacklogClick()
 	default:
 		r.handleMenuButtonClick()
-	}
-	// Backlog has no per-item hit-test — any click dismisses it, except on
-	// the very frame that opened it (that click is the role="backlog"
-	// button press, or [showlog], already handled above/this frame).
-	if backlogViewing && t != backlogOpenedFrame && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		backlogViewing = false
+		r.handleOperationRowClick()
 	}
 	if wasModalActive || anyModalActive() {
 		return
@@ -535,7 +532,9 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	drawCharacters(buf)
 	applyFukiPosition()
 	drawMessageWindow(r, buf)
+	drawOperationRow(r, buf)
 	drawLinks(r, buf)
+	drawChoiceDimOverlay(buf)
 	drawGLinks(r, buf)
 	drawButtons(buf)
 	drawImages(buf)
@@ -561,6 +560,13 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 // character name-plate via [chara_config ptext="..."] shows charaName;
 // every other one shows its own literal .Text. Sorted by name for
 // deterministic draw order.
+//
+// A [ptext bg="..."] area draws its BgImage first, with the text offset by
+// (ptextBgPaddingX, ptextBgPaddingY) into it (draw_messagebox.go) — a plain
+// "image's own top-left + fixed padding" rule, not per-image 9-slice
+// metadata. When the resolved content is empty (e.g. the monologue case,
+// charaName == "") the whole area — background image included — is skipped
+// entirely, so an empty name never leaves an orphaned tab graphic on screen.
 func drawPTexts(screen *ebiten.Image, face *text.GoTextFace) {
 	if len(ptexts) == 0 {
 		return
@@ -572,14 +578,26 @@ func drawPTexts(screen *ebiten.Image, face *text.GoTextFace) {
 	slices.Sort(names)
 	for _, name := range names {
 		pt := ptexts[name]
+		content := ptextContent(name)
+		if content == "" {
+			continue
+		}
+		textX, textY := float64(pt.X), float64(pt.Y)
+		if pt.BgImage != nil {
+			bgOp := &ebiten.DrawImageOptions{}
+			bgOp.GeoM.Translate(textX, textY)
+			screen.DrawImage(pt.BgImage, bgOp)
+			textX += ptextBgPaddingX
+			textY += ptextBgPaddingY
+		}
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(pt.X), float64(pt.Y))
+		op.GeoM.Translate(textX, textY)
 		if pt.Color != nil {
 			op.ColorScale.ScaleWithColor(pt.Color)
 		} else {
 			op.ColorScale.ScaleWithColor(color.White)
 		}
-		text.Draw(screen, ptextContent(name), face, op)
+		text.Draw(screen, content, face, op)
 	}
 }
 

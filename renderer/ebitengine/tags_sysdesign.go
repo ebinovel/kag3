@@ -28,11 +28,18 @@ func init() {
 
 // --- showmenubutton / hidemenubutton ---
 //
-// scene1.ks (@showmenubutton/@hidemenubutton) is the one real caller in the
-// example scenarios. Rendered as a fixed corner button using the bundled
+// Deprecated: the redesigned message window (draw_messagebox.go/
+// tags_oprow.go) has its own persistent operation row covering SAVE/LOAD/
+// SKIP/Title, making this corner button + its quick-menu popup
+// (drawQuickMenu/handleQuickMenuClick below) redundant — example/'s own
+// scenarios no longer call @showmenubutton (see scene1.ks/demo_save.ks).
+// [showmenubutton]/[hidemenubutton] and the quick menu they open are left
+// implemented (not deleted) for any script that still calls them directly
+// — they still work exactly as before, just no longer wired into the
+// bundled example. Rendered as a fixed corner button using the bundled
 // resources/system/images/button_menu.png, wired to the same quick-menu
-// overlay Phase 7's role="menu" opens — one discoverable entry point to the
-// same feature, not a second menu system.
+// overlay role="menu" opens — one discoverable entry point to the same
+// feature, not a second menu system.
 var (
 	menuButtonVisible bool
 	menuButtonImg     *ebiten.Image
@@ -56,7 +63,10 @@ func handleHideMenuButton(ctx *tagCtx) error {
 	return nil
 }
 
-const menuButtonMargin = 20
+// menuButtonMargin is ×1.5 of the original 1280x720-tuned value (button
+// position itself is already screenW/screenH-relative — see
+// menuButtonRect — only this corner-inset margin needed scaling).
+const menuButtonMargin = 30
 
 func menuButtonRect(r *Renderer) (x, y, w, h int) {
 	if menuButtonImg == nil {

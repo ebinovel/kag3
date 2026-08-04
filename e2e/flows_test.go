@@ -79,7 +79,7 @@ const scene1ParagraphCount = 20
 // [position] only ever *merge* the attributes a given call specifies, so
 // anything a previous playthrough set and never explicitly cleared would
 // otherwise bleed into the next one. scene1.ks's opening [position]
-// (left=160 top=500 width=1000 height=200, set once at *start and never
+// (left=96 top=736 width=1728 height=300, set once at *start and never
 // repositioned again — see MessageWindowRegion's doc comment) is compared
 // across two playthroughs: advance partway into scene1.ks (past
 // [chara_show]/[chara_mod] calls, so there's some actual state for
@@ -109,11 +109,7 @@ func TestTitleReturnDoesNotLeakPreviousPlaythroughStyle(t *testing.T) {
 	// scene1ParagraphCount.
 	advance(t, g.Session, 8)
 
-	if err := helpers.ClickMenuButton(g.Session); err != nil {
-		t.Fatalf("opening quick menu: %v", err)
-	}
-	time.Sleep(stepDelay)
-	clickGlinkRetry(t, g.Session, helpers.QuickMenuTitleX, helpers.QuickMenuTitleY, "quick menu BACK TO TITLE")
+	clickGlinkRetry(t, g.Session, helpers.OpRowTitleX, helpers.OpRowTitleY, "operation row Title")
 	time.Sleep(stepDelay)
 	if err := helpers.ClickDialogOK(g.Session); err != nil {
 		t.Fatalf("clicking confirm dialog OK: %v", err)
@@ -143,10 +139,10 @@ func TestTitleReturnDoesNotLeakPreviousPlaythroughStyle(t *testing.T) {
 }
 
 // TestQuickSaveThenLoadRestoresSceneText is the E2E regression test for
-// same-process save/load: save at one point in scene1.ks via the quick
-// menu's slot picker, advance further (so the screen is showing something
-// else), load the same slot back, and check the message window's content
-// matches what was on screen at save time.
+// same-process save/load: save at one point in scene1.ks via the
+// operation row's SAVE label + slot picker, advance further (so the screen
+// is showing something else), load the same slot back, and check the
+// message window's content matches what was on screen at save time.
 func TestQuickSaveThenLoadRestoresSceneText(t *testing.T) {
 	g := helpers.LaunchGame(t)
 
@@ -166,11 +162,7 @@ func TestQuickSaveThenLoadRestoresSceneText(t *testing.T) {
 		t.Fatalf("capturing pre-save region: %v", err)
 	}
 
-	if err := helpers.ClickMenuButton(g.Session); err != nil {
-		t.Fatalf("opening quick menu: %v", err)
-	}
-	time.Sleep(stepDelay)
-	clickGlinkRetry(t, g.Session, helpers.QuickMenuSaveX, helpers.QuickMenuSaveY, "quick menu SAVE")
+	clickGlinkRetry(t, g.Session, helpers.OpRowSaveX, helpers.OpRowSaveY, "operation row SAVE")
 	clickGlinkRetry(t, g.Session, helpers.SlotPickerRow1X, helpers.SlotPickerRow1Y, "slot picker row 1 (save)")
 	time.Sleep(500 * time.Millisecond) // saveSlot's file write
 
@@ -190,11 +182,7 @@ func TestQuickSaveThenLoadRestoresSceneText(t *testing.T) {
 		t.Fatal("screen did not change after advancing further — test setup problem, not a kag3 bug")
 	}
 
-	if err := helpers.ClickMenuButton(g.Session); err != nil {
-		t.Fatalf("opening quick menu (for load): %v", err)
-	}
-	time.Sleep(stepDelay)
-	clickGlinkRetry(t, g.Session, helpers.QuickMenuLoadX, helpers.QuickMenuLoadY, "quick menu LOAD")
+	clickGlinkRetry(t, g.Session, helpers.OpRowLoadX, helpers.OpRowLoadY, "operation row LOAD")
 	clickGlinkRetry(t, g.Session, helpers.SlotPickerRow1X, helpers.SlotPickerRow1Y, "slot picker row 1 (load)")
 	if err := helpers.WaitStable(g.Session, 5*time.Second); err != nil {
 		t.Fatalf("waiting for load to settle: %v", err)

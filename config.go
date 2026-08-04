@@ -88,6 +88,11 @@ type Config struct {
 	UseGamepad bool `toml:"UseGamepad"`
 	UseCloseConfirm bool `toml:"UseCloseConfirm"`
 	OffscreenClickable bool `toml:"OffscreenClickable"`
+	// ContinueMarkStyle picks the message window's "waiting for a click"
+	// indicator: "follow" (default) keeps the existing text-following
+	// glyphNormal mark (tags_sysdesign.go) untouched; "fixed" switches to a
+	// fixed bottom-right "▽" (drawContinueMark, draw_messagebox.go).
+	ContinueMarkStyle string `toml:"ContinueMarkStyle"`
 }
 
 type Speeds struct {
@@ -186,6 +191,7 @@ func (c *Config) LoadDefault() {
 	c.DefaultAutoReturn = true
 	c.MarginRCH = 2
 	c.DefaultFontSize = 28
+	c.ContinueMarkStyle = "follow"
 }
 
 func (c *Config) Load(dir fs.FS, file string) {

@@ -223,6 +223,13 @@ func handlePText(ctx *tagCtx) error {
 			}
 		case "gradient":
 			pText.Gradient = value
+		case "bg":
+			img, err := loadImage(ctx.r, "", value)
+			if err != nil {
+				return err
+			}
+			pText.BgStorage = value
+			pText.BgImage = img
 		}
 	}
 	ptexts[pText.Name] = pText

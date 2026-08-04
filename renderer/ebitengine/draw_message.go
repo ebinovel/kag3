@@ -30,7 +30,7 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 		if textPosition.FilterColor != nil {
 			textPosition.BackImage.Fill(*textPosition.FilterColor)
 		} else {
-			textPosition.BackImage.Fill(color.RGBA{0, 0, 0, 128})
+			textPosition.BackImage.Fill(messageBoxFillColor())
 		}
 		buf.DrawImage(textPosition.BackImage, op)
 	}
@@ -54,7 +54,12 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 		drawMessageHorizontal(r, buf, marginLeft, marginTop, lineNums, count)
 	}
 	textGlyphs = []text.Glyph{}
-	drawGlyph(buf)
+	if r.manager.Config.ContinueMarkStyle == "fixed" {
+		drawContinueMark(r, buf)
+	} else {
+		drawGlyph(buf)
+	}
+	drawTextSpeedIndicator(r, buf)
 }
 
 // drawMessageVertical lays out r.texts top-to-bottom within each column,
@@ -337,6 +342,6 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				xOffset += w
 			}
 		}
-		rowY += rowHeight + rubyLineHeight
+		rowY += rowHeight*bodyLineHeightRatio + rubyLineHeight
 	}
 }
