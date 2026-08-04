@@ -112,6 +112,48 @@ func TestParserIScriptBodyAtSign(t *testing.T) {
 	}
 }
 
+// TestParserSpacedEquals guards against a regression in joinSpacedEquals
+// (parser.go): an earlier version silently dropped any "key = value"
+// attribute (whitespace touching either side of "=") from TagObject.Pm
+// entirely, via an off-by-one in a since-replaced index-arithmetic merge
+// loop. This wasn't a theoretical edge case — the bundled
+// example/resources/senarios/title.ks has "@wait time = 200" and
+// tyrano.ks has "[freeimage layer = %layer]", both of which silently did
+// nothing before this fix.
+func TestParserSpacedEquals(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want map[string]string
+	}{
+		{"space on both sides", "@wait time = 200", map[string]string{"time": "200"}},
+		{"space only before equals", "@wait time =200", map[string]string{"time": "200"}},
+		{"space only after equals", "@wait time= 200", map[string]string{"time": "200"}},
+		{"space around a quoted value", `@glink text = "Yes"`, map[string]string{"text": "Yes"}},
+		{"no space still works", "@wait time=200", map[string]string{"time": "200"}},
+		{"multiple attrs, only one spaced", `@glink text="Yes" target = "*a"`, map[string]string{"text": "Yes", "target": "*a"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ks := &KS{}
+			result, _, err := ks.ParseScenario(c.src)
+			if err != nil {
+				t.Fatalf("%+v", err)
+			}
+			if len(result) != 1 {
+				t.Fatalf("len(result) = %d, want 1; result=%+v", len(result), result)
+			}
+			tag, ok := result[0].(TagObject)
+			if !ok {
+				t.Fatalf("result[0] = %+v, want a TagObject", result[0])
+			}
+			if !reflect.DeepEqual(tag.Pm, c.want) {
+				t.Errorf("Pm = %+v, want %+v", tag.Pm, c.want)
+			}
+		})
+	}
+}
+
 func TestParserIfEndifMatchDepth(t *testing.T) {
 	src := "[if exp=\"1==1\"]\nfoo\n[endif]"
 	ks := &KS{}

@@ -196,37 +196,7 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	tag.Name = strings.TrimSpace(strs[0])
 	tag.Line = lineNum
 
-	for i, cc := range strs {
-		if i == 0 {
-			continue
-		}
-		if cc == "" {
-			strs = splice(strs, i, 1)
-			i--
-		} else if cc == "=" {
-			if len(strs) > i {
-				if len(strs) > i + 2 {
-					strs[i-1] = strs[i-1] + "=" + strs[i+1]
-					strs = splice(strs, i, 2)
-					i--
-				}
-			}
-		} else if strs[:1][0] == "=" {
-			if len(strs) > i {
-				if len(strs) > i + 1 {
-					strs[i-1] = strs[i-1] + "=" + strs[i+1]
-					strs = splice(strs, i, 1)
-				}
-			}
-		} else if strs[len(strs)-1:][0] == "=" {
-			if len(strs) > i + 2{
-				if len(strs) > i {
-					strs[i-1] = strs[i] + "=" + strs[i+1]
-					strs = splice(strs, i+1, 1)
-				}
-			}
-		}
-	}
+	strs = joinSpacedEquals(strs)
 
 	tag.Pm = make(map[string]string)
 	for _, cc := range strs {
@@ -311,9 +281,54 @@ func characterPText(line string, lineCount int) TextObject {
 	return textObject
 }
 
-func splice(a []string, start, deleteCount int) []string {
-	var result []string
-	result = append(result, a[0:start]...)
-	result = append(result, a[start+deleteCount:]...)
-	return result
+// joinSpacedEquals rejoins attribute tokens that regexp.Split(` +`) broke
+// apart around an "=" that had whitespace on one or both sides: "key",
+// "=", "value" (space on both sides), "key=", "value" (space only after),
+// and "key", "=value" (space only before) all become a single
+// "key=value" token, matching how a plain "key=value" (no surrounding
+// space) is already a single token straight out of the split. strs[0]
+// (the tag name) is never a merge candidate; empty tokens (a tag body
+// ending in trailing whitespace collapses to one via the split) are
+// dropped rather than treated as a key.
+//
+// This replaces an earlier version of this rejoining step that tried to
+// mutate strs in place while ranging over it — range captures the slice
+// header once at loop start, so reassigning strs mid-loop never affected
+// what the loop actually walked, and the surviving index arithmetic
+// (guarding merges with `len(strs) > i+2` etc.) was tuned to that broken
+// control flow rather than to the merge actually succeeding. In practice
+// it meant any single "key = value" attribute (the exact number of
+// tokens produced was the case this off-by-one landed on) was silently
+// dropped from Pm — confirmed to happen on real content, not just a
+// theoretical edge case: kag3's own example/resources/senarios/title.ks
+// has "@wait time = 200" and tyrano.ks has "[freeimage layer = %layer]",
+// both of which previously vanished without any error.
+func joinSpacedEquals(strs []string) []string {
+	if len(strs) == 0 {
+		return strs
+	}
+	out := make([]string, 0, len(strs))
+	out = append(out, strs[0])
+	for i := 1; i < len(strs); i++ {
+		tok := strs[i]
+		switch {
+		case tok == "":
+			// drop
+		case tok == "=":
+			if len(out) > 0 && i+1 < len(strs) {
+				out[len(out)-1] = out[len(out)-1] + "=" + strs[i+1]
+				i++
+				continue
+			}
+			out = append(out, tok)
+		case strings.HasSuffix(tok, "=") && i+1 < len(strs) && strs[i+1] != "":
+			out = append(out, tok+strs[i+1])
+			i++
+		case strings.HasPrefix(tok, "=") && len(out) > 0:
+			out[len(out)-1] = out[len(out)-1] + tok
+		default:
+			out = append(out, tok)
+		}
+	}
+	return out
 }
