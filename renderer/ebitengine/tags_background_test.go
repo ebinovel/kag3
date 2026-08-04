@@ -121,3 +121,31 @@ func TestBGSaveLoadRoundTripsResolvedStorage(t *testing.T) {
 		t.Error("bg.Image is nil after applyBgFromSnapshot — the resolved bg/-prefixed Storage did not round-trip")
 	}
 }
+
+// TestBGStorageFallsBackWhenNoBgSubfolderMatch is the regression test for a
+// real crash: config.ks's [bg storage="&tf.img_path+'bg_config.png'"]
+// (tf.img_path="config/") names images/config/bg_config.png, a path
+// entirely outside images/bg/ — the unconditional path.Join("bg", storage)
+// this used to do rewrote it into images/bg/config/bg_config.png, which
+// never exists, and NewImageFromFileSystem's error there was fatal (the
+// whole coroutine/renderer panics, not just a missing background). The
+// bg/-prefixed path must only be used when it actually resolves to a real
+// file; otherwise storage= is used exactly as the author wrote it.
+func TestBGStorageFallsBackWhenNoBgSubfolderMatch(t *testing.T) {
+	resetBG(t)
+	r := newTestRendererWithImageFS(t, map[string][]byte{
+		"config/bg_config.png": tinyPNG(t), // NOT under bg/
+	})
+
+	tag := kag3.TagObject{Name: "bg", Pm: map[string]string{"storage": "config/bg_config.png", "wait": "false"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("dispatchTag: %v", err)
+	}
+	if bg.NextImage == nil {
+		t.Fatal("bg.NextImage is nil — storage=\"config/bg_config.png\" should have fallen back to the literal path when images/bg/config/bg_config.png doesn't exist")
+	}
+	if bg.Storage != "config/bg_config.png" {
+		t.Errorf("bg.Storage = %q, want %q (literal, un-prefixed)", bg.Storage, "config/bg_config.png")
+	}
+}

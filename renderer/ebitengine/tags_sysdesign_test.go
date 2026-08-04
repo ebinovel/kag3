@@ -167,6 +167,32 @@ func TestDrawGlyphPicksModeByPriority(t *testing.T) {
 	isSkip, isAuto, isTextEnd = false, false, false
 }
 
+// TestDrawGlyphHiddenWhileTextStillRevealingUnderAuto is the regression test
+// for a real reported bug: with isAuto=true, the mark used to draw
+// regardless of isTextEnd, anchored at whatever textEndX/textEndY was left
+// over from the *previous* line — so the instant auto-advance moved to a
+// new line and it started revealing (isTextEnd goes false again until that
+// new line finishes), the mark kept bouncing at the old line's position for
+// the whole reveal, reading as "the wait indicator never went away" even
+// though the story had already advanced. drawGlyph must be a no-op
+// whenever isTextEnd is false, auto or not.
+func TestDrawGlyphHiddenWhileTextStillRevealingUnderAuto(t *testing.T) {
+	// Restores the pre-test textPosition rather than forcing nil — see
+	// TestDrawContinueMarkPicksColorByModePriority's comment
+	// (draw_messagebox_test.go) for why that matters.
+	savedTextPosition := textPosition
+	defer func() { isSkip, isAuto, isTextEnd, textPosition = false, false, false, savedTextPosition }()
+
+	textPosition = &kag3.TextPosition{Visible: true, Left: 0, Top: 0, Width: 100, Height: 100}
+	buf := newTestImage(200, 200)
+
+	isAuto, isTextEnd = true, false
+	drawGlyph(buf) // must not draw anything (and must not panic) mid-reveal
+
+	isSkip, isAuto, isTextEnd = true, false, false
+	drawGlyph(buf) // same for skip mode mid-reveal
+}
+
 func TestHandleCursorLoadsImagesAndEnablesCustomCursor(t *testing.T) {
 	cursorDefaultImg, cursorOverImg, cursorEnabled = nil, nil, false
 	r := newTestRendererWithSystemImageFS(t, map[string][]byte{

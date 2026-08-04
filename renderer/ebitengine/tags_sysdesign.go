@@ -181,11 +181,18 @@ func handleGlyphSkip(ctx *tagCtx) error { return parseGlyphConfig(ctx.tag.Pm, &g
 func handleGlyphAuto(ctx *tagCtx) error { return parseGlyphConfig(ctx.tag.Pm, &glyphAuto) }
 
 // drawGlyph is called from drawScene right after the message text itself,
-// so it sees this frame's isTextEnd/textEndX/textEndY. Priority: skip/auto
-// (shown continuously while that mode is active) over the plain "click to
-// continue" dot (shown only once the current line has finished revealing).
+// so it sees this frame's isTextEnd/textEndX/textEndY. The mark only ever
+// shows once the *current* line has actually finished revealing
+// (isTextEnd) — skip/auto just pick which color/mark to use while that's
+// true, they don't bypass the isTextEnd check. This used to let skip/auto
+// show continuously regardless of isTextEnd, anchored at textEndX/textEndY
+// (only updated when a line finishes revealing — draw_message.go) — the
+// instant a new line started revealing under isAuto, the mark kept
+// bouncing at the *previous* line's end position for the whole reveal,
+// reading as "the wait indicator never went away" even though the story
+// had already moved on to the next line.
 func drawGlyph(buf *ebiten.Image) {
-	if textPosition == nil || !textPosition.Visible {
+	if textPosition == nil || !textPosition.Visible || !isTextEnd {
 		return
 	}
 	var cfg *glyphConfig
@@ -194,10 +201,8 @@ func drawGlyph(buf *ebiten.Image) {
 		cfg = &glyphSkip
 	case isAuto:
 		cfg = &glyphAuto
-	case isTextEnd:
-		cfg = &glyphNormal
 	default:
-		return
+		cfg = &glyphNormal
 	}
 	if cfg.Size <= 0 {
 		return

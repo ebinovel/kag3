@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"fmt"
+	"io/fs"
 	"path"
 	"slices"
 	"strconv"
@@ -13,6 +14,17 @@ import (
 func init() {
 	register("bg", handleBG)
 	register("bg2", handleBG2)
+}
+
+// fileExists reports whether name exists in fsys — used by handleBG's bg/
+// prefix probing below. A nil fsys (as in some minimal test Renderers)
+// reports false rather than panicking.
+func fileExists(fsys fs.FS, name string) bool {
+	if fsys == nil {
+		return false
+	}
+	_, err := fs.Stat(fsys, name)
+	return err == nil
 }
 
 var (
@@ -123,9 +135,22 @@ func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	// such bg/ subfolder convention (it holds UI chrome like buttons and
 	// cursors), so an author-provided path there is used exactly as
 	// written.
+	//
+	// The bg/ prefix is only added when images/bg/<storage> actually
+	// exists — tried first, falling back to the literal author-written
+	// path otherwise. A blind, unconditional path.Join("bg", storage)
+	// broke any [bg] call whose storage= already names a different
+	// images/-relative subfolder — e.g. config.ks's
+	// [bg storage="&tf.img_path+'bg_config.png'"] (tf.img_path="config/"),
+	// which lives at images/config/bg_config.png, not images/bg/config/
+	// bg_config.png — by rewriting it into a path that never exists and
+	// crashing the whole renderer instead of just failing to find a
+	// background.
 	storagePath := object.Pm["storage"]
 	if storagePath != "" && images == "images" {
-		storagePath = path.Join("bg", storagePath)
+		if withBg := path.Join("bg", storagePath); fileExists(r.fses[images], withBg) {
+			storagePath = withBg
+		}
 	}
 	var err error
 	target.NextImage, _, err = ebitenutil.NewImageFromFileSystem(
