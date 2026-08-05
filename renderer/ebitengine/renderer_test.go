@@ -655,9 +655,10 @@ func TestDrawPTextsWithBgImageDoesNotPanic(t *testing.T) {
 	charaNamePText = "chara_name_area"
 	charaName = "凪"
 
-	face := newTestFontFace(t)
+	r := newTestRenderer()
+	r.nameFontFace = newTestFontFace(t)
 	buf := newTestImage(1920, 1080)
-	drawPTexts(buf, face)
+	drawPTexts(r, buf)
 }
 
 // TestDrawPTextsSkipsBgImageWhenContentEmpty is the monologue-suppression
@@ -673,7 +674,8 @@ func TestDrawPTextsSkipsBgImageWhenContentEmpty(t *testing.T) {
 	charaNamePText = "chara_name_area"
 	charaName = "" // monologue: no speaker
 
-	face := newTestFontFace(t)
+	r := newTestRenderer()
+	r.nameFontFace = newTestFontFace(t)
 	buf := newTestImage(1920, 1080)
-	drawPTexts(buf, face) // must not panic; nothing asserted beyond that (no-op path)
+	drawPTexts(r, buf) // must not panic; nothing asserted beyond that (no-op path)
 }

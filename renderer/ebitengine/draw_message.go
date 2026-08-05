@@ -34,7 +34,6 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 		}
 		buf.DrawImage(textPosition.BackImage, op)
 	}
-	drawPTexts(buf, r.nameFontFace)
 
 	marginLeft := x + float64(textPosition.MarginLeft)
 	marginTop := y + float64(textPosition.MarginTop)

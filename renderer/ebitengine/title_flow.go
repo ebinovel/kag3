@@ -36,6 +36,24 @@ func (r *Renderer) goToTitle() {
 	textPosition = &kag3.TextPosition{}
 	textStyle = nil
 	defaultTextStyle = nil
+	// Same category of leftover-UI bug as textPosition/textStyle above,
+	// just discovered later: config.ks's full-screen settings redesign is
+	// the first screen to lean on [ptext] outside a message window (see
+	// drawPTexts, which used to only run while textPosition.Visible was
+	// true, so a stale ptexts map was invisible by accident until that
+	// gate was removed), and role="title" from inside it skips config.ks's
+	// own *backtitle label entirely (buttonRoles["title"] jumps straight
+	// here) — so its labels would otherwise still be drawn on top of
+	// title.ks. Matches NewRenderer's own starting state.
+	ptexts = make(map[string]*kag3.PText)
+	// imgs, unlike ptexts above, is never auto-cleared by an ordinary
+	// [jump storage=]/[call storage=] either (clearNonFixButtons only ever
+	// touches buttons) — real scripts are expected to [freeimage] their own
+	// decorations before moving on, and config.ks's own *backtitle does
+	// exactly that for its border-line images. But role="title" bypasses
+	// *backtitle the same way it bypasses ptext cleanup, so the same
+	// wipe-the-slate-clean treatment belongs here too.
+	imgs = nil
 	menuButtonVisible = false
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a

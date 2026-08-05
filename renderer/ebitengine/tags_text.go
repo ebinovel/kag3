@@ -185,14 +185,20 @@ func handlePText(ctx *tagCtx) error {
 		case "face":
 			pText.Face = value
 		case "color", "edge", "shadow":
+			// 255, not 0: an explicit [ptext color=/edge=/shadow=] means the
+			// author wants a visible color — matches applyFontAttrs' own
+			// convention just above for [font]/[deffont]. Color is drawn via
+			// op.ColorScale.ScaleWithColor(pt.Color) (renderer.go's
+			// drawPTexts), which scales alpha too; 0 here made every
+			// explicitly-colored [ptext] fully transparent.
 			r, g, b, _ := parseColor(value)
 			switch key {
 			case "color":
-				pText.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 0}
+				pText.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 			case "edge":
-				pText.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 0}
+				pText.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 			case "shadow":
-				pText.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 0}
+				pText.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 			}
 		case "bold":
 			switch value {

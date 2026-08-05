@@ -538,6 +538,15 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	drawGLinks(r, buf)
 	drawButtons(buf)
 	drawImages(buf)
+	// Drawn after buttons/images (not from inside drawMessageWindow, where
+	// this used to live): a [ptext] area is independent of the message
+	// window (textPosition.Visible gated drawMessageWindow's whole body,
+	// silently hiding every ptext whenever no message box was on screen —
+	// config.ks's full-screen settings redesign has no message window at
+	// all) and toggle-style controls (config.ks's スキップ対象/画面表示 rows)
+	// need their option labels drawn on top of the button graphic beneath
+	// them.
+	drawPTexts(r, buf)
 	//mx, my := ebiten.CursorPosition()
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
@@ -567,7 +576,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 // metadata. When the resolved content is empty (e.g. the monologue case,
 // charaName == "") the whole area — background image included — is skipped
 // entirely, so an empty name never leaves an orphaned tab graphic on screen.
-func drawPTexts(screen *ebiten.Image, face *text.GoTextFace) {
+func drawPTexts(r *Renderer, screen *ebiten.Image) {
 	if len(ptexts) == 0 {
 		return
 	}
@@ -597,8 +606,23 @@ func drawPTexts(screen *ebiten.Image, face *text.GoTextFace) {
 		} else {
 			op.ColorScale.ScaleWithColor(color.White)
 		}
-		text.Draw(screen, content, face, op)
+		text.Draw(screen, content, ptextFace(r, pt), op)
 	}
+}
+
+// ptextFace builds the font face a [ptext] area draws with: its own size=
+// (config.ks's settings screen needs several distinct sizes — 34/26/22/20 —
+// on screen at once) falling back to r.nameFontFace's size when size= was
+// never given, so every pre-existing [ptext] (the character name-plate,
+// chiefly) keeps rendering exactly as before. size= was previously parsed
+// into kag3.PText.Size and then never read anywhere — this is the first
+// consumer of it.
+func ptextFace(r *Renderer, pt *kag3.PText) *text.GoTextFace {
+	size := float64(pt.Size)
+	if size == 0 {
+		size = r.nameFontFace.Size
+	}
+	return &text.GoTextFace{Source: r.nameFontFace.Source, Size: size, Language: r.nameFontFace.Language}
 }
 
 // ptextContent is the string a named ptext area should currently display:
