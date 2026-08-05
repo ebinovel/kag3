@@ -292,6 +292,27 @@ func (v *VM) ExportSF() map[string]interface{} {
 	return m
 }
 
+// ExportTF snapshots "tf" (the per-scenario-screen variable namespace) the
+// same way ExportF/ExportSF do, for [configsave] (tags_config.go) to
+// persist a script's own settings variables (e.g. config.ks's
+// tf.current_bgm_vol) to disk.
+func (v *VM) ExportTF() map[string]interface{} {
+	m, _ := v.tf.Export().(map[string]interface{})
+	return m
+}
+
+// MergeTF sets vars onto the *existing* "tf" object instead of replacing it
+// wholesale like RestoreF/RestoreSF do — [configload] (tags_config.go) runs
+// after config.ks's own bootstrap [iscript] has already populated tf with
+// unrelated working variables (tf.img_path, tf.btn_w, ...), and discarding
+// those would break the rest of the script. Missing/malformed settings.json
+// means an empty or partial vars map, which is a no-op merge, not an error.
+func (v *VM) MergeTF(vars map[string]interface{}) {
+	for k, val := range vars {
+		v.tf.Set(k, val)
+	}
+}
+
 // RestoreF/RestoreSF replace "f"/"sf" with a fresh object populated from a
 // previously-exported map, for [load]/[rollback].
 func (v *VM) RestoreF(vars map[string]interface{}) {

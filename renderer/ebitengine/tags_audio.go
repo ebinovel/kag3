@@ -41,6 +41,15 @@ var (
 	currentBGM *kag3.BGM
 	// ses holds concurrently-playing sound effects keyed by "buf".
 	ses = map[string]*kag3.BGM{}
+	// defaultBgmVolume/defaultSeVolume are the Volume a [playbgm]/[playse]
+	// (and their fadein/xchg variants) starts at when the tag itself
+	// doesn't specify volume= — [bgmopt]/[seopt] (handleBGMOpt/handleSEOpt
+	// below) update these unconditionally, even with nothing currently
+	// playing, so a settings screen's volume slider (config.ks) affects
+	// future playback too, not just whatever happens to be playing right
+	// now.
+	defaultBgmVolume = 100
+	defaultSeVolume  = 100
 	// activeFades holds in-progress volume ramps, advanced once per frame
 	// by stepAudioFades (called from Update()). Keys: "bgm" for the current
 	// track, "bgm_old" for a track xchgbgm/fadeoutbgm is fading out on its
@@ -165,7 +174,7 @@ func handlePlayBGM(ctx *tagCtx) error {
 	object := ctx.tag
 	r := ctx.r
 	bgmTick = t
-	bgm := &kag3.BGM{Volume: 100}
+	bgm := &kag3.BGM{Volume: defaultBgmVolume}
 	if err := parseAudioOptions(object.Pm, bgm); err != nil {
 		return err
 	}
@@ -194,7 +203,7 @@ func handleStopBGM(ctx *tagCtx) error {
 func handleFadeInBGM(ctx *tagCtx) error {
 	object := ctx.tag
 	r := ctx.r
-	bgm := &kag3.BGM{Volume: 100, Time: 1000}
+	bgm := &kag3.BGM{Volume: defaultBgmVolume, Time: 1000}
 	if err := parseAudioOptions(object.Pm, bgm); err != nil {
 		return err
 	}
@@ -246,7 +255,7 @@ func handleXchgBGM(ctx *tagCtx) error {
 			old.Close()
 		})
 	}
-	bgm := &kag3.BGM{Volume: 100, Time: ms}
+	bgm := &kag3.BGM{Volume: defaultBgmVolume, Time: ms}
 	if err := parseAudioOptions(object.Pm, bgm); err != nil {
 		return err
 	}
@@ -286,16 +295,16 @@ func handleWBGM(ctx *tagCtx) error {
 // playback. loop can't be changed this way — looping is baked into the
 // player's stream at creation time — so a loop= attribute here is ignored.
 func handleBGMOpt(ctx *tagCtx) error {
-	if currentBGM == nil || currentBGM.Player == nil {
-		return nil
-	}
 	if v, ok := ctx.tag.Pm["volume"]; ok {
 		vol, err := strconv.Atoi(v)
 		if err != nil {
 			return err
 		}
-		currentBGM.Volume = vol
-		currentBGM.Player.SetVolume(volFraction(vol))
+		defaultBgmVolume = vol
+		if currentBGM != nil && currentBGM.Player != nil {
+			currentBGM.Volume = vol
+			currentBGM.Player.SetVolume(volFraction(vol))
+		}
 	}
 	return nil
 }
@@ -321,7 +330,7 @@ func handlePlaySE(ctx *tagCtx) error {
 	if buf == "" {
 		buf = storage
 	}
-	se := &kag3.BGM{Volume: 100}
+	se := &kag3.BGM{Volume: defaultSeVolume}
 	if err := parseAudioOptions(object.Pm, se); err != nil {
 		return err
 	}
@@ -365,7 +374,7 @@ func handleFadeInSE(ctx *tagCtx) error {
 	if buf == "" {
 		buf = storage
 	}
-	se := &kag3.BGM{Volume: 100, Time: 1000}
+	se := &kag3.BGM{Volume: defaultSeVolume, Time: 1000}
 	if err := parseAudioOptions(object.Pm, se); err != nil {
 		return err
 	}
@@ -448,17 +457,23 @@ func handleWSE(ctx *tagCtx) error {
 	return nil
 }
 
+// handleSEOpt adjusts buf='s volume live if it's currently playing. A
+// volume= with no buf= (or a buf= naming a sound that isn't currently
+// playing) still updates defaultSeVolume — a settings screen's SE-volume
+// slider (config.ks) has no specific "buf" to name, and needs to affect
+// future [playse] calls regardless of whether anything's playing right now.
 func handleSEOpt(ctx *tagCtx) error {
-	buf := ctx.tag.Pm["buf"]
-	se, ok := ses[buf]
-	if !ok || se.Player == nil {
+	v, ok := ctx.tag.Pm["volume"]
+	if !ok {
 		return nil
 	}
-	if v, ok := ctx.tag.Pm["volume"]; ok {
-		vol, err := strconv.Atoi(v)
-		if err != nil {
-			return err
-		}
+	vol, err := strconv.Atoi(v)
+	if err != nil {
+		return err
+	}
+	defaultSeVolume = vol
+	buf := ctx.tag.Pm["buf"]
+	if se, ok := ses[buf]; ok && se.Player != nil {
 		se.Volume = vol
 		se.Player.SetVolume(volFraction(vol))
 	}
