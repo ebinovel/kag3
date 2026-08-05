@@ -60,6 +60,7 @@ func TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine(t *testing.T) {
 func TestDrawMessageHorizontalAppliesLineHeightRatio(t *testing.T) {
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
+	r.manager.Config.MessageBoxStyle = "redesigned" // bodyLineHeightRatio only applies under the redesign (see messageBoxFillColor's doc comment for why)
 	beforeTextSize = r.fontFace.Size
 	defer func() { isWait, isTextEnd, textEndX, textEndY = false, false, 0, 0 }()
 

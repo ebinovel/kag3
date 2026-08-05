@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
@@ -31,12 +32,26 @@ const bodyLineHeightRatio = 1.72
 var (
 	messageBoxFillColorNormal = color.RGBA{0x10, 0x13, 0x18, 0xc7} // rgba(16,19,24,0.78)
 	messageBoxFillColorChoice = color.RGBA{0x10, 0x13, 0x18, 0x99} // rgba(16,19,24,0.6), dimmed while [glink] choices are up
+	// messageBoxFillColorLegacy is this package's original (pre-メッセージ欄)
+	// box fill — see messageBoxFillColor's doc comment for why this
+	// stays the default.
+	messageBoxFillColorLegacy = color.RGBA{0, 0, 0, 128}
 )
 
-// messageBoxFillColor returns the box's default fill: dimmed while a set of
-// [glink] choices is currently displayed (the same len(glinks)>0 && !isJump
-// guard drawLinks/drawGLinks use elsewhere), the normal shade otherwise.
-func messageBoxFillColor() color.RGBA {
+// messageBoxFillColor returns the box's default fill. renderer/ebitengine
+// is a shared package (this repo's example is one importer among several,
+// e.g. tsf-action), so the メッセージ欄 redesign's fill color only
+// applies when style == "redesigned" (Config.MessageBoxStyle,
+// example/resources/config.toml only) — anything else, including an empty
+// string (a project whose config.toml predates this field entirely), keeps
+// the original flat rgba(0,0,0,0.5) this package always drew before. Within
+// "redesigned", the box dims while a set of [glink] choices is currently
+// displayed (the same len(glinks)>0 && !isJump guard drawLinks/drawGLinks
+// use elsewhere).
+func messageBoxFillColor(style string) color.RGBA {
+	if style != "redesigned" {
+		return messageBoxFillColorLegacy
+	}
 	if len(glinks) > 0 && !isJump {
 		return messageBoxFillColorChoice
 	}
@@ -86,30 +101,110 @@ func filledSpeedSegments() int {
 	return filled
 }
 
-func drawTextSpeedIndicator(r *Renderer, buf *ebiten.Image) {
+// textSpeedIndicatorOrigin computes the segment bar's own top-left (segX,
+// y) — shared by drawTextSpeedIndicator and
+// (*Renderer).handleTextSpeedIndicatorClick so hit-testing always matches
+// what's actually drawn. ok is false when the indicator isn't shown at all
+// (matches drawTextSpeedIndicator's own early return).
+func textSpeedIndicatorOrigin(r *Renderer) (segX, y float64, ok bool) {
+	// Part of the メッセージ欄 redesign, gated the same way as the
+	// operation row (opRowActive, tags_oprow.go) — renderer/ebitengine is a
+	// shared package, so this indicator must stay off for any project that
+	// hasn't opted into MessageBoxStyle="redesigned".
+	if r.manager.Config.MessageBoxStyle != "redesigned" {
+		return 0, 0, false
+	}
 	if textPosition == nil || !textPosition.Visible {
+		return 0, 0, false
+	}
+	x := float64(textPosition.Left) + float64(textPosition.MarginLeft)
+	y = float64(textPosition.Top) + float64(textPosition.Height) - float64(textPosition.MarginBottom) - speedSegH
+
+	labelFace := &text.GoTextFace{Source: r.fontFace.Source, Size: speedLabelFontSize, Language: r.fontFace.Language}
+	labelW, _ := text.Measure("文字送り", labelFace, 0)
+	return x + labelW + speedLabelGap, y, true
+}
+
+func drawTextSpeedIndicator(r *Renderer, buf *ebiten.Image) {
+	segX, y, ok := textSpeedIndicatorOrigin(r)
+	if !ok {
 		return
 	}
 	x := float64(textPosition.Left) + float64(textPosition.MarginLeft)
-	y := float64(textPosition.Top) + float64(textPosition.Height) - float64(textPosition.MarginBottom) - speedSegH
-
 	labelFace := &text.GoTextFace{Source: r.fontFace.Source, Size: speedLabelFontSize, Language: r.fontFace.Language}
 	label := "文字送り"
-	labelW, labelH := text.Measure(label, labelFace, 0)
+	_, labelH := text.Measure(label, labelFace, 0)
 	labelOp := &text.DrawOptions{}
 	labelOp.GeoM.Translate(x, y+(speedSegH-labelH)/2)
 	labelOp.ColorScale.ScaleWithColor(speedLabelColor)
 	text.Draw(buf, label, labelFace, labelOp)
 
 	filled := filledSpeedSegments()
-	segX := x + labelW + speedLabelGap
 	for i := 0; i < speedSegCount; i++ {
 		c := speedSegEmptyColor
 		if i < filled {
 			c = speedSegFilledColor
 		}
-		fillRect(buf, segX, y, speedSegW, speedSegH, c)
-		segX += speedSegW + speedSegGap
+		fillRect(buf, segX+float64(i)*(speedSegW+speedSegGap), y, speedSegW, speedSegH, c)
+	}
+}
+
+// setFilledSpeedSegments is filledSpeedSegments' inverse: given the number
+// of segments a click means to light up (1-indexed — clicking the 3rd
+// segment means "3 filled", matching how a battery/signal-bar control
+// reads), resolves and applies the textSpeedMs that reading corresponds to.
+// Sets defaultTextSpeedMs too, matching [configdelay]'s own "this is the
+// new baseline, not a one-off [delay]" semantics — a direct click on the
+// message box's own indicator is exactly that kind of durable preference
+// change, not a scripted temporary effect.
+func setFilledSpeedSegments(filled int) {
+	if filled < 1 {
+		filled = 1
+	}
+	if filled > speedSegCount {
+		filled = speedSegCount
+	}
+	ratio := 1 - float64(filled)/float64(speedSegCount)
+	lo, hi := float64(textSpeedIndicatorMinMs), float64(textSpeedIndicatorMaxMs)
+	ms := int(math.Round(lo + ratio*(hi-lo)))
+	textSpeedMs = ms
+	defaultTextSpeedMs = ms
+}
+
+// handleTextSpeedIndicatorClick lets the player click directly on the
+// message box's own text-speed bar to change it immediately, rather than
+// only being adjustable from the full settings screen (config.ks). Clicking
+// segment i (0-indexed) sets the reading to i+1 filled segments.
+func (r *Renderer) handleTextSpeedIndicatorClick() {
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return
+	}
+	mX, mY := ebiten.CursorPosition()
+	r.dispatchTextSpeedIndicatorClickAt(mX, mY)
+}
+
+// dispatchTextSpeedIndicatorClickAt is handleTextSpeedIndicatorClick's
+// testable core, split out the same way
+// (*Renderer).dispatchOperationRowClickAt is (tags_oprow.go) — no precedent
+// in this package for faking ebiten's real mouse-press state in a test.
+func (r *Renderer) dispatchTextSpeedIndicatorClickAt(mX, mY int) {
+	if len(glinks) > 0 && !isJump {
+		// Choices are up — same guard opRowActive uses (tags_oprow.go) to
+		// keep the operation row from stealing a glink click; the indicator
+		// sits at the box's bottom-left, close enough to a stacked choice
+		// list to warrant the same caution.
+		return
+	}
+	segX, y, ok := textSpeedIndicatorOrigin(r)
+	if !ok {
+		return
+	}
+	for i := 0; i < speedSegCount; i++ {
+		segLeft := segX + float64(i)*(speedSegW+speedSegGap)
+		if isColision(mX, mY, int(segLeft), int(y), int(speedSegW), int(speedSegH)) {
+			setFilledSpeedSegments(i + 1)
+			return
+		}
 	}
 }
 

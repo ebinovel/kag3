@@ -218,6 +218,7 @@ func (r *Renderer) Update() {
 	default:
 		r.handleMenuButtonClick()
 		r.handleOperationRowClick()
+		r.handleTextSpeedIndicatorClick()
 	}
 	if wasModalActive || anyModalActive() {
 		return
@@ -534,7 +535,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	drawMessageWindow(r, buf)
 	drawOperationRow(r, buf)
 	drawLinks(r, buf)
-	drawChoiceDimOverlay(buf)
+	drawChoiceDimOverlay(r, buf)
 	drawGLinks(r, buf)
 	drawButtons(buf)
 	drawImages(buf)

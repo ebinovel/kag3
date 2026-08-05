@@ -184,15 +184,20 @@ func opRowOrigin(totalWidth float64) (startX, y float64) {
 }
 
 // opRowActive reports whether the row is currently something the player can
-// see/click at all: box visible, not suppressed, and not hidden behind the
-// [glink] choice dim overlay (drawChoiceDimOverlay/draw_link.go covers it
-// visually; this guard keeps clicks from landing on it too while hidden).
-func opRowActive() bool {
-	return opRowVisible && textPosition != nil && textPosition.Visible && !(len(glinks) > 0 && !isJump)
+// see/click at all: the redesign is opted into (Config.MessageBoxStyle —
+// renderer/ebitengine is a shared package, so this row must stay invisible
+// for any other project importing kag3 unless it explicitly asks for the
+// メッセージ欄 redesign), box visible, not suppressed, and not hidden
+// behind the [glink] choice dim overlay (drawChoiceDimOverlay/draw_link.go
+// covers it visually; this guard keeps clicks from landing on it too while
+// hidden).
+func opRowActive(r *Renderer) bool {
+	return r.manager.Config.MessageBoxStyle == "redesigned" &&
+		opRowVisible && textPosition != nil && textPosition.Visible && !(len(glinks) > 0 && !isJump)
 }
 
 func drawOperationRow(r *Renderer, buf *ebiten.Image) {
-	if !opRowActive() {
+	if !opRowActive(r) {
 		return
 	}
 	face := opRowFace(r)
@@ -224,7 +229,7 @@ func drawOperationRow(r *Renderer, buf *ebiten.Image) {
 }
 
 func (r *Renderer) handleOperationRowClick() {
-	if !opRowActive() {
+	if !opRowActive(r) {
 		return
 	}
 	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {

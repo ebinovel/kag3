@@ -30,7 +30,7 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 		if textPosition.FilterColor != nil {
 			textPosition.BackImage.Fill(*textPosition.FilterColor)
 		} else {
-			textPosition.BackImage.Fill(messageBoxFillColor())
+			textPosition.BackImage.Fill(messageBoxFillColor(r.manager.Config.MessageBoxStyle))
 		}
 		buf.DrawImage(textPosition.BackImage, op)
 	}
@@ -341,6 +341,10 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				xOffset += w
 			}
 		}
-		rowY += rowHeight*bodyLineHeightRatio + rubyLineHeight
+		lineHeightRatio := 1.0 // this package's original tight row advance
+		if r.manager.Config.MessageBoxStyle == "redesigned" {
+			lineHeightRatio = bodyLineHeightRatio
+		}
+		rowY += rowHeight*lineHeightRatio + rubyLineHeight
 	}
 }

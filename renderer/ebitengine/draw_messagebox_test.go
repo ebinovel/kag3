@@ -47,6 +47,93 @@ func TestDrawTextSpeedIndicatorNoopWithoutVisibleTextPosition(t *testing.T) {
 	drawTextSpeedIndicator(r, buf) // must not panic, and must be a no-op
 }
 
+// TestSetFilledSpeedSegmentsRoundTripsWithFilledSpeedSegments is the
+// deliverable for the message box's own text-speed indicator becoming
+// clickable: clicking segment i (1-indexed count) must set textSpeedMs to
+// whatever value filledSpeedSegments would, in turn, read back as i.
+func TestSetFilledSpeedSegmentsRoundTripsWithFilledSpeedSegments(t *testing.T) {
+	defer func() { textSpeedMs, defaultTextSpeedMs = 83, 83 }()
+
+	for filled := 1; filled <= speedSegCount; filled++ {
+		setFilledSpeedSegments(filled)
+		if got := filledSpeedSegments(); got != filled {
+			t.Errorf("setFilledSpeedSegments(%d) then filledSpeedSegments() = %d, want %d (textSpeedMs=%d)", filled, got, filled, textSpeedMs)
+		}
+		if defaultTextSpeedMs != textSpeedMs {
+			t.Errorf("setFilledSpeedSegments(%d): defaultTextSpeedMs = %d, want it to match textSpeedMs = %d", filled, defaultTextSpeedMs, textSpeedMs)
+		}
+	}
+}
+
+// TestSetFilledSpeedSegmentsClampsOutOfRange covers the 0-and-below /
+// above-speedSegCount edges a stray click shouldn't be able to reach in
+// practice, but the function should still behave sanely for.
+func TestSetFilledSpeedSegmentsClampsOutOfRange(t *testing.T) {
+	defer func() { textSpeedMs, defaultTextSpeedMs = 83, 83 }()
+
+	setFilledSpeedSegments(0)
+	if got := filledSpeedSegments(); got != 1 {
+		t.Errorf("setFilledSpeedSegments(0) then filledSpeedSegments() = %d, want clamped to 1", got)
+	}
+	setFilledSpeedSegments(speedSegCount + 5)
+	if got := filledSpeedSegments(); got != speedSegCount {
+		t.Errorf("setFilledSpeedSegments(overshoot) then filledSpeedSegments() = %d, want clamped to %d", got, speedSegCount)
+	}
+}
+
+// TestDispatchTextSpeedIndicatorClickAtHitsCorrectSegment drives a click at
+// each segment's real drawn position (via textSpeedIndicatorOrigin, the
+// same helper drawTextSpeedIndicator itself uses) and confirms it lands on
+// that segment, not a neighbor.
+func TestDispatchTextSpeedIndicatorClickAtHitsCorrectSegment(t *testing.T) {
+	savedTextPosition, savedMs, savedDefaultMs := textPosition, textSpeedMs, defaultTextSpeedMs
+	defer func() { textPosition, textSpeedMs, defaultTextSpeedMs = savedTextPosition, savedMs, savedDefaultMs }()
+
+	textPosition = &kag3.TextPosition{Visible: true, Left: 96, Top: 736, Width: 1728, Height: 300, MarginLeft: 56, MarginBottom: 44}
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.manager.Config.MessageBoxStyle = "redesigned" // the indicator only exists under the redesign
+
+	segX, y, ok := textSpeedIndicatorOrigin(r)
+	if !ok {
+		t.Fatal("textSpeedIndicatorOrigin: ok = false, want true with a visible textPosition")
+	}
+	for i := 0; i < speedSegCount; i++ {
+		centerX := segX + float64(i)*(speedSegW+speedSegGap) + speedSegW/2
+		centerY := y + speedSegH/2
+		r.dispatchTextSpeedIndicatorClickAt(int(centerX), int(centerY))
+		if got := filledSpeedSegments(); got != i+1 {
+			t.Errorf("click on segment %d: filledSpeedSegments() = %d, want %d", i, got, i+1)
+		}
+	}
+}
+
+// TestDispatchTextSpeedIndicatorClickAtIgnoredWhileGLinksActive mirrors
+// opRowActive's own guard test — a click landing on the indicator's own
+// coordinates must not change anything while a choice list is up and no
+// jump is pending yet.
+func TestDispatchTextSpeedIndicatorClickAtIgnoredWhileGLinksActive(t *testing.T) {
+	savedTextPosition, savedMs, savedDefaultMs, savedGLinks, savedIsJump := textPosition, textSpeedMs, defaultTextSpeedMs, glinks, isJump
+	defer func() {
+		textPosition, textSpeedMs, defaultTextSpeedMs, glinks, isJump = savedTextPosition, savedMs, savedDefaultMs, savedGLinks, savedIsJump
+	}()
+
+	textPosition = &kag3.TextPosition{Visible: true, Left: 96, Top: 736, Width: 1728, Height: 300, MarginLeft: 56, MarginBottom: 44}
+	textSpeedMs, defaultTextSpeedMs = 83, 83
+	glinks = []*kag3.GLink{{Target: "somewhere"}}
+	isJump = false
+
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	r.manager.Config.MessageBoxStyle = "redesigned" // exercise the glinks guard itself, not just the style gate
+	segX, y, _ := textSpeedIndicatorOrigin(r)
+	r.dispatchTextSpeedIndicatorClickAt(int(segX+speedSegW/2), int(y+speedSegH/2))
+
+	if textSpeedMs != 83 {
+		t.Errorf("textSpeedMs = %d after a click while glinks active, want unchanged 83", textSpeedMs)
+	}
+}
+
 func TestDrawContinueMarkPicksColorByModePriority(t *testing.T) {
 	// Restores the pre-test textPosition rather than forcing nil: other
 	// tests in this package rely on whatever an earlier test left
@@ -92,18 +179,38 @@ func TestMessageBoxFillColorDimsWhileGLinksActive(t *testing.T) {
 	defer func() { glinks, isJump = nil, false }()
 
 	glinks, isJump = nil, false
-	if got := messageBoxFillColor(); got != messageBoxFillColorNormal {
+	if got := messageBoxFillColor("redesigned"); got != messageBoxFillColorNormal {
 		t.Errorf("messageBoxFillColor() = %v, want normal %v with no glinks", got, messageBoxFillColorNormal)
 	}
 
 	glinks = []*kag3.GLink{{Target: "somewhere"}}
 	isJump = false
-	if got := messageBoxFillColor(); got != messageBoxFillColorChoice {
+	if got := messageBoxFillColor("redesigned"); got != messageBoxFillColorChoice {
 		t.Errorf("messageBoxFillColor() = %v, want dimmed %v while glinks are active", got, messageBoxFillColorChoice)
 	}
 
 	isJump = true
-	if got := messageBoxFillColor(); got != messageBoxFillColorNormal {
+	if got := messageBoxFillColor("redesigned"); got != messageBoxFillColorNormal {
 		t.Errorf("messageBoxFillColor() = %v, want normal %v once a jump is pending (glinks about to be cleared)", got, messageBoxFillColorNormal)
+	}
+}
+
+// TestMessageBoxFillColorLegacyIgnoresStyle is the scoping fix for
+// renderer/ebitengine being a shared package: any style other than
+// "redesigned" — including "" (a project whose config.toml predates
+// MessageBoxStyle entirely, e.g. tsf-action) — must draw this package's
+// original flat box, glink dimming included, regardless of glinks/isJump.
+func TestMessageBoxFillColorLegacyIgnoresStyle(t *testing.T) {
+	defer func() { glinks, isJump = nil, false }()
+
+	for _, style := range []string{"", "legacy", "something-unrecognized"} {
+		glinks, isJump = nil, false
+		if got := messageBoxFillColor(style); got != messageBoxFillColorLegacy {
+			t.Errorf("messageBoxFillColor(%q) = %v, want legacy %v", style, got, messageBoxFillColorLegacy)
+		}
+		glinks = []*kag3.GLink{{Target: "somewhere"}}
+		if got := messageBoxFillColor(style); got != messageBoxFillColorLegacy {
+			t.Errorf("messageBoxFillColor(%q) with glinks active = %v, want still legacy %v (no redesigned dim effect)", style, got, messageBoxFillColorLegacy)
+		}
 	}
 }

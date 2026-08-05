@@ -183,6 +183,7 @@ func TestHandleOperationRowClickNoopWithoutRealClick(t *testing.T) {
 	glinks, isJump = nil, false
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
+	r.manager.Config.MessageBoxStyle = "redesigned" // exercise the "no real click" branch, not the style gate
 
 	r.handleOperationRowClick() // must not panic
 }
@@ -200,6 +201,7 @@ func TestDrawOperationRowNoPanicWhenActiveAndInactive(t *testing.T) {
 
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
+	r.manager.Config.MessageBoxStyle = "redesigned" // otherwise every case below is the inactive path
 	buf := newTestImage(1920, 1080)
 
 	// Inactive: no textPosition.

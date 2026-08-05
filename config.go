@@ -93,6 +93,20 @@ type Config struct {
 	// glyphNormal mark (tags_sysdesign.go) untouched; "fixed" switches to a
 	// fixed bottom-right "▽" (drawContinueMark, draw_messagebox.go).
 	ContinueMarkStyle string `toml:"ContinueMarkStyle"`
+	// MessageBoxStyle gates the whole メッセージ欄 "2a" redesign —
+	// renderer/ebitengine is a shared package, not example-specific code, so
+	// every project importing kag3 (this repo's example, but also sibling
+	// projects like tsf-action) picks up any unconditional change here.
+	// "legacy" (default) is the original look this package always had
+	// before that redesign: flat rgba(0,0,0,0.5) box fill, tight (1.0x)
+	// line spacing, no persistent operation row, no in-box text-speed
+	// indicator. "redesigned" turns all four on — only example/resources/
+	// config.toml sets this; a project that never heard of the redesign
+	// keeps rendering exactly as it always did, with no code changes on
+	// its side. (The [ptext] visibility/color fixes made alongside this
+	// redesign are real bugfixes, not part of this style switch, and stay
+	// unconditional — see tags_text.go/renderer.go.)
+	MessageBoxStyle string `toml:"MessageBoxStyle"`
 }
 
 type Speeds struct {
@@ -192,6 +206,7 @@ func (c *Config) LoadDefault() {
 	c.MarginRCH = 2
 	c.DefaultFontSize = 28
 	c.ContinueMarkStyle = "follow"
+	c.MessageBoxStyle = "legacy"
 }
 
 func (c *Config) Load(dir fs.FS, file string) {
