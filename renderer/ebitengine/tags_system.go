@@ -128,6 +128,8 @@ func handleAwakeGame(ctx *tagCtx) error {
 	buttons = frame.Buttons
 	bg = &frame.Bg
 	textPosition = &frame.TextPosition
+	ptexts = frame.Ptexts
+	charaNamePText = frame.CharaNamePText
 	*ctx.i = frame.Index - 1
 	return nil
 }

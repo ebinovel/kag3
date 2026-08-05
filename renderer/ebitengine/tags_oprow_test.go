@@ -168,6 +168,59 @@ func TestDispatchOperationRowClickAtOpensConfigViaSleepgamePath(t *testing.T) {
 	}
 }
 
+// TestOpenConfigScreenRoundTripsPtexts is the regression test for config.ks
+// bleeding the caller's [ptext] areas (e.g. title.ks's title/menu labels)
+// through its own full-screen layout, and losing them (e.g. scene1.ks's
+// character name-plate) on the way back — see sleepFrame's doc comment
+// (renderer.go). openConfigScreen must snapshot ptexts/charaNamePText into
+// the pushed frame and clear the live map so config.ks starts blank;
+// [awakegame] must restore both.
+func TestOpenConfigScreenRoundTripsPtexts(t *testing.T) {
+	savedTextPosition, savedBg, savedBg2 := textPosition, bg, bg2
+	savedPtexts, savedCharaNamePText := ptexts, charaNamePText
+	defer func() {
+		textPosition, bg, bg2 = savedTextPosition, savedBg, savedBg2
+		ptexts, charaNamePText = savedPtexts, savedCharaNamePText
+	}()
+
+	textPosition = &kag3.TextPosition{Visible: true, Left: 96, Top: 736, Width: 1728, Height: 300, MarginRight: 56}
+	textPosition.BackImage = newTestImage(1728, 300)
+	bg, bg2 = &kag3.Background{}, &kag3.Background{}
+	ptexts = map[string]*kag3.PText{
+		"title_main": {Name: "title_main", Text: "たそがれ図書室"},
+	}
+	charaNamePText = "chara_name_area"
+
+	r := newTestRendererWithImageFS(t, map[string][]byte{})
+	r.fontFace = newTestFontFace(t)
+	r.manager.Labels = map[string]kag3.LabelInfo{}
+	r.manager.Senario = kag3.Senario{}
+	r.manager.FSes = map[string]fs.FS{"senarios": fstest.MapFS{}}
+	r.currentStorage = "title.ks"
+
+	openConfigScreen(r)
+
+	if len(ptexts) != 0 {
+		t.Errorf("ptexts after openConfigScreen = %+v, want empty (config.ks's own full-screen layout, no inherited areas)", ptexts)
+	}
+	if n := len(r.sleepStack); n == 0 {
+		t.Fatal("expected openConfigScreen to push a sleepFrame")
+	} else if got := r.sleepStack[n-1].Ptexts["title_main"]; got == nil || got.Text != "たそがれ図書室" {
+		t.Errorf("pushed sleepFrame.Ptexts[title_main] = %+v, want the snapshotted title text", got)
+	}
+
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "awakegame"}, &i, 0); err != nil {
+		t.Fatalf("awakegame: %v", err)
+	}
+	if got := ptexts["title_main"]; got == nil || got.Text != "たそがれ図書室" {
+		t.Errorf("ptexts[title_main] after awakegame = %+v, want restored", got)
+	}
+	if charaNamePText != "chara_name_area" {
+		t.Errorf("charaNamePText after awakegame = %q, want restored %q", charaNamePText, "chara_name_area")
+	}
+}
+
 // TestHandleOperationRowClickNoopWithoutRealClick mirrors
 // TestMenuButtonClickOpensQuickMenu's approach (tags_sysdesign_test.go):
 // ebiten's real mouse-press state can't be synthesized in a headless unit

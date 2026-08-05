@@ -93,12 +93,20 @@ func hitButtons(r *Renderer) {
 					// callStack — see the Renderer.sleepStack doc comment.
 					if button.Role == "sleepgame" {
 						r.sleepStack = append(r.sleepStack, sleepFrame{
-							Storage:      r.currentStorage,
-							Index:        currentScriptIndex,
-							Buttons:      append([]*kag3.Button(nil), buttons...),
-							Bg:           *bg,
-							TextPosition: *textPosition,
+							Storage:        r.currentStorage,
+							Index:          currentScriptIndex,
+							Buttons:        append([]*kag3.Button(nil), buttons...),
+							Bg:             *bg,
+							TextPosition:   *textPosition,
+							Ptexts:         ptexts,
+							CharaNamePText: charaNamePText,
 						})
+						// The sleepgame target (e.g. config.ks) is a
+						// full-screen layout with no ptext areas of its own
+						// inherited from wherever it was opened — see
+						// sleepFrame's doc comment (renderer.go).
+						// [awakegame] restores the snapshot above.
+						ptexts = make(map[string]*kag3.PText)
 					}
 					screenChanged = true
 					r.loadScript(button.Storage)

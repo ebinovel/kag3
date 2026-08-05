@@ -84,12 +84,25 @@ type callFrame struct {
 // TextPosition deliberately aren't part of callFrame: only sleepgame
 // crosses full scenes with visual teardown in between, so only it needs
 // this.
+//
+// Ptexts/CharaNamePText are the same story, discovered later: drawPTexts
+// used to only run while a message window was visible, so a stale ptexts
+// map from whatever screen opened config.ks (e.g. title.ks's own title/
+// menu labels) was invisible by accident. Once that gate was removed (see
+// drawPTexts's doc comment), those areas started bleeding straight through
+// config.ks's full-screen layout — and clearing them unconditionally on the
+// way in, with no restore, would just move the bug to the other direction
+// (losing scene1.ks's character name-plate on the way back). Snapshotting
+// and restoring them here, the same way TextPosition already is, fixes
+// both directions at once.
 type sleepFrame struct {
-	Storage      string
-	Index        int
-	Buttons      []*kag3.Button
-	Bg           kag3.Background
-	TextPosition kag3.TextPosition
+	Storage        string
+	Index          int
+	Buttons        []*kag3.Button
+	Bg             kag3.Background
+	TextPosition   kag3.TextPosition
+	Ptexts         map[string]*kag3.PText
+	CharaNamePText string
 }
 
 func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
