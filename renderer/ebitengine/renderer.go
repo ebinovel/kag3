@@ -95,6 +95,16 @@ type callFrame struct {
 // (losing scene1.ks's character name-plate on the way back). Snapshotting
 // and restoring them here, the same way TextPosition already is, fixes
 // both directions at once.
+//
+// ViewCharas is the exact same class of bug, just for standing-character
+// sprites instead of ptexts: drawCharacters (renderer.go's drawScene) has
+// no gate at all tied to which screen is active, so whatever characters
+// were showing in the calling scene keep drawing straight through
+// config.ks's full-screen layout, landing wherever the story scene's
+// character positioning put them (bottom-anchored, centered) — which
+// visually collides with config.ks's own rows since neither screen knows
+// about the other. Same fix shape as Ptexts: snapshot and clear on the way
+// in, restore on the way out.
 type sleepFrame struct {
 	Storage        string
 	Index          int
@@ -103,6 +113,7 @@ type sleepFrame struct {
 	TextPosition   kag3.TextPosition
 	Ptexts         map[string]*kag3.PText
 	CharaNamePText string
+	ViewCharas     []*kag3.CharaShow
 }
 
 func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {

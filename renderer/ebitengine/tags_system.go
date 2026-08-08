@@ -130,6 +130,7 @@ func handleAwakeGame(ctx *tagCtx) error {
 	textPosition = &frame.TextPosition
 	ptexts = frame.Ptexts
 	charaNamePText = frame.CharaNamePText
+	viewCharas = frame.ViewCharas
 	*ctx.i = frame.Index - 1
 	return nil
 }
