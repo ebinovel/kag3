@@ -154,9 +154,9 @@ title-return state leaks, same-process quickload.
 This dev environment has a real Windows desktop and WinAppDriver is already running — `e2e/` is
 runnable here (via the Bash tool, same as any other `go test`). Before running it, rebuild the test
 binary whenever `example/` or anything under its embedded `resources/` changes —
-`example/resources.go`'s `//go:embed resources` bakes the whole resource tree into the binary at
-build time, so editing files under `example/resources/` (including the git-excluded ones, see
-"Repository layout gotcha" above) has no effect on `e2e/` until rebuilt:
+`example/game/resources.go`'s `//go:embed resources` bakes the whole resource tree into the binary
+at build time, so editing files under `example/game/resources/` (including the git-excluded ones,
+see "Repository layout gotcha" above) has no effect on `e2e/` until rebuilt:
 
 ```sh
 go build -o e2e/testdata/kag3example.exe ./example

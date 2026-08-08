@@ -324,7 +324,7 @@ func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
 
 // buttonTargetJump resolves a clicked button's target= against r.labels and,
 // if found, jumps there — call-style, not a plain [jump]: real Tyrano's
-// official config.ks (this repo's example/resources/senarios/config.ks) ends
+// official config.ks (this repo's example/game/resources/senarios/config.ks) ends
 // every target label (*vol_bgm_change etc.) with [return], expecting to land
 // back exactly where the button was clicked. Pushing currentScriptIndex, not
 // +1, matches role="sleepgame"'s push in Update() — both happen outside the

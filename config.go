@@ -100,7 +100,7 @@ type Config struct {
 	// "legacy" (default) is the original look this package always had
 	// before that redesign: flat rgba(0,0,0,0.5) box fill, tight (1.0x)
 	// line spacing, no persistent operation row, no in-box text-speed
-	// indicator. "redesigned" turns all four on — only example/resources/
+	// indicator. "redesigned" turns all four on — only example/game/resources/
 	// config.toml sets this; a project that never heard of the redesign
 	// keeps rendering exactly as it always did, with no code changes on
 	// its side. (The [ptext] visibility/color fixes made alongside this

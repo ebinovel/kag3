@@ -117,7 +117,7 @@ func TestParserIScriptBodyAtSign(t *testing.T) {
 // attribute (whitespace touching either side of "=") from TagObject.Pm
 // entirely, via an off-by-one in a since-replaced index-arithmetic merge
 // loop. This wasn't a theoretical edge case — the bundled
-// example/resources/senarios/title.ks has "@wait time = 200" and
+// example/game/resources/senarios/title.ks has "@wait time = 200" and
 // tyrano.ks has "[freeimage layer = %layer]", both of which silently did
 // nothing before this fix.
 func TestParserSpacedEquals(t *testing.T) {

@@ -421,7 +421,7 @@ func TestManualHubRemainingDemos(t *testing.T) {
 }
 
 // TestManualConfigAndMenu is a regression check for the config screen,
-// whose TyranoScript-sourced art (example/resources/images/config/,
+// whose TyranoScript-sourced art (example/game/resources/images/config/,
 // resources/system/images/) was replaced with original placeholders. Also
 // exercises config.ks's *load_img (set1.png/set2.png), which referenced
 // files that never actually existed in this project before today. The

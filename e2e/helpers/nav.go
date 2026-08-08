@@ -9,7 +9,7 @@ import (
 )
 
 // logicalWidth/logicalHeight are kag3's fixed design resolution — see
-// example/resources/config.toml's ScreenWidth=1920/ScreenHeight=1080
+// example/game/resources/config.toml's ScreenWidth=1920/ScreenHeight=1080
 // (overriding config.go's LoadDefault() 1280x720 default). Every
 // button x=/y=/width=/height= in the bundled .ks scenarios is expressed in
 // this coordinate space, regardless of the actual window size or DPI.
@@ -42,11 +42,11 @@ func ClickLogical(sess *driver.Session, lx, ly int) error {
 	return nil
 }
 
-// Title screen button centers, computed from example/resources/senarios/
+// Title screen button centers, computed from example/game/resources/senarios/
 // title.ks's [button x= y=] top-left coordinates (1920x1080-scale, ×1.5
 // from the original 1280x720 layout) plus half the actual graphic size
 // (all four title/button_*.png are 360x74 — confirmed via
-// `file example/resources/images/title/button_*.png`; the button graphics
+// `file example/game/resources/images/title/button_*.png`; the button graphics
 // themselves were not upscaled, only the [button] x=/y= positions were).
 // Re-derive if title.ks or its button graphics change. title.ks has no
 // CG/replay buttons (the bundled TyranoScript sample's cg.ks/replay.ks

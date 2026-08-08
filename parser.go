@@ -300,7 +300,7 @@ func characterPText(line string, lineCount int) TextObject {
 // it meant any single "key = value" attribute (the exact number of
 // tokens produced was the case this off-by-one landed on) was silently
 // dropped from Pm — confirmed to happen on real content, not just a
-// theoretical edge case: kag3's own example/resources/senarios/title.ks
+// theoretical edge case: kag3's own example/game/resources/senarios/title.ks
 // has "@wait time = 200" and tyrano.ks has "[freeimage layer = %layer]",
 // both of which previously vanished without any error.
 func joinSpacedEquals(strs []string) []string {

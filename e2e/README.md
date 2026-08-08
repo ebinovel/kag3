@@ -82,14 +82,14 @@ e2e/
 
 ## 座標・行数がハードコードされている理由と注意点
 
-`nav.go`/`flows_test.go` には `example/resources/senarios/title.ks`・
+`nav.go`/`flows_test.go` には `example/game/resources/senarios/title.ks`・
 `scene1.ks` のボタン座標やEnterキーを送る回数がハードコードされている。
 ebitengineのウィンドウには要素検索の手段がなく、座標クリックとEnterキー
 連打で操作するしかないため。**シナリオファイル(`title.ks`/`scene1.ks`)や
 ボタン画像を変更した場合、これらの値は再計算が必要**:
 
 - ボタン座標は `[button x= y=]` のタグ属性 + 実際の画像ファイルサイズ
-  (`file example/resources/images/**/*.png` で確認可能)の中心座標
+  (`file example/game/resources/images/**/*.png` で確認可能)の中心座標
 - Enter回数は多くの箇所で「多めに見積もって、想定より先に進んでも
   安全な位置で止まる」設計にしてあるが、`openingLinesBeforeGlink`
   (glink選択肢直前)のようにピンポイントで数える必要がある箇所もある
