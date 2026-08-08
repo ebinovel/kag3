@@ -218,11 +218,7 @@ func drawGlyph(buf *ebiten.Image) {
 	}
 	x := textEndX + float64(cfg.OffsetX)
 	y := textEndY + float64(cfg.OffsetY) + glyphBounceOffset()
-	mark := ebiten.NewImage(cfg.Size, cfg.Size)
-	mark.Fill(cfg.Color)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
-	buf.DrawImage(mark, op)
+	fillRect(buf, x, y, float64(cfg.Size), float64(cfg.Size), cfg.Color)
 }
 
 // glyphBounceOffset drives the mark's idle "waiting for a click" bounce —

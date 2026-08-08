@@ -91,11 +91,7 @@ func drawGLinks(r *Renderer, buf *ebiten.Image) {
 // exactly as it always behaved rather than "fixed" here).
 func drawGLinksLegacy(r *Renderer, buf *ebiten.Image) {
 	for _, glink := range glinks {
-		backgroundOp := &ebiten.DrawImageOptions{}
-		backgroundOp.GeoM.Translate(float64(glink.X), float64(glink.Y))
-		img := ebiten.NewImage(glink.Width, glink.Height)
-		img.Fill(glink.Color)
-		buf.DrawImage(img, backgroundOp)
+		fillRect(buf, float64(glink.X), float64(glink.Y), float64(glink.Width), float64(glink.Height), *glink.Color)
 		glinkOp := &text.DrawOptions{}
 		w, h := text.Measure(glink.Text, r.fontFace, 0)
 		glinkOp.GeoM.Translate(float64(glink.Width/2+glink.X)-(w/2), float64(glink.Height/2+glink.Y)-(h/2))

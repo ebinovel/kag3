@@ -2,10 +2,21 @@ package ebitengine
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
 )
+
+// traceTags gates execItem's per-item stdout tracing (KAG3_TRACE_TAGS, same
+// opt-in-env-var shape as KAG3_E2E_FAST in tags_message.go). Off by default:
+// the coroutine pump in renderer.go's Update() can call execItem up to 1000
+// times in a single frame, and on iOS stdout goes through gomobile's
+// synchronous os_log redirect — tracing unconditionally there is slow
+// enough on its own to contribute to real-device frame stalls (confirmed:
+// a 2017 iPad Pro 10.5"). Kept, rather than deleted outright, because it's
+// genuinely useful when chasing a scenario-logic bug on desktop.
+var traceTags = os.Getenv("KAG3_TRACE_TAGS") != ""
 
 // execItem runs exactly one parsed scenario item (TextObject/TagObject/
 // CharacterInfo) against the given owning slice. scripts/i are parameterized
@@ -25,7 +36,9 @@ import (
 // macro body — Tyrano macros aren't expected to contain them.
 func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) error {
 	s := scripts[*i]
-	fmt.Printf("Index:%d, %+v\n", *i, s)
+	if traceTags {
+		fmt.Printf("Index:%d, %+v\n", *i, s)
+	}
 	switch object := s.(type) {
 	case kag3.CharacterInfo:
 	case kag3.TextObject:
@@ -36,7 +49,9 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 			textStartT = t
 		}
 		if object.Chara != nil {
-			fmt.Println(object.Chara)
+			if traceTags {
+				fmt.Println(object.Chara)
+			}
 			charaName = object.Chara.Name
 		}
 		if len(r.texts[object.Line]) == 0 {

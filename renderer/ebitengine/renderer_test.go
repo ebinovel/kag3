@@ -98,11 +98,18 @@ func TestDrawSceneVerticalTextDoesNotPanic(t *testing.T) {
 // captures unconditionally, every call, right before drawModal draws
 // whatever overlay is active into buf — so lastSnapshot always reflects
 // the scene as of *this* frame with no modal on it yet, regardless of
-// what was on screen before. This only proves the "always re-captured,
-// fresh object" contract (pixel content can't be asserted headless — see
-// captureSnapshot's own doc comment on why): combined with capture being
-// the last thing before drawModal in source order, that's the observable
-// behavior a test here can pin down.
+// what was on screen before.
+//
+// This only proves "captureSnapshot actually ran again this call" via
+// snapshotCaptureCount (pixel content can't be asserted headless — see
+// captureSnapshot's own doc comment on why): captureSnapshot now reuses the
+// same lastSnapshot image in place (Clear + redraw) rather than allocating
+// a fresh, identifiably-different object every frame — a real per-frame
+// 1920x1080 GPU allocation was severe enough to freeze a real, older iOS
+// device (see captureSnapshot's own comment) — so object identity is no
+// longer a valid "did it re-capture" signal. Combined with capture being
+// the last thing before drawModal in source order, the call count is the
+// observable behavior a test here can pin down instead.
 func TestDrawSceneCapturesSnapshotBeforeModalOverlay(t *testing.T) {
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
@@ -114,14 +121,17 @@ func TestDrawSceneCapturesSnapshotBeforeModalOverlay(t *testing.T) {
 	viewCharas = nil
 	links, glinks, imgs, buttons = nil, nil, nil, nil
 	lastSnapshot = nil
+	snapshotCaptureCount = 0
 	menuOpen = false
-	defer func() { menuOpen = false; lastSnapshot = nil }()
+	defer func() { menuOpen = false; lastSnapshot = nil; snapshotCaptureCount = 0 }()
 
 	buf := newTestImage(1280, 720)
 	r.drawScene(buf)
-	firstCapture := lastSnapshot
-	if firstCapture == nil {
+	if lastSnapshot == nil {
 		t.Fatal("expected drawScene to populate lastSnapshot even with no modal active")
+	}
+	if snapshotCaptureCount != 1 {
+		t.Fatalf("expected 1 capture after the first drawScene call, got %d", snapshotCaptureCount)
 	}
 
 	menuOpen = true
@@ -129,8 +139,8 @@ func TestDrawSceneCapturesSnapshotBeforeModalOverlay(t *testing.T) {
 	if lastSnapshot == nil {
 		t.Fatal("expected drawScene to populate lastSnapshot with the quick menu open")
 	}
-	if lastSnapshot == firstCapture {
-		t.Error("expected a fresh capture on this call, not the previous frame's")
+	if snapshotCaptureCount != 2 {
+		t.Errorf("expected a fresh capture on this call (count 2), got %d", snapshotCaptureCount)
 	}
 }
 
