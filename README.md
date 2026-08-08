@@ -105,7 +105,7 @@ func main() {
 使わないうちはディレクトリが空でも構いません。`resources/config.toml` は省略でき、存在しない
 場合は既定のウィンドウサイズ・タイトルなどが使われます。
 
-より詳しい手順は [`site/getting-started.html`](site/getting-started.html) を参照してください。
+より詳しい手順は [ebinovel.github.io/getting-started.html](https://ebinovel.github.io/getting-started.html) を参照してください。ブラウザで動く[プレイページ](https://ebinovel.github.io/play.html)もあります。
 
 ## エディタ
 
