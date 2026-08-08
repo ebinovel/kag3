@@ -55,6 +55,55 @@ func TestConfigLoadMissingFileIsNoop(t *testing.T) {
 	}
 }
 
+// TestConfigStorageOverrideUsedInsteadOfFile covers the embedding-app
+// override hook (e.g. example/mobile's android-only DataStore bridge — see
+// ConfigStorage's own doc comment): when both fields are set, [configsave]/
+// [configload] must route through them instead of settingsPath's raw
+// os.WriteFile/os.ReadFile, and must not touch the filesystem at all.
+func TestConfigStorageOverrideUsedInsteadOfFile(t *testing.T) {
+	saveBaseDirOverride = t.TempDir()
+	defer func() { saveBaseDirOverride = "" }()
+
+	var stored []byte
+	saveCalled, loadCalled := false, false
+	ConfigStorage.Save = func(data []byte) error {
+		saveCalled = true
+		stored = append([]byte(nil), data...)
+		return nil
+	}
+	ConfigStorage.Load = func() ([]byte, error) {
+		loadCalled = true
+		return stored, nil
+	}
+	defer func() { ConfigStorage.Save, ConfigStorage.Load = nil, nil }()
+
+	r := newTestRenderer()
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "iscript", Body: "tf.set_speed_idx = 3;"}, &i, 0); err != nil {
+		t.Fatalf("iscript: %v", err)
+	}
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "configsave"}, &i, 0); err != nil {
+		t.Fatalf("configsave: %v", err)
+	}
+	if !saveCalled {
+		t.Error("expected [configsave] to call ConfigStorage.Save instead of writing a file")
+	}
+	if len(stored) == 0 {
+		t.Fatal("ConfigStorage.Save was never given any data")
+	}
+
+	r2 := newTestRenderer()
+	if err := dispatchTag(r2, fakeYield(), kag3.TagObject{Name: "configload"}, &i, 0); err != nil {
+		t.Fatalf("configload: %v", err)
+	}
+	if !loadCalled {
+		t.Error("expected [configload] to call ConfigStorage.Load instead of reading a file")
+	}
+	if got := r2.vm.EvalString("tf.set_speed_idx"); got != "3" {
+		t.Errorf("tf.set_speed_idx after configload = %q, want %q", got, "3")
+	}
+}
+
 // TestMergeTFPreservesExistingKeys is config.ks's own reason for needing a
 // merge rather than ExportF/RestoreF's replace-wholesale semantics: by the
 // time [configload] runs, tf already holds unrelated working variables

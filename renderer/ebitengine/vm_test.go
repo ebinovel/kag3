@@ -178,7 +178,7 @@ func TestVMPushMPFrame(t *testing.T) {
 }
 
 // TestTFSystemAndSFSystemPreinitialized reproduces the crash reported when
-// pressing the back button in replay mode: example/resources/senarios/
+// pressing the back button in replay mode: example/game/resources/senarios/
 // replay.ks unconditionally does `tf.system.flag_replay = false;` and
 // config.ks does `tf.system.backlog.pop();`, both assuming tf.system (and
 // its backlog array) already exist — real Tyrano creates them before any
@@ -293,6 +293,32 @@ if (tf.user_setting != 'default') {
 	}
 	if got := v.EvalString("tf.text_skip"); got != "ON" {
 		t.Errorf("tf.text_skip = %q, want %q (UnReadTextSkip=true)", got, "ON")
+	}
+}
+
+// TestSetConfigExposesMobilePlatformAsIsMobile is the deliverable for the
+// config.ks change that hides the ウィンドウ/フルスクリーン toggle on Android
+// (example/mobile/storage_android.go sets MobilePlatform = true from its
+// own init()): SetConfig must reflect the package var's current value into
+// TG.config.isMobile as "true"/"false", the same string-boolean convention
+// as TG.config.unReadTextSkip etc., so config.ks's existing
+// [if exp="&TG.config.isMobile==='true'"]-style checks work.
+func TestSetConfigExposesMobilePlatformAsIsMobile(t *testing.T) {
+	orig := MobilePlatform
+	defer func() { MobilePlatform = orig }()
+
+	MobilePlatform = false
+	v := newVM()
+	v.SetConfig(&kag3.Config{})
+	if got := v.EvalString("TG.config.isMobile"); got != "false" {
+		t.Errorf("TG.config.isMobile = %q with MobilePlatform=false, want %q", got, "false")
+	}
+
+	MobilePlatform = true
+	v2 := newVM()
+	v2.SetConfig(&kag3.Config{})
+	if got := v2.EvalString("TG.config.isMobile"); got != "true" {
+		t.Errorf("TG.config.isMobile = %q with MobilePlatform=true, want %q", got, "true")
 	}
 }
 

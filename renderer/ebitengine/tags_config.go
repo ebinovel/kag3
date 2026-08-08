@@ -18,13 +18,28 @@ func init() {
 // scenario's own settings variables — alongside save slots (saveDir,
 // tags_save.go), not a new directory-resolution scheme, so KAG3_SAVE_DIR/
 // saveBaseDirOverride sandbox this exactly like any other on-disk state a
-// test or an external E2E harness needs to isolate.
+// test or an external E2E harness needs to isolate. Only consulted when
+// ConfigStorage isn't set — see its own doc comment.
 func settingsPath(r *Renderer) (string, error) {
 	dir, err := saveDir(r)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "settings.json"), nil
+}
+
+// ConfigStorage lets an embedding app override how [configsave]/
+// [configload] persist settings, instead of the default raw
+// os.WriteFile/os.ReadFile against settingsPath(). Both fields are
+// optional; nil means "use the default file-based behavior". For a
+// platform where a raw file isn't the natural fit (e.g. Android, where
+// Preferences DataStore is — see example/mobile's own android-only storage
+// bridge for a concrete implementation), an embedding app can set these
+// instead; renderer/ebitengine itself stays storage-mechanism-agnostic
+// since it's a shared package used by non-Android projects too.
+var ConfigStorage struct {
+	Save func(data []byte) error
+	Load func() ([]byte, error)
 }
 
 // handleConfigSave persists every variable currently in the "tf" namespace
@@ -34,35 +49,60 @@ func settingsPath(r *Renderer) (string, error) {
 // owns that vocabulary entirely, matching the rest of kag3's f/sf/tf model
 // where Go never inspects variable names, only round-trips whatever's
 // there.
+//
+// Every failure here is non-fatal (matches handleConfigLoad's own tolerant
+// handling below) rather than returned as an error: initScript's tag loop
+// (renderer.go) panics on any non-nil tag error, and a config screen visit
+// failing to persist must not freeze the whole game over what's ultimately
+// just a missed preference write.
 func handleConfigSave(ctx *tagCtx) error {
 	r := ctx.r
-	path, err := settingsPath(r)
-	if err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(r.vm.ExportTF(), "", "  ")
 	if err != nil {
-		return err
+		return nil
 	}
-	return os.WriteFile(path, b, 0o644)
+	if ConfigStorage.Save != nil {
+		if err := ConfigStorage.Save(b); err != nil {
+			fmt.Printf("configsave failed: %v\n", err)
+		}
+		return nil
+	}
+	path, err := settingsPath(r)
+	if err != nil {
+		return nil
+	}
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		fmt.Printf("configsave failed: %v\n", err)
+	}
+	return nil
 }
 
 // handleConfigLoad reads back what [configsave] wrote and merges it onto
 // the current "tf" (VM.MergeTF, vm.go) — not a wholesale replace, since
 // config.ks's own bootstrap [iscript] has already populated tf with
 // unrelated working variables by the time this typically runs. A missing
-// or corrupt settings.json is not an error (matches saveSlot/loadSlot's own
+// or corrupt settings blob is not an error (matches saveSlot/loadSlot's own
 // best-effort tolerance elsewhere in this package): a fresh install simply
 // has nothing to merge, and script-set TG.config-derived defaults stand.
 func handleConfigLoad(ctx *tagCtx) error {
 	r := ctx.r
-	path, err := settingsPath(r)
-	if err != nil {
-		return nil
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil
+	var b []byte
+	if ConfigStorage.Load != nil {
+		loaded, err := ConfigStorage.Load()
+		if err != nil {
+			return nil
+		}
+		b = loaded
+	} else {
+		path, err := settingsPath(r)
+		if err != nil {
+			return nil
+		}
+		loaded, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		b = loaded
 	}
 	var vars map[string]interface{}
 	if err := json.Unmarshal(b, &vars); err != nil {

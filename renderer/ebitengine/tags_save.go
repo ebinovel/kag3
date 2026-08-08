@@ -646,13 +646,24 @@ func (r *Renderer) applySaveData(d *saveData) error {
 // of the real OS config dir.
 var saveBaseDirOverride string
 
+// SaveDirFunc, if set, is consulted before falling back to os.UserConfigDir
+// (but after KAG3_SAVE_DIR/saveBaseDirOverride) — an embedding app can
+// register this to supply its own platform-appropriate writable directory
+// obtained some other way than the standard os package APIs (e.g.
+// Android's Context.getFilesDir(), reached over JNI — see example/mobile's
+// own android-only storage bridge for a concrete implementation;
+// renderer/ebitengine is a shared package used by non-Android projects too,
+// so it has no business knowing about JNI itself).
+var SaveDirFunc func() (string, error)
+
 // saveDir resolves the directory save/load slots live in. KAG3_SAVE_DIR, if
 // set, wins outright and is used as-is (no kag3/<title>/saves suffix) — an
 // external-process E2E harness (see e2e/) has no way to set the in-package
 // saveBaseDirOverride var, so this is the only way it can sandbox a real
 // build's save files away from the player's actual %AppData% profile.
-// saveBaseDirOverride (for in-package Go tests) and the OS config dir are
-// still checked, in that order, when KAG3_SAVE_DIR is unset.
+// saveBaseDirOverride (for in-package Go tests), SaveDirFunc (for an
+// embedding app), and the OS config dir are still checked, in that order,
+// when KAG3_SAVE_DIR is unset.
 func saveDir(r *Renderer) (string, error) {
 	if v := os.Getenv("KAG3_SAVE_DIR"); v != "" {
 		if err := os.MkdirAll(v, 0o755); err != nil {
@@ -661,10 +672,28 @@ func saveDir(r *Renderer) (string, error) {
 		return v, nil
 	}
 	base := saveBaseDirOverride
+	if base == "" && SaveDirFunc != nil {
+		b, err := SaveDirFunc()
+		if err != nil {
+			return "", err
+		}
+		base = b
+	}
 	if base == "" {
 		b, err := os.UserConfigDir()
 		if err != nil {
-			return "", err
+			// os.UserConfigDir() has no android case (unlike os.UserHomeDir,
+			// which explicitly returns "/sdcard" there) and always errors on
+			// Android — there's no $HOME. This is a last-resort fallback for
+			// an embedding app that hasn't registered SaveDirFunc above; not
+			// guaranteed writable without storage permissions this package
+			// doesn't declare, but every caller of saveDir already tolerates
+			// a failure gracefully either way (see handleConfigSave/
+			// handleConfigLoad, tags_config.go).
+			b, err = os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
 		}
 		base = b
 	}

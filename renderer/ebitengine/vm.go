@@ -93,6 +93,19 @@ var window = { open: function() {} };
 var TG = { config: {}, menu: {} };
 `
 
+// MobilePlatform is false by default (desktop/wasm) and set true by
+// example/mobile's Android-only init (storage_android.go, deliberately a
+// package-level var initializer rather than a func init() — see that file's
+// own comment on why) — the same "shared package stays platform-agnostic,
+// the platform-specific entrypoint flips one exported var/hook" pattern as
+// SaveDirFunc/ConfigStorage (tags_save.go/tags_config.go). SetConfig below
+// snapshots it into TG.config.isMobile so config.ks can hide UI that makes
+// no sense on a touch-only, permanently-fullscreen device (e.g. the
+// ウィンドウ/フルスクリーン toggle) without renderer/ebitengine needing to know
+// why — MUST therefore be set before the first Renderer is constructed
+// (SetConfig is called once, at construction, never re-read afterward).
+var MobilePlatform bool
+
 // SetConfig populates TG.config with the actual values from resources/
 // config.toml (via kag3.Config) rather than leaving TG.config an empty
 // object. This matters beyond just avoiding "reading a property of
@@ -114,6 +127,7 @@ func (v *VM) SetConfig(cfg *kag3.Config) {
 	config.Set("unReadTextSkip", boolToJSString(cfg.UnReadTextSkip))
 	config.Set("alreadyReadTextColor", cfg.AlreadyReadTextColor)
 	config.Set("autoRecordLabel", boolToJSString(cfg.AutoRecordLabel))
+	config.Set("isMobile", boolToJSString(MobilePlatform))
 }
 
 func boolToJSString(b bool) string {
