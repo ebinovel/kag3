@@ -84,6 +84,16 @@ var (
 	autoStartT     int
 )
 
+// skipActive reports whether skip should be in effect this frame: either
+// the persistent toggle (role="skip" button / quick menu) is on, or Ctrl is
+// currently held as a momentary skip — the usual VN-genre convention. Ctrl
+// is checked here rather than folded into isSkip itself so releasing it
+// doesn't clobber a skip the player toggled on independently via the
+// button.
+func skipActive() bool {
+	return isSkip || ebiten.IsKeyPressed(ebiten.KeyControl)
+}
+
 func init() {
 	textPosition = &kag3.TextPosition{}
 }
