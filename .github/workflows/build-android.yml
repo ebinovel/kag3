@@ -1,0 +1,112 @@
+name: build-android
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    # ubuntu-latest, unlike build-and-test's windows-latest (see that
+    # workflow's own comment on why the desktop build needs Windows):
+    # ebitenmobile bind cross-compiles *for* Android using the NDK's own
+    # clang, not the host's toolchain, so it doesn't need host-side
+    # X11/OpenGL dev headers the way building the desktop ebiten target on
+    # Linux would. It also sidesteps a Windows-only problem entirely: the
+    # NDK's aarch64-linux-android30-clang++.cmd batch wrapper hits Windows'
+    # ~8191-char command-line limit once mobile.aar's object file count
+    # grows (see example/mobile/androidapp/build-android.ps1's own
+    # -extld/-extldflags workaround for that, needed on a real Windows dev
+    # machine) — Linux's NDK wrapper scripts and much higher ARG_MAX don't
+    # hit that limit, so this job doesn't need the same workaround.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # example/ (including example/mobile) is only committed once its
+      # placeholder/original assets are ready — see CLAUDE.md's
+      # "Repository layout gotcha" and build.yml's own comment on the same
+      # point. Until then, this step's output gates every step below so
+      # this workflow shows green (skipped steps), not a permanently
+      # failing check, on every push. Once example/mobile is committed,
+      # this flips to true and the rest of the job runs with no further
+      # changes needed here.
+      - name: Check whether example/mobile is committed yet
+        id: check
+        run: |
+          if [ -f example/mobile/mobile.go ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::example/ isn't committed yet (see CLAUDE.md's Repository layout gotcha) — skipping the Android build."
+          fi
+
+      - name: Set up Go
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up JDK
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Installs the SDK cmdline-tools and accepts licenses; the Android
+      # Gradle Plugin auto-downloads whatever specific platform/build-tools
+      # versions app/build.gradle asks for (compileSdk 34) during the
+      # gradlew step below — same as it does on a fresh local machine, see
+      # app/build.gradle's own comment — so no explicit `sdkmanager
+      # --install "platforms;android-34"` is needed here.
+      - name: Set up Android SDK
+        if: steps.check.outputs.exists == 'true'
+        uses: android-actions/setup-android@v3
+
+      # r22b == "22.1.7171670", the exact version app/build.gradle pins via
+      # ndkVersion — keep these two in sync if that ever changes.
+      - name: Set up Android NDK
+        if: steps.check.outputs.exists == 'true'
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r22b
+
+      # An old prebuilt ebitenmobile crashes gobind with a nil-pointer panic
+      # in go/types.(*StdSizes).Sizeof against this repo's dependency
+      # versions (hit locally with a several-years-old cached binary) —
+      # installing fresh against the Go toolchain set up above every run
+      # sidesteps that entirely.
+      - name: Install ebitenmobile
+        if: steps.check.outputs.exists == 'true'
+        run: go install github.com/hajimehoshi/ebiten/v2/cmd/ebitenmobile@latest
+
+      - name: ebitenmobile bind
+        if: steps.check.outputs.exists == 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          ebitenmobile bind \
+            -target android/arm64 \
+            -androidapi 30 \
+            -javapkg com.example.kag3example \
+            -o example/mobile/androidapp/app/libs/mobile.aar \
+            ./example/mobile
+
+      - name: gradlew assembleDebug
+        if: steps.check.outputs.exists == 'true'
+        working-directory: example/mobile/androidapp
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kag3example-debug-apk
+          path: example/mobile/androidapp/app/build/outputs/apk/debug/app-debug.apk
