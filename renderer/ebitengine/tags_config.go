@@ -42,6 +42,19 @@ var ConfigStorage struct {
 	Load func() ([]byte, error)
 }
 
+// settingsStore is the in-package counterpart to ConfigStorage, consulted
+// only when the exported hook above is unset (an embedding app's explicit
+// choice always wins). It exists because ConfigStorage's signature carries
+// no *Renderer, so an implementation can't namespace what it writes by
+// Config.Title — fine for Android, whose bridge is per-app anyway, but not
+// for storage_js.go, where every game served from one origin shares a
+// single localStorage. Same rationale and lifecycle as slotStore
+// (tags_save.go); nil means "use settingsPath and a real file".
+var settingsStore struct {
+	Save func(r *Renderer, data []byte) error
+	Load func(r *Renderer) ([]byte, error)
+}
+
 // handleConfigSave persists every variable currently in the "tf" namespace
 // (goja's tf object — see vm.go's ExportTF) as JSON. Deliberately generic:
 // this tag has no idea what config.ks chose to name its own settings
@@ -63,6 +76,12 @@ func handleConfigSave(ctx *tagCtx) error {
 	}
 	if ConfigStorage.Save != nil {
 		if err := ConfigStorage.Save(b); err != nil {
+			fmt.Printf("configsave failed: %v\n", err)
+		}
+		return nil
+	}
+	if settingsStore.Save != nil {
+		if err := settingsStore.Save(r, b); err != nil {
 			fmt.Printf("configsave failed: %v\n", err)
 		}
 		return nil
@@ -89,6 +108,12 @@ func handleConfigLoad(ctx *tagCtx) error {
 	var b []byte
 	if ConfigStorage.Load != nil {
 		loaded, err := ConfigStorage.Load()
+		if err != nil {
+			return nil
+		}
+		b = loaded
+	} else if settingsStore.Load != nil {
+		loaded, err := settingsStore.Load(r)
 		if err != nil {
 			return nil
 		}

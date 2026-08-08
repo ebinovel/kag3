@@ -1,8 +1,10 @@
 package ebitengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/color"
 	"os"
 	"strconv"
@@ -161,11 +163,10 @@ func loadSlotThumbnail(r *Renderer, slot int) *ebiten.Image {
 	if img, ok := slotThumbnailCache[slot]; ok {
 		return img
 	}
-	dir, err := saveDir(r)
-	if err != nil {
-		return nil
-	}
-	img, _, err := ebitenutil.NewImageFromFileSystem(os.DirFS(dir), fmt.Sprintf("slot_%d.png", slot))
+	// Decoded from bytes rather than through ebitenutil's fs.FS helper so
+	// both storage backends share one path — slotStore (storage_js.go) has
+	// no filesystem to hand os.DirFS. See readSlotFile (tags_save.go).
+	b, err := readSlotFile(r, slot, "png")
 	if err != nil {
 		// No thumbnail for this slot (savesnap/save_img was never used
 		// before saving it) — saveslot.png's baked-in "NO DATA" graphic
@@ -173,6 +174,12 @@ func loadSlotThumbnail(r *Renderer, slot int) *ebiten.Image {
 		slotThumbnailCache[slot] = nil
 		return nil
 	}
+	src, _, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		slotThumbnailCache[slot] = nil
+		return nil
+	}
+	img := ebiten.NewImageFromImage(src)
 	slotThumbnailCache[slot] = img
 	return img
 }
@@ -183,6 +190,9 @@ func loadSlotThumbnail(r *Renderer, slot int) *ebiten.Image {
 // minimal save format doesn't track separately; the file's own mtime is
 // equivalent information for free).
 func saveSlotInfo(r *Renderer, slot int) (exists bool, modTime time.Time) {
+	if slotStore.Info != nil {
+		return slotStore.Info(r, slot)
+	}
 	dir, err := saveDir(r)
 	if err != nil {
 		return false, time.Time{}
@@ -205,11 +215,7 @@ func hasSaveSlot(r *Renderer, slot int) bool {
 // screen), alongside the mtime saveSlotInfo already reports. A read/parse
 // failure yields "", same tolerant handling as a missing thumbnail.
 func saveSlotLastMessage(r *Renderer, slot int) string {
-	dir, err := saveDir(r)
-	if err != nil {
-		return ""
-	}
-	b, err := os.ReadFile(slotPath(dir, slot, "json"))
+	b, err := readSlotFile(r, slot, "json")
 	if err != nil {
 		return ""
 	}

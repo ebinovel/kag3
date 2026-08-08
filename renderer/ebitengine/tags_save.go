@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -712,6 +714,32 @@ func slotPath(dir string, slot int, ext string) string {
 	return filepath.Join(dir, fmt.Sprintf("slot_%d.%s", slot, ext))
 }
 
+// slotStore, if set, replaces the raw os.WriteFile/os.ReadFile/os.Stat calls
+// every save slot goes through (saveSlot/loadSlot here, plus
+// loadSlotThumbnail/saveSlotInfo/saveSlotLastMessage in tags_uiscreens.go —
+// those five are the entire persistent-slot I/O surface). All three fields
+// nil, the default, keeps the on-disk behavior every non-wasm platform uses.
+//
+// Deliberately unexported, unlike SaveDirFunc/ConfigStorage: the only
+// implementation is storage_js.go's, which lives in this same package
+// because localStorage needs nothing but syscall/js (whereas Android's
+// bridge has to live in the embedding app — it calls that app's own Java
+// class over JNI). Nothing outside this package needs to swap slot storage
+// yet; promote it to exported API if and when something does.
+//
+// Info is separate from Load rather than derived from it because the save
+// picker's row text is the file's *mtime* (saveSlotInfo, tags_uiscreens.go)
+// — a backend with no filesystem behind it has to record that timestamp
+// itself.
+//
+// Every hook takes *Renderer so an implementation can namespace by
+// Config.Title the same way saveDir's own directory layout does.
+var slotStore struct {
+	Save func(r *Renderer, slot int, ext string, data []byte) error
+	Load func(r *Renderer, slot int, ext string) ([]byte, error)
+	Info func(r *Renderer, slot int) (exists bool, modTime time.Time)
+}
+
 // lastSnapshot is the save slot thumbnail, written alongside the next
 // save*Slot call. Kept fresh automatically every frame (see drawScene in
 // renderer.go, which calls captureSnapshot right before drawModal — after
@@ -738,19 +766,39 @@ func captureSnapshot(buf *ebiten.Image) {
 }
 
 func (r *Renderer) saveSlot(slot int) error {
-	dir, err := saveDir(r)
+	b, err := json.MarshalIndent(r.buildSaveData(), "", "  ")
 	if err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(r.buildSaveData(), "", "  ")
+
+	// Both branches below do the same three things — write the JSON, drop the
+	// slot picker's now-stale thumbnail cache entry (tags_uiscreens.go), then
+	// write the new thumbnail best-effort — against their respective backend.
+	if slotStore.Save != nil {
+		if err := slotStore.Save(r, slot, "json", b); err != nil {
+			return err
+		}
+		delete(slotThumbnailCache, slot)
+		if lastSnapshot != nil {
+			// Thumbnail failures stay best-effort here exactly as they are
+			// in the file branch below (the os.Create error is deliberately
+			// dropped there) — a missing preview image must never turn into
+			// a failed save.
+			var buf bytes.Buffer
+			if err := png.Encode(&buf, lastSnapshot); err == nil {
+				_ = slotStore.Save(r, slot, "png", buf.Bytes())
+			}
+		}
+		return nil
+	}
+
+	dir, err := saveDir(r)
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(slotPath(dir, slot, "json"), b, 0o644); err != nil {
 		return err
 	}
-	// The slot picker's thumbnail cache (tags_uiscreens.go) may be holding a
-	// stale (or absent) decode of slot_<N>.png from before this save.
 	delete(slotThumbnailCache, slot)
 	if lastSnapshot != nil {
 		if f, err := os.Create(slotPath(dir, slot, "png")); err == nil {
@@ -761,12 +809,25 @@ func (r *Renderer) saveSlot(slot int) error {
 	return nil
 }
 
-func (r *Renderer) loadSlot(slot int) error {
+// readSlotFile reads one save slot's <ext> payload, through slotStore when
+// an implementation is registered (storage_js.go) and off disk otherwise.
+// Shared by loadSlot here and by the picker's own readers in
+// tags_uiscreens.go so the "which backend?" decision lives in exactly one
+// place. Note it never calls saveDir in the hook branch — on GOOS=js that
+// would fail outright (no $HOME for os.UserConfigDir/os.UserHomeDir).
+func readSlotFile(r *Renderer, slot int, ext string) ([]byte, error) {
+	if slotStore.Load != nil {
+		return slotStore.Load(r, slot, ext)
+	}
 	dir, err := saveDir(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	b, err := os.ReadFile(slotPath(dir, slot, "json"))
+	return os.ReadFile(slotPath(dir, slot, ext))
+}
+
+func (r *Renderer) loadSlot(slot int) error {
+	b, err := readSlotFile(r, slot, "json")
 	if err != nil {
 		return err
 	}

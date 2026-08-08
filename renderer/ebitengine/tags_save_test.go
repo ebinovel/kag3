@@ -1,12 +1,15 @@
 package ebitengine
 
 import (
+	"errors"
+	"fmt"
 	"image/color"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/ebinovel/kag3"
 )
@@ -52,6 +55,51 @@ func TestSaveDirRespectsKAG3SaveDirEnvVar(t *testing.T) {
 	}
 	if info, err := os.Stat(override); err != nil || !info.IsDir() {
 		t.Errorf("expected saveDir to create directory %q: %v", override, err)
+	}
+}
+
+// TestSaveDirRespectsSaveDirFunc covers the embedding-app override hook
+// (e.g. example/mobile's android-only JNI bridge, obtaining
+// Context.getFilesDir() — see SaveDirFunc's own doc comment): when set (and
+// saveBaseDirOverride/KAG3_SAVE_DIR aren't), saveDir must use whatever it
+// returns as the base directory, still applying the usual kag3/<title>/
+// saves suffix on top.
+func TestSaveDirRespectsSaveDirFunc(t *testing.T) {
+	saveBaseDirOverride = ""
+	base := t.TempDir()
+	SaveDirFunc = func() (string, error) { return base, nil }
+	defer func() { SaveDirFunc = nil }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.manager.Config = &kag3.Config{Title: "TestGame"}
+	got, err := saveDir(r)
+	if err != nil {
+		t.Fatalf("saveDir error: %v", err)
+	}
+	want := filepath.Join(base, "kag3", "TestGame", "saves")
+	if got != want {
+		t.Errorf("saveDir() = %q, want %q (SaveDirFunc's result + kag3/<title>/saves suffix)", got, want)
+	}
+}
+
+// TestSaveDirSaveDirFuncLosesToSaveBaseDirOverride confirms priority order:
+// saveBaseDirOverride (the in-package Go test override) still wins over
+// SaveDirFunc when both are set, matching KAG3_SAVE_DIR's own precedence
+// over both.
+func TestSaveDirSaveDirFuncLosesToSaveBaseDirOverride(t *testing.T) {
+	override := t.TempDir()
+	saveBaseDirOverride = override
+	defer func() { saveBaseDirOverride = "" }()
+
+	SaveDirFunc = func() (string, error) {
+		t.Fatal("SaveDirFunc should not be consulted when saveBaseDirOverride is set")
+		return "", nil
+	}
+	defer func() { SaveDirFunc = nil }()
+
+	r := newSaveTestRendererWithVars(t)
+	if _, err := saveDir(r); err != nil {
+		t.Fatalf("saveDir error: %v", err)
 	}
 }
 
@@ -423,6 +471,166 @@ func TestApplySaveDataLoadsMenuButtonImageForFreshProcess(t *testing.T) {
 	}
 	if menuButtonImg == nil {
 		t.Error("menuButtonImg after load = nil, want it lazily loaded from system/images")
+	}
+}
+
+// TestSlotStoreOverrideBypassesFilesystem is the deliverable for the wasm
+// save backend (storage_js.go): with slotStore registered, every save-slot
+// read and write must route through it instead of touching a real file —
+// and, critically, without ever calling saveDir. On GOOS=js saveDir fails
+// outright (os.UserConfigDir/os.UserHomeDir both error with no $HOME), so
+// this test deliberately leaves saveBaseDirOverride and KAG3_SAVE_DIR
+// unset: anything still reaching for a directory would surface here as an
+// error rather than silently working off the maintainer's real config dir.
+func TestSlotStoreOverrideBypassesFilesystem(t *testing.T) {
+	saveBaseDirOverride = ""
+	// saveSlot PNG-encodes lastSnapshot, which reads pixels back from the
+	// GPU and panics outside a running ebiten game loop (same guard as
+	// TestSlotPickerRowsReflectSavedSlot, tags_uiscreens_test.go).
+	renderBuffer, lastSnapshot = nil, nil
+
+	type storedSlot struct {
+		data    []byte
+		savedAt time.Time
+	}
+	stored := map[string]storedSlot{}
+	key := func(slot int, ext string) string { return fmt.Sprintf("%d.%s", slot, ext) }
+
+	// With saveBaseDirOverride/KAG3_SAVE_DIR both unset, SaveDirFunc is the
+	// next thing saveDir consults — so this doubles as a tripwire proving
+	// no code path below reaches for a directory at all (on Windows saveDir
+	// would otherwise quietly succeed against the real %AppData%, hiding
+	// exactly the bug that breaks the browser build).
+	SaveDirFunc = func() (string, error) {
+		t.Error("saveDir must not be consulted while slotStore is registered (it fails outright on GOOS=js)")
+		return "", errors.New("saveDir should not have been called")
+	}
+	defer func() { SaveDirFunc = nil }()
+
+	slotStore.Save = func(r *Renderer, slot int, ext string, data []byte) error {
+		stored[key(slot, ext)] = storedSlot{data: append([]byte(nil), data...), savedAt: time.Unix(1700000000, 0)}
+		return nil
+	}
+	slotStore.Load = func(r *Renderer, slot int, ext string) ([]byte, error) {
+		s, ok := stored[key(slot, ext)]
+		if !ok {
+			return nil, fmt.Errorf("no data for slot %d (%s)", slot, ext)
+		}
+		return s.data, nil
+	}
+	slotStore.Info = func(r *Renderer, slot int) (bool, time.Time) {
+		s, ok := stored[key(slot, "json")]
+		if !ok {
+			return false, time.Time{}
+		}
+		return true, s.savedAt
+	}
+	defer func() { slotStore.Save, slotStore.Load, slotStore.Info = nil, nil, nil }()
+	// loadSlotThumbnail below negatively-caches slot 2; clear it so a later
+	// test isn't handed this test's "no thumbnail" answer (see CLAUDE.md on
+	// this package's shared package-level state).
+	defer func() { clear(slotThumbnailCache) }()
+
+	r := newSaveTestRendererWithVars(t)
+	r.manager.Config = &kag3.Config{ScreenWidth: 1280, ScreenHeight: 720, ConfigSaveSlotNum: 3}
+	r.texts = map[int][]Text{0: {{Text: "またね。"}}}
+
+	if err := r.saveSlot(2); err != nil {
+		t.Fatalf("saveSlot through slotStore: %v", err)
+	}
+	if _, ok := stored[key(2, "json")]; !ok {
+		t.Fatal("expected saveSlot to write slot 2's JSON through slotStore.Save")
+	}
+
+	// Round-trip back through the same hook.
+	r2 := newSaveTestRendererWithVars(t)
+	r2.manager.Config = r.manager.Config
+	if err := r2.loadSlot(2); err != nil {
+		t.Fatalf("loadSlot through slotStore: %v", err)
+	}
+
+	// The picker's three readers must agree with what was stored.
+	exists, modTime := saveSlotInfo(r, 2)
+	if !exists || !modTime.Equal(time.Unix(1700000000, 0)) {
+		t.Errorf("saveSlotInfo(2) = (%v, %v), want (true, the timestamp slotStore.Info reported)", exists, modTime)
+	}
+	if exists, _ := saveSlotInfo(r, 1); exists {
+		t.Error("saveSlotInfo(1) reported data for a slot that was never saved")
+	}
+	if got := saveSlotLastMessage(r, 2); got != "またね。" {
+		t.Errorf("saveSlotLastMessage(2) = %q, want %q", got, "またね。")
+	}
+	rows := slotPickerRows(r)
+	if !rows[1].HasData || rows[1].Message != "またね。" {
+		t.Errorf("slotPickerRows()[1] = %+v, want HasData=true and the saved message", rows[1])
+	}
+
+	// A slot with JSON but no thumbnail must degrade to "no thumbnail",
+	// not error — loadSlotThumbnail's own long-standing tolerance.
+	delete(slotThumbnailCache, 2)
+	if img := loadSlotThumbnail(r, 2); img != nil {
+		t.Error("expected no thumbnail for a slot stored without a PNG")
+	}
+}
+
+// TestSettingsStoreOverrideBypassesFilesystem is the [configsave]/
+// [configload] half of the same wasm backend, and pins the precedence
+// between the two hooks: the exported ConfigStorage (an embedding app's
+// explicit choice, e.g. Android's DataStore bridge) must win over the
+// in-package settingsStore when both are set.
+func TestSettingsStoreOverrideBypassesFilesystem(t *testing.T) {
+	saveBaseDirOverride = ""
+
+	var stored []byte
+	settingsStore.Save = func(r *Renderer, data []byte) error {
+		stored = append([]byte(nil), data...)
+		return nil
+	}
+	settingsStore.Load = func(r *Renderer) ([]byte, error) { return stored, nil }
+	defer func() { settingsStore.Save, settingsStore.Load = nil, nil }()
+
+	// Same tripwire as TestSlotStoreOverrideBypassesFilesystem: settingsPath
+	// goes through saveDir, which must never be reached here.
+	SaveDirFunc = func() (string, error) {
+		t.Error("saveDir must not be consulted while settingsStore is registered")
+		return "", errors.New("saveDir should not have been called")
+	}
+	defer func() { SaveDirFunc = nil }()
+
+	r := newTestRenderer()
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "iscript", Body: "tf.set_speed_idx = 4;"}, &i, 0); err != nil {
+		t.Fatalf("iscript: %v", err)
+	}
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "configsave"}, &i, 0); err != nil {
+		t.Fatalf("configsave: %v", err)
+	}
+	if len(stored) == 0 {
+		t.Fatal("expected [configsave] to write through settingsStore.Save")
+	}
+
+	r2 := newTestRenderer()
+	if err := dispatchTag(r2, fakeYield(), kag3.TagObject{Name: "configload"}, &i, 0); err != nil {
+		t.Fatalf("configload: %v", err)
+	}
+	if got := r2.vm.EvalString("tf.set_speed_idx"); got != "4" {
+		t.Errorf("tf.set_speed_idx after configload = %q, want %q", got, "4")
+	}
+
+	// ConfigStorage set as well: it must take precedence, leaving
+	// settingsStore untouched.
+	configStorageUsed := false
+	ConfigStorage.Save = func(data []byte) error { configStorageUsed = true; return nil }
+	defer func() { ConfigStorage.Save = nil }()
+	settingsStore.Save = func(r *Renderer, data []byte) error {
+		t.Error("settingsStore.Save must not be used while ConfigStorage.Save is set")
+		return nil
+	}
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "configsave"}, &i, 0); err != nil {
+		t.Fatalf("configsave (ConfigStorage precedence): %v", err)
+	}
+	if !configStorageUsed {
+		t.Error("expected ConfigStorage.Save to win over settingsStore.Save")
 	}
 }
 
