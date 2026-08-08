@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ebinovel/kag3"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestHandleCurrentTracksLayer(t *testing.T) {
@@ -128,6 +129,61 @@ func TestTicksPerCharNeverZero(t *testing.T) {
 	textSpeedMs = 0
 	if got := ticksPerChar(); got < 1 {
 		t.Errorf("ticksPerChar() = %d, want >= 1 even for speed=0", got)
+	}
+}
+
+// TestTicksPerCharUsesSkipSpeedWhileSkipping is the deliverable for the
+// "skip is too instant to read" fix: while skipActive() (isSkip here, since
+// Ctrl-held is real ebiten input this package has no precedent for faking),
+// ticksPerChar() must use skipCharSpeedMs instead of the script's own
+// textSpeedMs, and go back to textSpeedMs once skip ends.
+func TestTicksPerCharUsesSkipSpeedWhileSkipping(t *testing.T) {
+	origTextSpeedMs, origSkipCharSpeedMs, origIsSkip := textSpeedMs, skipCharSpeedMs, isSkip
+	defer func() { textSpeedMs, skipCharSpeedMs, isSkip = origTextSpeedMs, origSkipCharSpeedMs, origIsSkip }()
+
+	textSpeedMs = 83
+	skipCharSpeedMs = 15
+
+	isSkip = false
+	if got, want := ticksPerChar(), 83*ebiten.TPS()/1000; got != want {
+		t.Errorf("ticksPerChar() while not skipping = %d, want %d (textSpeedMs)", got, want)
+	}
+
+	isSkip = true
+	want := 15 * ebiten.TPS() / 1000
+	if want < 1 {
+		want = 1 // ticksPerChar's own floor — 15ms is sub-tick at low TPS
+	}
+	if got := ticksPerChar(); got != want {
+		t.Errorf("ticksPerChar() while skipping = %d, want %d (skipCharSpeedMs)", got, want)
+	}
+}
+
+// TestSkipShouldAdvanceWaitsBeforeAdvancing is the other half: even once a
+// line has fully revealed (isWait=true), skip must not immediately treat it
+// as read — it needs skipWaitMs of visible time first, exactly like isAuto
+// waits autoWaitMs (Update(), renderer.go). This is the direct regression
+// test for skip previously forcing isWait+oldTick unconditionally every
+// frame, which could satisfy a line's wait before it was ever drawn.
+func TestSkipShouldAdvanceWaitsBeforeAdvancing(t *testing.T) {
+	const skipWaitMs = 150
+	ticksNeeded := skipWaitMs * ebiten.TPS() / 1000
+	if ticksNeeded < 2 {
+		t.Fatalf("test assumes skipWaitMs=%d needs >=2 ticks at TPS=%d, got %d", skipWaitMs, ebiten.TPS(), ticksNeeded)
+	}
+
+	autoStartT := 1000
+	if skipShouldAdvance(true, autoStartT, autoStartT, skipWaitMs) {
+		t.Error("skipShouldAdvance = true on the same tick isWait became true, want false (line never got a chance to be drawn)")
+	}
+	if skipShouldAdvance(true, autoStartT+ticksNeeded-1, autoStartT, skipWaitMs) {
+		t.Error("skipShouldAdvance = true one tick before skipWaitMs has elapsed, want false")
+	}
+	if !skipShouldAdvance(true, autoStartT+ticksNeeded, autoStartT, skipWaitMs) {
+		t.Error("skipShouldAdvance = false once skipWaitMs has fully elapsed, want true")
+	}
+	if skipShouldAdvance(false, autoStartT+ticksNeeded, autoStartT, skipWaitMs) {
+		t.Error("skipShouldAdvance = true while isWait is still false (line hasn't finished revealing), want false")
 	}
 }
 

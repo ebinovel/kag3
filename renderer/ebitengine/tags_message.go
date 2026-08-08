@@ -140,6 +140,13 @@ var (
 	textNoWait         bool
 )
 
+// skipCharSpeedMs is the per-character reveal rate used instead of
+// textSpeedMs while skipActive() (renderer.go's Update note has the full
+// picture) — fast enough that even a long line finishes "typing" almost at
+// once, but not literally 0, so skipped text still visibly appears rather
+// than never being drawn at all.
+var skipCharSpeedMs = 15
+
 // KAG3_E2E_FAST forces textNoWait on at startup — an external-process E2E
 // harness (see e2e/) has no way to send a [nowait] tag or flip the
 // in-package textNoWait var directly, and glyph-by-glyph text reveal is by
@@ -152,7 +159,11 @@ func init() {
 }
 
 func ticksPerChar() int {
-	tpc := textSpeedMs * ebiten.TPS() / 1000
+	speed := textSpeedMs
+	if skipActive() {
+		speed = skipCharSpeedMs
+	}
+	tpc := speed * ebiten.TPS() / 1000
 	if tpc < 1 {
 		tpc = 1
 	}
@@ -222,6 +233,15 @@ func handleAutoStop(ctx *tagCtx) error {
 // autoWaitMs is how long auto-mode waits after a line finishes revealing
 // before advancing — Update() reads it instead of a hardcoded 3000ms.
 var autoWaitMs = 3000
+
+// skipWaitMs is skip mode's equivalent of autoWaitMs — how long a
+// fully-revealed line stays on screen before skip auto-advances past it.
+// Kept short (unlike autoWaitMs, which is meant to be read at) since skip
+// exists to blast through already-read text quickly; it's deliberately
+// *not* 0, though — see Update()'s own note on the regression this fixes,
+// where every line advanced within the same frame it appeared, before ever
+// being visibly drawn.
+var skipWaitMs = 150
 
 func handleAutoConfig(ctx *tagCtx) error {
 	v, ok := ctx.tag.Pm["speed"]

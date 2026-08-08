@@ -215,14 +215,25 @@ func (r *Renderer) Update() {
 			oldTick = tick
 		}
 	}
-	if isSkip {
-		isWait = true
-		oldTick = tick
-	}
 	if !isWait {
 		autoStartT = t
 	}
 	if isAuto && isWait && t-autoStartT >= autoWaitMs*ebiten.TPS()/1000 {
+		oldTick = tick
+	}
+	// Skip mode used to force isWait+oldTick unconditionally, every single
+	// frame, regardless of whether the line had even been drawn yet — a
+	// line could complete its reveal and satisfy [p]'s wait within the same
+	// frame it appeared, before ever showing on screen (reported as skip
+	// feeling instantaneous rather than readable). ticksPerChar()
+	// (tags_message.go) already reveals text faster than normal while
+	// skipActive(), so by the time isWait naturally goes true (the reveal
+	// finished, same mechanism a real click racing the reveal also hits —
+	// draw_message.go), the line has actually been visible for a moment.
+	// From there this mirrors the isAuto branch just above, only much
+	// shorter: autoStartT already tracks "when did isWait last become
+	// true", so skipWaitMs reuses it rather than needing its own clock.
+	if skipActive() && skipShouldAdvance(isWait, t, autoStartT, skipWaitMs) {
 		oldTick = tick
 	}
 	hitLinks(r)
@@ -256,6 +267,17 @@ func (r *Renderer) Update() {
 		}
 		tick++
 	}
+}
+
+// skipShouldAdvance is Update()'s skip-mode pacing decision, split out into
+// a pure function so it's testable without ebiten's real input/tick state —
+// no precedent in this package for faking those directly (see e.g.
+// dispatchOperationRowClickAt's own doc comment, tags_oprow.go). t and
+// autoStartT are both in the same tick unit Update() already tracks them
+// in; autoStartT is the tick isWait most recently became true (reset to t
+// on every frame isWait is false).
+func skipShouldAdvance(isWait bool, t, autoStartT, skipWaitMs int) bool {
+	return isWait && t-autoStartT >= skipWaitMs*ebiten.TPS()/1000
 }
 
 func (r *Renderer) initScript() {
