@@ -316,8 +316,8 @@ func backButtonRect(r *Renderer) modalRect {
 // backButtonImageName picks menu_button_close.png/close2.png depending on
 // whether (mX, mY) is currently hovering the back button — split out from
 // drawSlotPicker so it's testable without a real ebiten.CursorPosition().
-func backButtonImageName(back modalRect, mX, mY int) string {
-	if isColision(mX, mY, back.X, back.Y, back.W, back.H) {
+func backButtonImageName(back modalRect, mX, mY int, touch bool) string {
+	if isColisionTouch(mX, mY, back.X, back.Y, back.W, back.H, touch) {
 		return "menu_button_close2.png"
 	}
 	return "menu_button_close.png"
@@ -347,8 +347,8 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 	}
 
 	back := backButtonRect(r)
-	mX, mY := ebiten.CursorPosition()
-	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY)); backImg != nil {
+	mX, mY, _, _, touch := pointerState()
+	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY, touch)); backImg != nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(back.X), float64(back.Y))
 		buf.DrawImage(backImg, op)
@@ -445,16 +445,16 @@ func (r *Renderer) handleSlotPickerClick() {
 		slotPickerScrollY -= int(wheelY * slotPickerScrollStep)
 		clampSlotPickerScroll(r, r.manager.Config.ConfigSaveSlotNum)
 	}
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
 	if t == slotPickerOpenedFrame {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
 
 	back := backButtonRect(r)
-	if isColision(mX, mY, back.X, back.Y, back.W, back.H) {
+	if isColisionTouch(mX, mY, back.X, back.Y, back.W, back.H, touch) {
 		slotPickerActive = slotPickerNone
 		return
 	}
@@ -465,7 +465,7 @@ func (r *Renderer) handleSlotPickerClick() {
 		if screenY+slotPickerRowH <= viewportY || screenY >= viewportY+viewportH {
 			continue // scrolled out of the visible viewport
 		}
-		if !isColision(mX, mY, slotPickerRowX, screenY, slotPickerRowW, slotPickerRowH) {
+		if !isColisionTouch(mX, mY, slotPickerRowX, screenY, slotPickerRowW, slotPickerRowH, touch) {
 			continue
 		}
 		var err error

@@ -993,15 +993,15 @@ func handleDialogClick(screenW, screenH int) {
 	if activeDialog == nil || activeDialog.Result != 0 {
 		return
 	}
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
 	ok, ng := dialogButtonRects(screenW, screenH)
 	switch {
-	case isColision(mX, mY, ok.X, ok.Y, ok.W, ok.H):
+	case isColisionTouch(mX, mY, ok.X, ok.Y, ok.W, ok.H, touch):
 		activeDialog.Result = 1
-	case isColision(mX, mY, ng.X, ng.Y, ng.W, ng.H):
+	case isColisionTouch(mX, mY, ng.X, ng.Y, ng.W, ng.H, touch):
 		activeDialog.Result = 2
 	}
 }
@@ -1299,8 +1299,8 @@ func (r *Renderer) handleBacklogClick() {
 		clampBacklogScroll(viewportH)
 	}
 
-	mX, mY := ebiten.CursorPosition()
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, pressed, touch := pointerState()
+	if pressed {
 		if !backlogDragging {
 			backlogDragging = true
 			backlogDragLastY = mY
@@ -1319,17 +1319,20 @@ func (r *Renderer) handleBacklogClick() {
 	if t == backlogOpenedFrame {
 		return
 	}
+	// Right-click-to-close is a desktop-only convenience — touch has no
+	// equivalent gesture here, but the explicit close button and
+	// tap-outside-to-dismiss below already cover it.
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		backlogViewing = false
 		return
 	}
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	if justPressed {
 		contentRight := float64(w) - backlogPaddingLeftRight
 		closeFace := backlogFace(r, backlogCloseSize)
 		closeW, _ := text.Measure("閉じる ✕", closeFace, 0)
 		closeX := contentRight - closeW
 		closeY := backlogPaddingTop + (titleH - backlogCloseSize)
-		if isColision(mX, mY, int(closeX), int(closeY), int(closeW), int(backlogCloseSize)) {
+		if isColisionTouch(mX, mY, int(closeX), int(closeY), int(closeW), int(backlogCloseSize), touch) {
 			backlogViewing = false
 			return
 		}
@@ -1403,8 +1406,8 @@ func quickMenuButtons() []quickMenuButtonSpec {
 // (mX, mY) is currently over it — split out from drawQuickMenu so it's
 // testable without a real ebiten.CursorPosition(), same idea as
 // backButtonImageName in tags_uiscreens.go.
-func quickMenuButtonImageName(btn quickMenuButtonSpec, mX, mY int) string {
-	if isColision(mX, mY, btn.X, btn.Y, btn.W, btn.H) {
+func quickMenuButtonImageName(btn quickMenuButtonSpec, mX, mY int, touch bool) string {
+	if isColisionTouch(mX, mY, btn.X, btn.Y, btn.W, btn.H, touch) {
 		return btn.Hover
 	}
 	return btn.Normal
@@ -1430,15 +1433,15 @@ func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 	}
 
 	back := backButtonRect(r)
-	mX, mY := ebiten.CursorPosition()
-	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY)); backImg != nil {
+	mX, mY, _, _, touch := pointerState()
+	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY, touch)); backImg != nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(back.X), float64(back.Y))
 		buf.DrawImage(backImg, op)
 	}
 
 	for _, btn := range quickMenuButtons() {
-		if img := loadSystemImage(r, quickMenuButtonImageName(btn, mX, mY)); img != nil {
+		if img := loadSystemImage(r, quickMenuButtonImageName(btn, mX, mY, touch)); img != nil {
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Translate(float64(btn.X), float64(btn.Y))
 			buf.DrawImage(img, op)
@@ -1447,22 +1450,22 @@ func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 }
 
 func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
 	if t == menuOpenedFrame {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
 
 	back := backButtonRect(r)
-	if isColision(mX, mY, back.X, back.Y, back.W, back.H) {
+	if isColisionTouch(mX, mY, back.X, back.Y, back.W, back.H, touch) {
 		menuOpen = false
 		return
 	}
 
 	for idx, btn := range quickMenuButtons() {
-		if !isColision(mX, mY, btn.X, btn.Y, btn.W, btn.H) {
+		if !isColisionTouch(mX, mY, btn.X, btn.Y, btn.W, btn.H, touch) {
 			continue
 		}
 		switch idx {

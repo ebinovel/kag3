@@ -101,7 +101,7 @@ func TestDispatchTextSpeedIndicatorClickAtHitsCorrectSegment(t *testing.T) {
 	for i := 0; i < speedSegCount; i++ {
 		centerX := segX + float64(i)*(speedSegW+speedSegGap) + speedSegW/2
 		centerY := y + speedSegH/2
-		r.dispatchTextSpeedIndicatorClickAt(int(centerX), int(centerY))
+		r.dispatchTextSpeedIndicatorClickAt(int(centerX), int(centerY), false)
 		if got := filledSpeedSegments(); got != i+1 {
 			t.Errorf("click on segment %d: filledSpeedSegments() = %d, want %d", i, got, i+1)
 		}
@@ -127,7 +127,7 @@ func TestDispatchTextSpeedIndicatorClickAtIgnoredWhileGLinksActive(t *testing.T)
 	r.fontFace = newTestFontFace(t)
 	r.manager.Config.MessageBoxStyle = "redesigned" // exercise the glinks guard itself, not just the style gate
 	segX, y, _ := textSpeedIndicatorOrigin(r)
-	r.dispatchTextSpeedIndicatorClickAt(int(segX+speedSegW/2), int(y+speedSegH/2))
+	r.dispatchTextSpeedIndicatorClickAt(int(segX+speedSegW/2), int(y+speedSegH/2), false)
 
 	if textSpeedMs != 83 {
 		t.Errorf("textSpeedMs = %d after a click while glinks active, want unchanged 83", textSpeedMs)

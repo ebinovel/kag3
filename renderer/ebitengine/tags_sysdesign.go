@@ -7,7 +7,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 func init() {
@@ -95,12 +94,12 @@ func (r *Renderer) handleMenuButtonClick() {
 	if !sysViewVisible || !menuButtonVisible || menuButtonImg == nil {
 		return
 	}
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
 	x, y, w, h := menuButtonRect(r)
-	if isColision(mX, mY, x, y, w, h) {
+	if isColisionTouch(mX, mY, x, y, w, h, touch) {
 		menuOpen = true
 		menuOpenedFrame = t
 	}
@@ -207,7 +206,7 @@ func drawGlyph(buf *ebiten.Image) {
 	}
 	var cfg *glyphConfig
 	switch {
-	case isSkip:
+	case skipActive():
 		cfg = &glyphSkip
 	case isAuto:
 		cfg = &glyphAuto

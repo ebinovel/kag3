@@ -62,10 +62,10 @@ func drawGLinks(r *Renderer, buf *ebiten.Image) {
 	if isJump {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
+	mX, mY, _, _, touch := pointerState()
 	for _, glink := range glinks {
 		x, y, w, h := float64(glink.X), float64(glink.Y), float64(glink.Width), float64(glink.Height)
-		hovered := isColision(mX, mY, glink.X, glink.Y, glink.Width, glink.Height)
+		hovered := isColisionTouch(mX, mY, glink.X, glink.Y, glink.Width, glink.Height, touch)
 
 		fillRect(buf, x, y, w, h, glinkBoxBg)
 		if hovered {

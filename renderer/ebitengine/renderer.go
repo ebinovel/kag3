@@ -172,7 +172,8 @@ func (r *Renderer) StartAtLabel(name string) bool {
 }
 
 func doNext() bool {
-	return inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
+	_, _, justPressed, _, _ := pointerState()
+	return justPressed || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
 }
 
 // loadScript loads a scenario file and re-points the renderer at it,
@@ -714,4 +715,23 @@ func parseColor(value string) (r, g, b int, err error) {
 
 func isColision(mX, mY, x, y, width, height int) bool {
 	return mX >= x && mX <= x+width && mY >= y && mY <= y+height
+}
+
+// touchHitPadding widens a touch tap's hit-test rect by this many logical px
+// on every side without touching anything's drawn size — pointerState()
+// already reports touch coordinates in the same logical space the visual
+// layout uses (input_hit.go), so this alone makes small buttons/links
+// easier to hit on a phone with no per-screen redesign needed. Only kicks
+// in when isColisionTouch's touch argument is true (i.e. pointerState()'s
+// touch branch fired), so a mouse/desktop click is unaffected.
+const touchHitPadding = 16
+
+func isColisionTouch(mX, mY, x, y, width, height int, touch bool) bool {
+	if touch {
+		x -= touchHitPadding
+		y -= touchHitPadding
+		width += touchHitPadding * 2
+		height += touchHitPadding * 2
+	}
+	return isColision(mX, mY, x, y, width, height)
 }

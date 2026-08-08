@@ -6,7 +6,6 @@ import (
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
@@ -112,11 +111,14 @@ func openConfigScreen(r *Renderer) {
 		TextPosition:   *textPosition,
 		Ptexts:         ptexts,
 		CharaNamePText: charaNamePText,
+		ViewCharas:     viewCharas,
 	})
-	// config.ks is a full-screen layout with no ptext areas of its own
-	// inherited from wherever it was opened — see sleepFrame's doc comment
-	// (renderer.go). [awakegame] restores the snapshot above.
+	// config.ks is a full-screen layout with no ptext areas or standing
+	// characters of its own inherited from wherever it was opened — see
+	// sleepFrame's doc comment (renderer.go). [awakegame] restores the
+	// snapshot above.
 	ptexts = make(map[string]*kag3.PText)
+	viewCharas = nil
 	screenChanged = true
 	r.loadScript("config.ks")
 	jumpIndex = 0
@@ -224,7 +226,7 @@ func drawOperationRow(r *Renderer, buf *ebiten.Image) {
 			}
 		case item.Btn.Label == "AUTO" && isAuto:
 			col = opRowActiveColor
-		case item.Btn.Label == "SKIP" && isSkip:
+		case item.Btn.Label == "SKIP" && skipActive():
 			col = opRowActiveColor
 		}
 		op := &text.DrawOptions{}
@@ -238,11 +240,11 @@ func (r *Renderer) handleOperationRowClick() {
 	if !opRowActive(r) {
 		return
 	}
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
-	r.dispatchOperationRowClickAt(mX, mY)
+	r.dispatchOperationRowClickAt(mX, mY, touch)
 }
 
 // dispatchOperationRowClickAt is handleOperationRowClick's testable core —
@@ -250,14 +252,14 @@ func (r *Renderer) handleOperationRowClick() {
 // to fake ebiten's real mouse-press state (no precedent for that exists in
 // this package; see tags_sysdesign_test.go's TestMenuButtonClickOpensQuickMenu
 // for the same constraint on the pre-existing menu button).
-func (r *Renderer) dispatchOperationRowClickAt(mX, mY int) {
+func (r *Renderer) dispatchOperationRowClickAt(mX, mY int, touch bool) {
 	items, total := opRowLayout(r)
 	startX, y := opRowOrigin(total)
 	for _, item := range items {
 		if item.IsDivider {
 			continue
 		}
-		if isColision(mX, mY, int(startX+item.X), int(y), int(item.W), int(opRowDividerH)) {
+		if isColisionTouch(mX, mY, int(startX+item.X), int(y), int(item.W), int(opRowDividerH), touch) {
 			if item.Btn.Role != "" {
 				if fn, ok := buttonRoles[item.Btn.Role]; ok {
 					fn(r)

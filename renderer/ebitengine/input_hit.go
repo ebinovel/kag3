@@ -9,21 +9,51 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
+// pointerState returns the effective pointer position and press state,
+// unifying mouse (desktop/wasm) and touch (mobile). ebiten.CursorPosition()
+// always reports (0,0) on mobile native apps (see its own doc comment) —
+// hit-testing there needs the touch API instead. pressed is true for as
+// long as the button/touch is held (e.g. backlog's drag-to-scroll);
+// justPressed is true only on the frame it started (e.g. tap-to-advance,
+// same as a mouse left-click just-pressed). touch reports which branch fired
+// — callers thread it into isColisionTouch (renderer.go) so tap targets get
+// a little extra forgiveness on a touchscreen without changing anything a
+// mouse user sees.
+func pointerState() (x, y int, justPressed, pressed, touch bool) {
+	if ids := ebiten.AppendTouchIDs(nil); len(ids) > 0 {
+		x, y := ebiten.TouchPosition(ids[0])
+		just := false
+		for _, jid := range inpututil.AppendJustPressedTouchIDs(nil) {
+			if jid == ids[0] {
+				just = true
+				break
+			}
+		}
+		return x, y, just, true, true
+	}
+	x, y = ebiten.CursorPosition()
+	return x, y, inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft), ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft), false
+}
+
 // hitLinks hit-tests every [link]'s text choices against the cursor,
 // setting hoveringClickable on hover and, on click, loading link.Storage
-// (if set) and jumping to link.Target.
+// (if set) and jumping to link.Target. Returns as soon as one choice
+// consumes a justPressed click — necessary now that isColisionTouch can pad
+// adjacent hit-boxes into overlapping each other on a touchscreen (see
+// hitButtons' own note on the same fix); without this, a single tap could
+// dispatch two choices in the same frame.
 func hitLinks(r *Renderer) {
 	for i, link := range links {
-		mX, mY := ebiten.CursorPosition()
+		mX, mY, justPressed, _, touch := pointerState()
 		for j, t := range link.Texts {
 			x, y := textPosition.Left, textPosition.Top
 			w, h := text.Measure(t.Val, r.fontFace, 0)
 			marginLeft := x + textPosition.MarginLeft
 			marginTop := y + textPosition.MarginTop + int(h)*(i+j)
-			if isColision(mX, mY, marginLeft, marginTop, int(w), int(h)) {
+			if isColisionTouch(mX, mY, marginLeft, marginTop, int(w), int(h), touch) {
 				hoveringClickable = true
 				//fmt.Println("isCollsion", mX, mY)
-				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if justPressed {
 					if link.Storage != "" {
 						screenChanged = true
 						r.loadScript(link.Storage)
@@ -33,6 +63,7 @@ func hitLinks(r *Renderer) {
 						jumpIndex = v.Index
 						isJump = true
 					}
+					return
 				}
 			}
 		}
@@ -41,13 +72,15 @@ func hitLinks(r *Renderer) {
 
 // hitGLinks hit-tests every [glink]'s rect against the cursor, setting
 // hoveringClickable on hover and, on click, loading glink.Storage (if set)
-// and jumping to glink.Target.
+// and jumping to glink.Target. Returns as soon as one glink consumes a
+// justPressed click — see hitButtons' note on why this matters once
+// isColisionTouch is padding hit-boxes on a touchscreen.
 func hitGLinks(r *Renderer) {
 	for _, glink := range glinks {
-		mX, mY := ebiten.CursorPosition()
-		if isColision(mX, mY, glink.X, glink.Y, glink.Width, glink.Height) {
+		mX, mY, justPressed, _, touch := pointerState()
+		if isColisionTouch(mX, mY, glink.X, glink.Y, glink.Width, glink.Height, touch) {
 			hoveringClickable = true
-			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			if justPressed {
 				if glink.Storage != "" {
 					screenChanged = true
 					r.loadScript(glink.Storage)
@@ -62,6 +95,7 @@ func hitGLinks(r *Renderer) {
 					jumpIndex = v.Index
 					isJump = true
 				}
+				return
 			}
 		}
 	}
@@ -71,13 +105,23 @@ func hitGLinks(r *Renderer) {
 // setting hoveringClickable on hover and, on click, evaluating exp=/preexp=,
 // loading button.Storage (with role="sleepgame"'s extra return-address
 // bookkeeping), dispatching button.Role via buttonRoles (role_dispatch.go),
-// and finally jumping to button.Target.
+// and finally jumping to button.Target. Returns as soon as one button
+// consumes a justPressed click, rather than letting every button in the
+// slice react to the same tap — this used to be harmless when hit-boxes
+// never overlapped, but isColisionTouch's touch padding (renderer.go) can
+// now make two buttons meant to sit flush against each other (e.g.
+// config.ks's 2-choice toggle rows, each half exactly touching the other
+// with zero gap) overlap by touchHitPadding*2 px in the middle. Without
+// this return, a tap landing in that sliver dispatched *both* buttons'
+// exp= in the same frame — whichever button came later in this slice won
+// the tf.set_* assignment, silently overriding the one actually tapped
+// (regression: Android's スキップ対象 toggle showing the wrong highlight).
 func hitButtons(r *Renderer) {
 	for _, button := range buttons {
-		mX, mY := ebiten.CursorPosition()
-		if isColision(mX, mY, button.X, button.Y, button.Width, button.Height) {
+		mX, mY, justPressed, _, touch := pointerState()
+		if isColisionTouch(mX, mY, button.X, button.Y, button.Width, button.Height, touch) {
 			hoveringClickable = true
-			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			if justPressed {
 				fmt.Printf("click button:%+v\n", button)
 				fmt.Printf("labels:%+v\n", r.labels)
 				// Must run before Storage/Role/Target below: config.ks's
@@ -100,13 +144,16 @@ func hitButtons(r *Renderer) {
 							TextPosition:   *textPosition,
 							Ptexts:         ptexts,
 							CharaNamePText: charaNamePText,
+							ViewCharas:     viewCharas,
 						})
 						// The sleepgame target (e.g. config.ks) is a
-						// full-screen layout with no ptext areas of its own
-						// inherited from wherever it was opened — see
-						// sleepFrame's doc comment (renderer.go).
-						// [awakegame] restores the snapshot above.
+						// full-screen layout with no ptext areas or standing
+						// characters of its own inherited from wherever it
+						// was opened — see sleepFrame's doc comment
+						// (renderer.go). [awakegame] restores the snapshot
+						// above.
 						ptexts = make(map[string]*kag3.PText)
+						viewCharas = nil
 					}
 					screenChanged = true
 					r.loadScript(button.Storage)
@@ -121,6 +168,7 @@ func hitButtons(r *Renderer) {
 				if button.Target != "" {
 					r.buttonTargetJump(button.Target)
 				}
+				return
 			}
 		}
 	}

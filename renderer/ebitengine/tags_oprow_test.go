@@ -110,7 +110,7 @@ func TestDispatchOperationRowClickAtRunsKnownRole(t *testing.T) {
 		t.Fatal("expected a SKIP button in the layout")
 	}
 
-	r.dispatchOperationRowClickAt(int(startX+skipItem.X+1), int(y+1))
+	r.dispatchOperationRowClickAt(int(startX+skipItem.X+1), int(y+1), false)
 	if !isSkip {
 		t.Error("expected clicking SKIP to dispatch buttonRoles[\"skip\"] and set isSkip = true")
 	}
@@ -155,7 +155,7 @@ func TestDispatchOperationRowClickAtOpensConfigViaSleepgamePath(t *testing.T) {
 	// FS) — that's fine, openConfigScreen's sleepStack push and
 	// isJump/jumpIndex bookkeeping happen unconditionally before the
 	// (unchecked, same as hitButtons' own call) loadScript call.
-	r.dispatchOperationRowClickAt(int(startX+configItem.X+1), int(y+1))
+	r.dispatchOperationRowClickAt(int(startX+configItem.X+1), int(y+1), false)
 
 	if len(r.sleepStack) != beforeSleepStackLen+1 {
 		t.Fatalf("sleepStack len = %d, want %d (one frame pushed)", len(r.sleepStack), beforeSleepStackLen+1)
@@ -172,15 +172,20 @@ func TestDispatchOperationRowClickAtOpensConfigViaSleepgamePath(t *testing.T) {
 // bleeding the caller's [ptext] areas (e.g. title.ks's title/menu labels)
 // through its own full-screen layout, and losing them (e.g. scene1.ks's
 // character name-plate) on the way back — see sleepFrame's doc comment
-// (renderer.go). openConfigScreen must snapshot ptexts/charaNamePText into
-// the pushed frame and clear the live map so config.ks starts blank;
-// [awakegame] must restore both.
+// (renderer.go). openConfigScreen must snapshot ptexts/charaNamePText/
+// viewCharas into the pushed frame and clear the live state so config.ks
+// starts blank; [awakegame] must restore all three. viewCharas is the same
+// bug for standing-character sprites — reported live, seen on both Android
+// and desktop, as a leftover character sprite drawn overlapping config.ks's
+// own settings rows.
 func TestOpenConfigScreenRoundTripsPtexts(t *testing.T) {
 	savedTextPosition, savedBg, savedBg2 := textPosition, bg, bg2
 	savedPtexts, savedCharaNamePText := ptexts, charaNamePText
+	savedViewCharas := viewCharas
 	defer func() {
 		textPosition, bg, bg2 = savedTextPosition, savedBg, savedBg2
 		ptexts, charaNamePText = savedPtexts, savedCharaNamePText
+		viewCharas = savedViewCharas
 	}()
 
 	textPosition = &kag3.TextPosition{Visible: true, Left: 96, Top: 736, Width: 1728, Height: 300, MarginRight: 56}
@@ -190,6 +195,9 @@ func TestOpenConfigScreenRoundTripsPtexts(t *testing.T) {
 		"title_main": {Name: "title_main", Text: "たそがれ図書室"},
 	}
 	charaNamePText = "chara_name_area"
+	viewCharas = []*kag3.CharaShow{
+		{Name: "nagi", Face: "shy"},
+	}
 
 	r := newTestRendererWithImageFS(t, map[string][]byte{})
 	r.fontFace = newTestFontFace(t)
@@ -203,10 +211,19 @@ func TestOpenConfigScreenRoundTripsPtexts(t *testing.T) {
 	if len(ptexts) != 0 {
 		t.Errorf("ptexts after openConfigScreen = %+v, want empty (config.ks's own full-screen layout, no inherited areas)", ptexts)
 	}
+	if len(viewCharas) != 0 {
+		t.Errorf("viewCharas after openConfigScreen = %+v, want empty (config.ks's own full-screen layout, no leftover character sprites)", viewCharas)
+	}
 	if n := len(r.sleepStack); n == 0 {
 		t.Fatal("expected openConfigScreen to push a sleepFrame")
-	} else if got := r.sleepStack[n-1].Ptexts["title_main"]; got == nil || got.Text != "たそがれ図書室" {
-		t.Errorf("pushed sleepFrame.Ptexts[title_main] = %+v, want the snapshotted title text", got)
+	} else {
+		frame := r.sleepStack[n-1]
+		if got := frame.Ptexts["title_main"]; got == nil || got.Text != "たそがれ図書室" {
+			t.Errorf("pushed sleepFrame.Ptexts[title_main] = %+v, want the snapshotted title text", got)
+		}
+		if len(frame.ViewCharas) != 1 || frame.ViewCharas[0].Name != "nagi" {
+			t.Errorf("pushed sleepFrame.ViewCharas = %+v, want the snapshotted nagi entry", frame.ViewCharas)
+		}
 	}
 
 	i := 0
@@ -218,6 +235,9 @@ func TestOpenConfigScreenRoundTripsPtexts(t *testing.T) {
 	}
 	if charaNamePText != "chara_name_area" {
 		t.Errorf("charaNamePText after awakegame = %q, want restored %q", charaNamePText, "chara_name_area")
+	}
+	if len(viewCharas) != 1 || viewCharas[0].Name != "nagi" {
+		t.Errorf("viewCharas after awakegame = %+v, want restored nagi entry", viewCharas)
 	}
 }
 

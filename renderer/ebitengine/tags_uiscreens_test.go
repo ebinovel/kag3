@@ -203,10 +203,10 @@ func TestBackButtonRectSizeFallsBackWithoutImage(t *testing.T) {
 
 func TestBackButtonImageNameSwapsOnHover(t *testing.T) {
 	back := modalRect{X: 100, Y: 100, W: 50, H: 50}
-	if got := backButtonImageName(back, 0, 0); got != "menu_button_close.png" {
+	if got := backButtonImageName(back, 0, 0, false); got != "menu_button_close.png" {
 		t.Errorf("cursor outside the button = %q, want menu_button_close.png", got)
 	}
-	if got := backButtonImageName(back, 125, 125); got != "menu_button_close2.png" {
+	if got := backButtonImageName(back, 125, 125, false); got != "menu_button_close2.png" {
 		t.Errorf("cursor inside the button = %q, want menu_button_close2.png", got)
 	}
 }
@@ -238,10 +238,10 @@ func TestQuickMenuButtonsOrderAndImages(t *testing.T) {
 
 func TestQuickMenuButtonImageNameSwapsOnHover(t *testing.T) {
 	btn := quickMenuButtonSpec{Normal: "a.png", Hover: "a2.png", X: 100, Y: 100, W: 50, H: 50}
-	if got := quickMenuButtonImageName(btn, 0, 0); got != "a.png" {
+	if got := quickMenuButtonImageName(btn, 0, 0, false); got != "a.png" {
 		t.Errorf("cursor outside the button = %q, want a.png", got)
 	}
-	if got := quickMenuButtonImageName(btn, 125, 125); got != "a2.png" {
+	if got := quickMenuButtonImageName(btn, 125, 125, false); got != "a2.png" {
 		t.Errorf("cursor inside the button = %q, want a2.png", got)
 	}
 }

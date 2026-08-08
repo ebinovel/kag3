@@ -5,13 +5,12 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
 // ptextBgPaddingX/Y position a [ptext bg=]'s text inside its background
 // image (tags_text.go/renderer.go's drawPTexts) — matches the padding baked
-// into example/resources/images/ui/name_tab.png's generation (see the
+// into example/game/resources/images/ui/name_tab.png's generation (see the
 // scratch generator script referenced in the design plan; regenerate that
 // image if these change).
 const (
@@ -42,7 +41,7 @@ var (
 // is a shared package (this repo's example is one importer among several,
 // e.g. tsf-action), so the メッセージ欄 redesign's fill color only
 // applies when style == "redesigned" (Config.MessageBoxStyle,
-// example/resources/config.toml only) — anything else, including an empty
+// example/game/resources/config.toml only) — anything else, including an empty
 // string (a project whose config.toml predates this field entirely), keeps
 // the original flat rgba(0,0,0,0.5) this package always drew before. Within
 // "redesigned", the box dims while a set of [glink] choices is currently
@@ -176,18 +175,18 @@ func setFilledSpeedSegments(filled int) {
 // only being adjustable from the full settings screen (config.ks). Clicking
 // segment i (0-indexed) sets the reading to i+1 filled segments.
 func (r *Renderer) handleTextSpeedIndicatorClick() {
-	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	mX, mY, justPressed, _, touch := pointerState()
+	if !justPressed {
 		return
 	}
-	mX, mY := ebiten.CursorPosition()
-	r.dispatchTextSpeedIndicatorClickAt(mX, mY)
+	r.dispatchTextSpeedIndicatorClickAt(mX, mY, touch)
 }
 
 // dispatchTextSpeedIndicatorClickAt is handleTextSpeedIndicatorClick's
 // testable core, split out the same way
 // (*Renderer).dispatchOperationRowClickAt is (tags_oprow.go) — no precedent
 // in this package for faking ebiten's real mouse-press state in a test.
-func (r *Renderer) dispatchTextSpeedIndicatorClickAt(mX, mY int) {
+func (r *Renderer) dispatchTextSpeedIndicatorClickAt(mX, mY int, touch bool) {
 	if len(glinks) > 0 && !isJump {
 		// Choices are up — same guard opRowActive uses (tags_oprow.go) to
 		// keep the operation row from stealing a glink click; the indicator
@@ -201,7 +200,7 @@ func (r *Renderer) dispatchTextSpeedIndicatorClickAt(mX, mY int) {
 	}
 	for i := 0; i < speedSegCount; i++ {
 		segLeft := segX + float64(i)*(speedSegW+speedSegGap)
-		if isColision(mX, mY, int(segLeft), int(y), int(speedSegW), int(speedSegH)) {
+		if isColisionTouch(mX, mY, int(segLeft), int(y), int(speedSegW), int(speedSegH), touch) {
 			setFilledSpeedSegments(i + 1)
 			return
 		}
@@ -229,7 +228,7 @@ func drawContinueMark(r *Renderer, buf *ebiten.Image) {
 	}
 	var col color.RGBA
 	switch {
-	case isSkip:
+	case skipActive():
 		col = glyphSkip.Color
 	case isAuto:
 		col = glyphAuto.Color
