@@ -63,12 +63,12 @@ touches the windowing system unconditionally) so it also runs headless in CI. `e
 layout with the real official TyranoScript assets — not referenced by any build, safe to leave behind
 entirely when copying this checkout elsewhere (the `.exe` inside it won't run on macOS/Linux anyway).
 
-## Mobile/wasm builds (`example/mobile`, `example/wasm`)
+## Mobile/wasm/macOS builds (`example/mobile`, `example/wasm`, `example/macos`)
 
 `example/game` (the `Game` struct implementing `ebiten.Game`) is deliberately its own package, not
 `package main`, specifically so it can be shared across every entrypoint below — `ebitenmobile bind`
 refuses to bind a `package main` target, so this split was a prerequisite for Android/iOS at all, not
-just a style choice. All three of these live under the git-excluded `example/` (see "Repository
+just a style choice. All of these live under the git-excluded `example/` (see "Repository
 layout gotcha" above) and are themselves platform-gated, so treat everything in this section as
 unverified until it's actually been run on the platform it targets — each subsection below says
 plainly what has and hasn't been confirmed working:
@@ -96,6 +96,32 @@ plainly what has and hasn't been confirmed working:
   external deps) is confirmed to compile (`GOOS=js GOARCH=wasm go build ./renderer/...`) but has never
   actually been run in a browser from this environment (no browser/JS runtime available here) — treat
   its localStorage read/write behavior as unverified until confirmed in a real browser.
+- **macOS** (`example/macos/build-macos.sh`, bash) — wraps the plain desktop `go build ./example`
+  binary (the same one Windows/Linux run directly, no bundle) in a real `.app`: a universal
+  (Intel + Apple Silicon) binary via `lipo`, plus a generated `Info.plist`. **Confirmed working
+  end-to-end** on a real Mac (Apple Silicon host): both architecture slices build, `lipo` produces a
+  genuine universal binary, the `.app` launches (ad-hoc `codesign --force --deep --sign -` first,
+  per the script's own trailing output — otherwise Gatekeeper blocks even a same-machine launch) and
+  runs its render loop without crashing. The one real bug this surfaced, now fixed in the script:
+  building the **amd64** slice from an Apple Silicon host without `CGO_ENABLED=1` explicit on that
+  `go build` invocation silently compiles against GLFW's non-cgo stub instead of erroring — Go drops
+  cgo by default for any `GOARCH` that doesn't match the host, and ebitengine's macOS backend needs
+  its GLFW cgo bindings, so the symptom was `undefined: glfw.Window`/`undefined: glfw.WindowHint`
+  failing to *link*, not the "dies looking for `clang`" failure `GOOS=darwin` cross-compilation from
+  a non-Mac host hits (still accurate below — a different failure mode, same underlying cgo
+  requirement). Both `go build` lines in the script now set `CGO_ENABLED=1` explicitly. No app icon
+  is wired up yet (`CFBundleIconFile` is commented out in the generated plist); running the bundle on
+  any *other* Mac still needs at least its own ad-hoc `codesign`, or for real distribution, a paid
+  Apple Developer ID and notarization. What's *not* confirmed from here: `screencapture`/window
+  screenshots aren't available in this sandbox (no Screen Recording permission grantable
+  non-interactively) — visual correctness (does the title screen actually render right) was verified
+  only by process health (stays alive, accumulates CPU/render-loop time, no crash log), not a
+  screenshot.
+  Separately, from a non-Mac host: `GOOS=darwin go build` cannot cross-compile at all — ebitengine's
+  macOS backend is cgo (GLFW/Cocoa bindings), so it fails outright without a macOS C toolchain on
+  `PATH` (dies looking for `clang`; forcing `CGO_ENABLED=0` just trades that for a *different* set of
+  undefined GLFW symbols instead of a working binary) — so this script must run on an actual Mac,
+  unlike the two `.ps1` scripts below.
 
 Both `.ps1` scripts need PowerShell (`pwsh`) to run as-is; on macOS that means either installing
 `pwsh` or translating the handful of commands inside them manually — they're short and mostly
