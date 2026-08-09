@@ -72,3 +72,31 @@ func (*noSubImageError) Error() string {
 func RegionsEqual(a, b image.Image) bool {
 	return nearlyEqual(toRGBA(a), toRGBA(b), stableDiffThreshold)
 }
+
+// clickChangeThreshold is deliberately much larger than RegionsEqual's
+// stableDiffThreshold (0.001) — a glink/button's hover/focus indicator
+// (e.g. the highlight bar drawn on the currently-focused glink,
+// draw_link.go) changes only a sliver of pixels, which was empirically
+// confirmed to occasionally clear stableDiffThreshold on its own: the
+// underlying mouse_event click didn't actually register (a known
+// flakiness class in this environment — see window_windows.go's
+// clickAtScreenPos doc comment), but the cursor landing on the glink and
+// nudging its focus state was enough to make RegionsEqual report "the
+// screen changed", so a retry loop using it could return success after a
+// click that never really landed. A real click's consequence — a scene
+// transition, a new background, the message box swapping content — moves
+// far more than a sliver of the screen, so this threshold is set well
+// above what a lone focus indicator can produce while still comfortably
+// below a real transition.
+const clickChangeThreshold = 0.02
+
+// ClickRegistered reports whether b differs from a by more than
+// clickChangeThreshold — a stricter bar than RegionsEqual, meant
+// specifically for "did this click actually do something" retry loops
+// (glink/button clicks), where a hover-only false positive would let the
+// loop return before the click's real effect ever happened. Not a
+// replacement for RegionsEqual elsewhere (e.g. text-advance or
+// content-equality checks), which need the finer-grained threshold.
+func ClickRegistered(a, b image.Image) bool {
+	return !nearlyEqual(toRGBA(a), toRGBA(b), clickChangeThreshold)
+}

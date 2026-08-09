@@ -43,20 +43,25 @@ func ClickLogical(sess *driver.Session, lx, ly int) error {
 }
 
 // Title screen button centers, computed from example/game/resources/senarios/
-// title.ks's [button x= y=] top-left coordinates (1920x1080-scale, ×1.5
-// from the original 1280x720 layout) plus half the actual graphic size
-// (all four title/button_*.png are 360x74 — confirmed via
-// `file example/game/resources/images/title/button_*.png`; the button graphics
-// themselves were not upscaled, only the [button] x=/y= positions were).
-// Re-derive if title.ks or its button graphics change. title.ks has no
-// CG/replay buttons (the bundled TyranoScript sample's cg.ks/replay.ks
-// were dropped when this became an original game) — don't add
-// ClickTitleCG/Replay back without a matching [button] in title.ks.
+// title.ks's [button x= y=] top-left coordinates (already in the
+// 1920x1080 logical space — config.toml sets ScreenWidth=1920/
+// ScreenHeight=1080, and title.ks's x=/y= are written directly against
+// that) plus half each graphic's *actual* size. Unlike the old placeholder
+// art (a shared 360x74 for every button), the current title/button_*.png
+// set is trimmed per-label — each button a different width — confirmed via
+// `file example/game/resources/images/title/button_*.png`:
+// button_start.png 144x74, button_load.png 110x74, button_demo.png 76x74,
+// button_config.png 176x74 (height is 74 for all four). title.ks lays all
+// four out in a single horizontal row (y=886, x=140/348/522/662). Re-derive
+// if title.ks or these graphics change. title.ks has no CG/replay buttons
+// (the bundled TyranoScript sample's cg.ks/replay.ks were dropped when
+// this became an original game) — don't add ClickTitleCG/Replay back
+// without a matching [button] in title.ks.
 const (
-	titleStartX, titleStartY   = 203 + 360/2, 345 + 74/2
-	titleLoadX, titleLoadY     = 203 + 360/2, 510 + 74/2
-	titleDemoX, titleDemoY     = 203 + 360/2, 675 + 74/2
-	titleConfigX, titleConfigY = 203 + 360/2, 840 + 74/2
+	titleStartX, titleStartY   = 140 + 144/2, 886 + 74/2
+	titleLoadX, titleLoadY     = 348 + 110/2, 886 + 74/2
+	titleDemoX, titleDemoY     = 522 + 76/2, 886 + 74/2
+	titleConfigX, titleConfigY = 662 + 176/2, 886 + 74/2
 )
 
 // ClickTitleStart clicks title.ks's "START" button (target="gamestart"
