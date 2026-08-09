@@ -78,17 +78,27 @@ plainly what has and hasn't been confirmed working:
   on a real device, including a from-scratch NDK/toolchain setup (see the script's own comments for
   the Windows-specific NDK command-line-length workaround it applies — likely unnecessary, but
   unverified, on macOS/Linux, where the NDK's wrapper scripts don't hit the same Windows batch-file
-  limit). `example/mobile/storage_android.go` (JNI-backed save/settings bridge) and
-  `renderer/ebitengine/vm.go`'s `MobilePlatform`/`TG.config.isMobile` (lets `config.ks` hide UI that
-  only makes sense on desktop, e.g. the window/fullscreen toggle) are the Android-specific pieces to
-  know about if save/load or the config screen misbehave only on Android.
+  limit). `example/mobile/storage_android.go` (JNI-backed save/settings bridge) is the
+  Android-specific piece to know about if save/load misbehaves only on Android — `MobilePlatform`/
+  `TG.config.isMobile` (lets `config.ks` hide UI that only makes sense on desktop, e.g. the
+  window/fullscreen toggle) used to live in this file too but is now shared with iOS via
+  `platform_mobile.go` (see the iOS bullet below for why).
 - **iOS** (`example/mobile/build-ios.sh`, `example/mobile/ios/README.md`) — needs a Mac with a full
-  Xcode install; this repository has never had one available, so **nothing here has actually been
-  run** — the script and guide are a best-effort starting point written by reasoning from the Android
-  side and ebitengine's public docs, not a verified recipe. Expect the first real attempt to surface
-  issues (wrong generated class/API names, storage persistence that may or may not need its own
-  bridge the way Android's does — see the README's own note on trying the default `os.UserHomeDir()`
-  fallback first) and to need iteration, the same way Android did.
+  Xcode install; this repository has never had one available itself, so treat the script/guide as
+  written by reasoning from the Android side and ebitengine's public docs, not a verified recipe —
+  but it has been run and iterated on a real device elsewhere: `mobile.go`'s own `ebiten.SetTPS(30)`
+  comment names the device (a 2017 iPad Pro 10.5", A10X, iOS 17.7.11) and the reason (weaker mobile
+  GPUs stalling at the default 60 TPS once real scene rendering started). One confirmed real bug
+  from that testing, now fixed: config.ks's 画面表示 (window/fullscreen toggle) row — meant to be
+  hidden on any mobile build, see `MobilePlatform`'s doc comment (`renderer/ebitengine/vm.go`) —
+  stayed visible on iOS, because `MobilePlatform` was only ever set true from an Android-only var
+  initializer; nothing set it for `ios` builds. Now lives in
+  `example/mobile/platform_mobile.go` (`//go:build android || ios`, moved there from
+  `storage_android.go` once both platforms needed the identical flag) — a var initializer, not a
+  `func init()`, so it's guaranteed to run before `mobile.go`'s own `func init()` calls
+  `game.New()` regardless of file-lexical ordering. Storage persistence still hasn't needed its own
+  bridge the way Android's JNI one does — see the README's own note on trying the default
+  `os.UserHomeDir()` fallback first — but expect further iteration on anything not mentioned above.
 - **wasm** (`example/wasm/build-wasm.ps1`, PowerShell) — plain `GOOS=js GOARCH=wasm go build`, no
   special toolchain. `-Publish` also builds a stripped copy into `../ebinovel.github.io/play/` (a
   sibling repo — see that repo's own README) for the public browser demo. `renderer/ebitengine/storage_js.go`
