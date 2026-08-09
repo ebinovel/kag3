@@ -72,7 +72,7 @@ func advance(t *testing.T, sess *driver.Session, n int) {
 // not change" once scene2.ks's own first [p] is reached and waiting (a
 // *different* wait, but advanceOne can't tell that from "nothing
 // happened"). Both flows below deliberately stop short of it.
-const scene1ParagraphCount = 20
+const scene1ParagraphCount = 22
 
 // TestTitleReturnDoesNotLeakPreviousPlaythroughStyle is the E2E regression
 // test for goToTitle's reset contract (renderer.go): [font]/[deffont]/
