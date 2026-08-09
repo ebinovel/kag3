@@ -54,6 +54,18 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 				fmt.Println(object.Chara)
 			}
 			charaName = object.Chara.Name
+			// The one point a speaker is declared: parser.go's
+			// characterPText turns a "#name" line into a TextObject with a
+			// Chara and an empty Val, so this branch runs exactly once per
+			// such line. [voconfig]/[vostart]'s auto-voice hangs off it
+			// (tags_voice.go).
+			//
+			// Deliberately not also hooked into the text-concatenation
+			// loop's own next.Chara check below: that loop only ever
+			// consumes TextObjects with a non-empty Val, and plain text
+			// lines never carry a Chara (parser.go), so hooking there would
+			// buy nothing but a double-play risk if the parser ever changes.
+			r.playCharaVoice(charaName)
 		}
 		if len(r.texts[object.Line]) == 0 {
 			r.texts[object.Line] = appendRubyText(r.texts[object.Line], object.Val, pendingRuby)

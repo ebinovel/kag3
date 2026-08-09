@@ -30,7 +30,7 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 | マクロ・分岐・サブルーチン | 全対応 | `if`/`elsif`/`else`/`endif`、`macro`/`endmacro`(パーサー側で処理)、`call`/`return` 等 |
 | 変数・JS操作・ファイル読込 | `loadcss` のみ未対応 | `iscript`/`endscript`・`eval`・`emb` は [goja](https://github.com/dop251/goja) 埋め込みで評価。`loadcss` はHTML/CSS非対応につき対象外(Non-goal) |
 | オーディオ | 全対応 | BGM/SE の再生・フェード・音量調整まですべて |
-| ボイス・読み上げ | 未対応(Non-goal) | `voconfig` `vostart` `vostop` `speak_on` `speak_off` |
+| ボイス・読み上げ | 音声合成(読み上げ)のみ未対応 | `voconfig` `vostart` `vostop` によるボイスファイルの自動再生に対応。`speak_on` `speak_off`(音声合成)は対象外(Non-goal) |
 | 入力フォーム | 全対応 | `edit`(ASCIIのみ、IME連動は未対応) `commit` |
 | 3D関連 | 未対応(Non-goal) | `3d_*` 系タグ約36本すべて |
 | AR関連 | 未対応(Non-goal) | `bgcamera` `qr_*` 系タグすべて |
@@ -49,6 +49,17 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 - **セーブデータの永続化は最小限**: 同一プロセス内でのセーブ/ロード・クイックセーブ/ロード・
   チェックポイント/ロールバックは動作しますが、TyranoScript本家のセーブファイル形式との互換は
   目指していません。
+- **ボイス自動再生の設定・連番カウンタはセーブされない**: `[voconfig]` / `[vostart]` / `[vostop]` に対応し、
+  `#キャラ名` の話者行が現れるたびに `vostorage` の `{number}` を差し替えながら自動再生します
+  (`renderer/ebitengine/tags_voice.go`)。再生は `sebuf` の指すSEバッファ経由なので、音量はSE音量設定に従い、
+  `[stopse]` `[wse buf=...]`(本家 `[wv]` 相当) `[fadeoutse]` `[changevol buf=...]` がそのまま効きます。
+  ただし登録内容と連番カウンタは `charas` や既読情報と同じくプロセス内メモリ保持で、セーブデータには
+  含めません — 途中セーブからロードすると、そのシナリオの `[voconfig]` を読み直すまで連番がロード前の
+  続きから進みます。タイトルに戻ると設定ごとリセットされます。ファイル形式はエンジン全体と同じく
+  **Ogg Vorbisのみ**(本家プロジェクトのボイスはmp3が多いので注意)で、ファイルが見つからない場合はログを
+  出してその行のボイスだけスキップします(連番は本家同様そのまま進みます)。ボイスファイルは `voices` の
+  `fs.FS` キーがあればそこから、無ければSEと同じ `ses` から読みます(本家もボイスとSEを同じ `data/sound`
+  に置きます)。
 - **`[edit]` はASCIIのみ**: IME(日本語入力)と連動したテキストボックスの実装は未対応です。
 
 ## kag3 独自の拡張タグ

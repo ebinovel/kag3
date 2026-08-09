@@ -55,6 +55,17 @@ func (r *Renderer) goToTitle() {
 	// wipe-the-slate-clean treatment belongs here too.
 	imgs = nil
 	menuButtonVisible = false
+	// [voconfig]/[vostart] state (tags_voice.go) is process-lifetime and
+	// unsaved, like charas — but unlike charas it carries a *counter*, so
+	// leaving it alone would have a second "はじめから" playthrough start its
+	// voices partway through the numbering instead of at the top. Same
+	// category as textPosition/textStyle/ptexts above: nothing in an
+	// ordinary scenario ever clears it, so a re-entered title screen has
+	// to. The scenario's own [voconfig]/[vostart] re-arm it on the way
+	// back in. Any voice still playing is left alone, matching how this
+	// doesn't stop the BGM either.
+	voiceConfigs = map[string]*voiceConfig{}
+	voiceAutoPlay = false
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see
