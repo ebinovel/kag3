@@ -168,3 +168,64 @@ func TestUnreadSkipConfigSetsVar(t *testing.T) {
 		t.Error("unreadskip_config(mode=bogus) returned nil error, want an error for an unsupported value")
 	}
 }
+
+// TestConfigRecordLabelSkipTogglesUnreadSkipEnabled covers real
+// TyranoScript's own [config_record_label skip=] spelling — the inverse of
+// [unreadskip_config]'s mode=: skip="true" means unread text CAN be skipped
+// (unrestricted), so unreadSkipEnabled must go false; skip="false" restricts
+// skip to already-read text, so unreadSkipEnabled must go true.
+func TestConfigRecordLabelSkipTogglesUnreadSkipEnabled(t *testing.T) {
+	orig := unreadSkipEnabled
+	defer func() { unreadSkipEnabled = orig }()
+
+	r := newTestRenderer()
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"skip": "false"}}, &i, 0); err != nil {
+		t.Fatalf("config_record_label(skip=false): %v", err)
+	}
+	if !unreadSkipEnabled {
+		t.Error("unreadSkipEnabled = false after skip=false, want true (unread skip disabled = restricted to read_only)")
+	}
+
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"skip": "true"}}, &i, 0); err != nil {
+		t.Fatalf("config_record_label(skip=true): %v", err)
+	}
+	if unreadSkipEnabled {
+		t.Error("unreadSkipEnabled = true after skip=true, want false (unread skip enabled = unrestricted)")
+	}
+
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"skip": "bogus"}}, &i, 0); err == nil {
+		t.Error("config_record_label(skip=bogus) returned nil error, want an error for a non-bool value")
+	}
+}
+
+// TestConfigRecordLabelColorSetsAlreadyReadTextColor covers the color=
+// attribute, and that omitting it (a later [config_record_label] call that
+// only touches skip=) leaves a previously-set color untouched rather than
+// clearing it back to no tint — matching the tag reference's "blank means
+// unset" default, not "blank means clear".
+func TestConfigRecordLabelColorSetsAlreadyReadTextColor(t *testing.T) {
+	orig := alreadyReadTextColor
+	defer func() { alreadyReadTextColor = orig }()
+	alreadyReadTextColor = nil
+
+	r := newTestRenderer()
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"color": "0xFF00FF"}}, &i, 0); err != nil {
+		t.Fatalf("config_record_label(color=0xFF00FF): %v", err)
+	}
+	if alreadyReadTextColor == nil || alreadyReadTextColor.R != 0xFF || alreadyReadTextColor.G != 0x00 || alreadyReadTextColor.B != 0xFF {
+		t.Fatalf("alreadyReadTextColor = %+v, want R=0xFF G=0x00 B=0xFF", alreadyReadTextColor)
+	}
+
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"skip": "true"}}, &i, 0); err != nil {
+		t.Fatalf("config_record_label(skip=true, no color): %v", err)
+	}
+	if alreadyReadTextColor == nil || alreadyReadTextColor.R != 0xFF {
+		t.Errorf("alreadyReadTextColor changed after a color-less call, want it left untouched: %+v", alreadyReadTextColor)
+	}
+
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "config_record_label", Pm: map[string]string{"color": "not-a-color"}}, &i, 0); err == nil {
+		t.Error("config_record_label(color=not-a-color) returned nil error, want an error for a malformed color code")
+	}
+}

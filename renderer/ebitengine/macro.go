@@ -162,11 +162,23 @@ func appendRubyText(line []Text, val, ruby string) []Text {
 // would make applyTextStyle fall back to the live textStyle instead, the
 // same leak this exists to prevent, just for segments created before the
 // first [font]/[deffont] call instead of between two of them.
+//
+// Also applies alreadyReadTextColor (tags_message.go, [config_record_label
+// color=...]) when the line currently being appended to has already been
+// read (currentLineAlreadyRead) and no more specific [font color=...] is
+// already in effect for it — an explicit per-segment color always wins over
+// the blanket already-read tint.
 func snapshotTextStyle() *kag3.TextStyle {
+	var style *kag3.TextStyle
 	if textStyle == nil {
-		return &kag3.TextStyle{}
+		style = &kag3.TextStyle{}
+	} else {
+		style = copyTextStyle(textStyle)
 	}
-	return copyTextStyle(textStyle)
+	if style.Color == nil && currentLineAlreadyRead && alreadyReadTextColor != nil {
+		style.Color = alreadyReadTextColor
+	}
+	return style
 }
 
 // maxMacroDepth guards against runaway/self-recursive macro expansion.

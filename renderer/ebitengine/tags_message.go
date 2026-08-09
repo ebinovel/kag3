@@ -142,6 +142,15 @@ func skipEffective() bool {
 	return !unreadSkipEnabled || currentLineAlreadyRead
 }
 
+// alreadyReadTextColor is [config_record_label color="0xRRGGBB"]'s target —
+// nil (the default) means no tint at all, matching TyranoScript's own
+// "blank means unset" default for this attribute (tyrano.jp's tag reference).
+// snapshotTextStyle (macro.go) applies it to a line's own text segments at
+// creation time, same as any other [font]-driven style, rather than a global
+// draw-time override — so a still-unread line elsewhere on the same page
+// (via [l]) never picks up a tint that only applies to the already-read one.
+var alreadyReadTextColor *color.RGBA
+
 func init() {
 	textPosition = &kag3.TextPosition{}
 }

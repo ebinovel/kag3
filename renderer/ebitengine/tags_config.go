@@ -3,6 +3,7 @@ package ebitengine
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 )
@@ -12,6 +13,7 @@ func init() {
 	register("configload", handleConfigLoad)
 	register("msgbox_opacity", handleMsgBoxOpacity)
 	register("unreadskip_config", handleUnreadSkipConfig)
+	register("config_record_label", handleConfigRecordLabel)
 }
 
 // settingsPath resolves where [configsave]/[configload] persist the
@@ -178,6 +180,33 @@ func handleUnreadSkipConfig(ctx *tagCtx) error {
 		unreadSkipEnabled = false
 	default:
 		return fmt.Errorf("[unreadskip_config] 未対応の値です mode=%q", mode)
+	}
+	return nil
+}
+
+// handleConfigRecordLabel implements TyranoScript's own
+// [config_record_label skip="true"|"false" color="0xRRGGBB"] — real Tyrano's
+// stock tag for this (tyrano.jp/tag), kept alongside kag3's own
+// [unreadskip_config] rather than replacing it, since existing scripts (see
+// test/config.ks) already call this one directly. skip is unreadSkipEnabled
+// spelled the opposite way round: "未読スキップ有効" (skip=true) means skip
+// is unrestricted, i.e. unreadSkipEnabled=false. color drives
+// alreadyReadTextColor (tags_message.go), applied per-line by
+// snapshotTextStyle (macro.go) — an empty/absent color leaves whatever tint
+// was already set untouched, matching "blank means unset" in the tag
+// reference rather than clearing it back to no tint.
+func handleConfigRecordLabel(ctx *tagCtx) error {
+	if skip, ok, err := getBool(ctx.tag.Pm, "skip"); err != nil {
+		return err
+	} else if ok {
+		unreadSkipEnabled = !skip
+	}
+	if v, ok := getString(ctx.tag.Pm, "color"); ok && v != "" {
+		r, g, b, err := parseColor(v)
+		if err != nil {
+			return err
+		}
+		alreadyReadTextColor = &color.RGBA{uint8(r), uint8(g), uint8(b), 0xff}
 	}
 	return nil
 }

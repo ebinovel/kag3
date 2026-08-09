@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/ebinovel/kag3"
@@ -244,5 +245,39 @@ func TestExecItemMarksLineReadOnFirstDisplayOnly(t *testing.T) {
 	}
 	if !currentLineAlreadyRead {
 		t.Error("currentLineAlreadyRead = false on a line's second display, want true (already read)")
+	}
+}
+
+// TestSnapshotTextStyleAppliesAlreadyReadColor covers
+// [config_record_label color=]'s render-side effect: a segment created while
+// currentLineAlreadyRead is true and alreadyReadTextColor is set picks up
+// that color, an unread line does not, and an explicit [font]-driven color
+// already in effect is never overridden by the already-read tint.
+func TestSnapshotTextStyleAppliesAlreadyReadColor(t *testing.T) {
+	origAlreadyRead, origColor, origTextStyle := currentLineAlreadyRead, alreadyReadTextColor, textStyle
+	defer func() {
+		currentLineAlreadyRead, alreadyReadTextColor, textStyle = origAlreadyRead, origColor, origTextStyle
+	}()
+
+	tint := &color.RGBA{R: 0x87, G: 0xCE, B: 0xFA, A: 0xff}
+	alreadyReadTextColor = tint
+	textStyle = nil
+
+	currentLineAlreadyRead = false
+	if got := snapshotTextStyle(); got.Color != nil {
+		t.Errorf("snapshotTextStyle().Color = %+v for an unread line, want nil (no tint)", got.Color)
+	}
+
+	currentLineAlreadyRead = true
+	got := snapshotTextStyle()
+	if got.Color != tint {
+		t.Errorf("snapshotTextStyle().Color = %+v for an already-read line, want %+v (alreadyReadTextColor)", got.Color, tint)
+	}
+
+	explicit := &color.RGBA{R: 0xFF, A: 0xff}
+	textStyle = &kag3.TextStyle{Color: explicit}
+	got = snapshotTextStyle()
+	if got.Color != explicit {
+		t.Errorf("snapshotTextStyle().Color = %+v, want the explicit [font] color %+v to win over the already-read tint", got.Color, explicit)
 	}
 }
