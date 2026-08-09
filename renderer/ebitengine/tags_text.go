@@ -114,39 +114,49 @@ func handleFont(ctx *tagCtx) error {
 // applyFontAttrs implements [font]/[mark]'s attribute parsing, shared with
 // [deffont] (handleDefFont, tags_message.go) which applies the same
 // attributes to defaultTextStyle instead of the live textStyle.
+//
+// Copies rather than mutates the existing textStyle object in place:
+// earlier Text segments (appendRubyText, macro.go) and the marker segment
+// appended below may hold a reference to the *previous* textStyle value,
+// and [l] (unlike [p]) keeps them on screen alongside whatever this call
+// creates — mutating that shared object's fields in place would silently
+// reskin every one of them too, not just text created from here on. See
+// applyTextStyle's doc comment for the matching read-side half of this.
 func applyFontAttrs(ctx *tagCtx) error {
 	r := ctx.r
 	tag := ctx.tag
-	if textStyle == nil {
-		textStyle = &kag3.TextStyle{}
+	next := copyTextStyle(textStyle)
+	if next == nil {
+		next = &kag3.TextStyle{}
 	}
 	pm := tag.Pm
 	if v, ok, err := getInt(pm, "size"); err != nil {
 		return err
 	} else if ok {
-		textStyle.Size = v
+		next.Size = v
 	}
 	// parseColor's error is intentionally ignored here, matching the
 	// pre-existing behavior of this handler (see resolveFolderImage's
 	// sibling color cases elsewhere for the one place that does check it).
 	if v, ok := getString(pm, "color"); ok {
 		r, g, b, _ := parseColor(v)
-		textStyle.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+		next.Color = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 	}
 	if v, ok := getString(pm, "edge"); ok {
 		r, g, b, _ := parseColor(v)
-		textStyle.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+		next.Edge = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 	}
 	if v, ok := getString(pm, "shadow"); ok {
 		r, g, b, _ := parseColor(v)
-		textStyle.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+		next.Shadow = &color.RGBA{uint8(r), uint8(g), uint8(b), 255}
 	}
 	if _, ok := getString(pm, "bold"); ok {
-		textStyle.IsBold = true
+		next.IsBold = true
 	}
 	if _, ok := getString(pm, "itaric"); ok {
-		textStyle.IsItaric = true
+		next.IsItaric = true
 	}
+	textStyle = next
 	r.texts[tag.Line] = append(r.texts[tag.Line], Text{TextStyle: textStyle})
 	return nil
 }

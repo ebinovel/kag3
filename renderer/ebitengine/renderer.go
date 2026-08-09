@@ -523,14 +523,26 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 
 // applyTextStyle resolves the size/color a text segment should draw with
 // and applies both: r.fontFace.Size as a side effect (glyph measurement
-// reads it directly) and tOp.ColorScale. Precedence is the package-level
-// textStyle (the currently active [font]/[deffont] setting) first, then the
-// segment's own v.TextStyle (set by [font]'s own empty marker Text, see
-// r.textStyle), then the beforeTextSize/white default. Used for both the
-// currently-revealing line and every earlier line still on screen — they
-// must resolve identically, since a line doesn't stop being e.g.
-// [deffont color=...]-styled just because it's no longer the one being
-// typed.
+// reads it directly) and tOp.ColorScale. Precedence is the segment's own
+// v.TextStyle first — the [font]/[deffont] state active when this segment
+// was *created* (appendRubyText and applyFontAttrs's own marker segment
+// both snapshot it at creation time, macro.go/tags_text.go) — falling back
+// to the package-level textStyle (today's live setting) only when a caller
+// deliberately passes no style of its own (draw_link.go's [link] rows,
+// which always want whatever's current rather than a fixed snapshot), then
+// the beforeTextSize/white default.
+//
+// v.TextStyle must win over the live textStyle, not the other way around:
+// [l] (unlike [p]) doesn't clear the message window, so several segments
+// created under different [font]/[resetfont] states can be on screen at
+// once — an earlier segment must keep rendering the style active when
+// *it* was created even after a later [font] call on the same page moves
+// textStyle on. Preferring the live textStyle instead (this function's
+// prior behavior) reskinned every such earlier segment to match whatever
+// [font] ran last. applyFontAttrs' own doc comment covers the matching
+// write-side half (copies rather than mutates textStyle in place, so an
+// earlier segment's already-captured TextStyle pointer isn't silently
+// rewritten out from under it too).
 //
 // r.fontFace.Size is set unconditionally on every branch below (falling
 // back to beforeTextSize whenever the resolved style leaves Size
@@ -546,26 +558,19 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 // reported symptoms (overlapping/too-tight spacing right after a size
 // change, and ruby text centered over the wrong width).
 func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
+	style := v.TextStyle
+	if style == nil {
+		style = textStyle
+	}
 	switch {
-	case textStyle != nil:
-		if textStyle.Size != 0 {
-			r.fontFace.Size = float64(textStyle.Size)
+	case style != nil:
+		if style.Size != 0 {
+			r.fontFace.Size = float64(style.Size)
 		} else {
 			r.fontFace.Size = beforeTextSize
 		}
-		if textStyle.Color != nil {
-			tOp.ColorScale.ScaleWithColor(textStyle.Color)
-		} else {
-			tOp.ColorScale.ScaleWithColor(color.White)
-		}
-	case v.TextStyle != nil:
-		if v.TextStyle.Size != 0 {
-			r.fontFace.Size = float64(v.TextStyle.Size)
-		} else {
-			r.fontFace.Size = beforeTextSize
-		}
-		if v.TextStyle.Color != nil {
-			tOp.ColorScale.ScaleWithColor(v.TextStyle.Color)
+		if style.Color != nil {
+			tOp.ColorScale.ScaleWithColor(style.Color)
 		} else {
 			tOp.ColorScale.ScaleWithColor(color.White)
 		}

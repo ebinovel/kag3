@@ -68,7 +68,11 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 				if pendingRuby != "" && len(runes) > 1 {
 					r.texts[object.Line][last].Text = string(runes[0])
 					r.texts[object.Line][last].Ruby = pendingRuby
-					r.texts[object.Line] = append(r.texts[object.Line], Text{Text: string(runes[1:])})
+					// Inherits the marker's own TextStyle (set by
+					// applyFontAttrs) — this split-off remainder is still
+					// the same [font]-styled segment, just minus its
+					// ruby'd first rune.
+					r.texts[object.Line] = append(r.texts[object.Line], Text{Text: string(runes[1:]), TextStyle: r.texts[object.Line][last].TextStyle})
 				} else {
 					r.texts[object.Line][last].Text = object.Val
 					r.texts[object.Line][last].Ruby = pendingRuby
@@ -128,16 +132,40 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 // six characters instead of just "単". Splitting here keeps drawMessage*'s
 // per-segment ruby centering (draw_message.go) correct without it having
 // to know anything about this.
+//
+// Every returned segment also captures snapshotTextStyle() — the
+// [font]/[deffont] state active *right now*, at creation time — rather
+// than leaving TextStyle nil. See applyTextStyle's doc comment for why:
+// with [l] (unlike [p]) leaving old segments on screen instead of
+// clearing them, a segment created under one [font] state must keep
+// rendering that way even after a later segment on the same page changes
+// it again.
 func appendRubyText(line []Text, val, ruby string) []Text {
+	style := snapshotTextStyle()
 	if ruby != "" {
 		if runes := []rune(val); len(runes) > 1 {
 			return append(line,
-				Text{Text: string(runes[0]), Ruby: ruby},
-				Text{Text: string(runes[1:])},
+				Text{Text: string(runes[0]), Ruby: ruby, TextStyle: style},
+				Text{Text: string(runes[1:]), TextStyle: style},
 			)
 		}
 	}
-	return append(line, Text{Text: val, Ruby: ruby})
+	return append(line, Text{Text: val, Ruby: ruby, TextStyle: style})
+}
+
+// snapshotTextStyle copies the currently active textStyle so a newly
+// created Text segment keeps rendering with the style active when it was
+// created, rather than whatever textStyle happens to be live at *draw*
+// time (see applyTextStyle's doc comment). Never returns nil, even when
+// textStyle itself is (no [font]/[deffont] active yet) — a nil result
+// would make applyTextStyle fall back to the live textStyle instead, the
+// same leak this exists to prevent, just for segments created before the
+// first [font]/[deffont] call instead of between two of them.
+func snapshotTextStyle() *kag3.TextStyle {
+	if textStyle == nil {
+		return &kag3.TextStyle{}
+	}
+	return copyTextStyle(textStyle)
 }
 
 // maxMacroDepth guards against runaway/self-recursive macro expansion.
