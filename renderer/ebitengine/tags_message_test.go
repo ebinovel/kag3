@@ -187,6 +187,66 @@ func TestSkipShouldAdvanceWaitsBeforeAdvancing(t *testing.T) {
 	}
 }
 
+// TestMarkLineReadReportsFirstVsSubsequentVisit is the read-tracking
+// registry's own contract: the first time a (storage, line) pair is marked,
+// it wasn't already read; every call after that, for the same pair, it was.
+// A different line, or the same line number under a different storage, must
+// not collide with an already-recorded one.
+func TestMarkLineReadReportsFirstVsSubsequentVisit(t *testing.T) {
+	orig := readLines
+	readLines = map[readLineKey]bool{}
+	defer func() { readLines = orig }()
+
+	if markLineRead("first.ks", 10) {
+		t.Error("markLineRead(first.ks, 10) first call = true, want false")
+	}
+	if !markLineRead("first.ks", 10) {
+		t.Error("markLineRead(first.ks, 10) second call = false, want true (already read)")
+	}
+	if markLineRead("first.ks", 11) {
+		t.Error("markLineRead(first.ks, 11) = true, want false (different line, never seen)")
+	}
+	if markLineRead("second.ks", 10) {
+		t.Error("markLineRead(second.ks, 10) = true, want false (same line number, different storage)")
+	}
+}
+
+// TestSkipEffectiveGatesOnUnreadSkipEnabled covers skipEffective()'s three
+// branches: skip off is always false regardless of read state; skip on with
+// unreadSkipEnabled=false (the "all" [unreadskip_config] mode / today's
+// pre-existing behavior) ignores read state entirely; skip on with
+// unreadSkipEnabled=true (the "read_only" mode / 既読SKIP toggle) only
+// applies to lines currentLineAlreadyRead already marks as seen.
+func TestSkipEffectiveGatesOnUnreadSkipEnabled(t *testing.T) {
+	origSkip, origUnread, origRead := isSkip, unreadSkipEnabled, currentLineAlreadyRead
+	defer func() { isSkip, unreadSkipEnabled, currentLineAlreadyRead = origSkip, origUnread, origRead }()
+
+	isSkip = false
+	unreadSkipEnabled = true
+	currentLineAlreadyRead = true
+	if skipEffective() {
+		t.Error("skipEffective() = true while skip is off entirely, want false")
+	}
+
+	isSkip = true
+	unreadSkipEnabled = false
+	currentLineAlreadyRead = false
+	if !skipEffective() {
+		t.Error("skipEffective() = false with unreadSkipEnabled=false (all mode), want true regardless of read state")
+	}
+
+	unreadSkipEnabled = true
+	currentLineAlreadyRead = false
+	if skipEffective() {
+		t.Error("skipEffective() = true for an unread line under unreadSkipEnabled=true (read_only mode), want false")
+	}
+
+	currentLineAlreadyRead = true
+	if !skipEffective() {
+		t.Error("skipEffective() = false for an already-read line under unreadSkipEnabled=true (read_only mode), want true")
+	}
+}
+
 func TestNowaitEndNowaitToggle(t *testing.T) {
 	textNoWait = false
 	tag := kag3.TagObject{Name: "nowait"}

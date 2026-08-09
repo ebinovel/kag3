@@ -18,8 +18,8 @@ func init() {
 // — the same map [button role=...] already dispatches through, so this row
 // reuses the exact same actions rather than re-implementing them. onClick
 // covers the two that don't map onto an existing role: config (no "config"
-// role exists — see openConfigScreen) and 既読SKIP (no unread-skip logic
-// exists anywhere in the engine yet, see unreadSkipEnabled).
+// role exists — see openConfigScreen) and 既読SKIP (a plain toggle, not a
+// role-dispatched action — see unreadSkipEnabled).
 type opRowButton struct {
 	Label   string
 	Role    string
@@ -32,12 +32,13 @@ var (
 	// simple on/off toggles, not script-configurable beyond [opbar_config].
 	opRowVisible       = true
 	opRowShowQuickSave = true
-	// unreadSkipEnabled is an honest state-only stub: kag3.Config's own
-	// UnReadTextSkip field (config.go) is likewise never consulted by any
-	// skip logic today, so toggling this changes the label's color but not
-	// actual skip behavior — matching tags_sysdesign.go's existing
-	// honest-stub convention (e.g. handleSetResizeCall) rather than
-	// pretending to implement unread-tracking here.
+	// unreadSkipEnabled toggles skip mode's "read_only" restriction: while
+	// true, skipEffective() (tags_message.go) only fast-forwards through
+	// lines readLines already has recorded as seen — an unread line reveals
+	// at normal speed and waits for a real click, same as skip being off.
+	// Also driven by [unreadskip_config mode="read_only"|"all"]
+	// (tags_config.go), config.ks's own "スキップ対象" setting — this is the
+	// one var both UIs share.
 	unreadSkipEnabled bool
 )
 

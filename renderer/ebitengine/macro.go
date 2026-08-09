@@ -47,6 +47,7 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 		if isNewLine && len(object.Val) > 0 {
 			isWait = false
 			textStartT = t
+			currentLineAlreadyRead = markLineRead(r.currentStorage, object.Line)
 		}
 		if object.Chara != nil {
 			if traceTags {

@@ -233,7 +233,10 @@ func (r *Renderer) Update() {
 	// From there this mirrors the isAuto branch just above, only much
 	// shorter: autoStartT already tracks "when did isWait last become
 	// true", so skipWaitMs reuses it rather than needing its own clock.
-	if skipActive() && skipShouldAdvance(isWait, t, autoStartT, skipWaitMs) {
+	// skipEffective(), not skipActive() directly, so that unreadSkipEnabled
+	// (既読SKIP / [unreadskip_config mode="read_only"]) can hold an unread
+	// line at normal pace requiring a real click, same as skip being off.
+	if skipEffective() && skipShouldAdvance(isWait, t, autoStartT, skipWaitMs) {
 		oldTick = tick
 	}
 	hitLinks(r)

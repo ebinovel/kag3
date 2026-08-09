@@ -205,3 +205,44 @@ func TestRubyOnSingleCharacterStaysOneSegment(t *testing.T) {
 		t.Errorf("r.texts[1] = %+v, want a single Text{Text: \"簡\", Ruby: \"かん\"}", segs)
 	}
 }
+
+// TestExecItemMarksLineReadOnFirstDisplayOnly is the read-tracking
+// deliverable's integration point: execItem must record (currentStorage,
+// object.Line) via markLineRead exactly when a new line starts revealing
+// (the same isNewLine gate that resets textStartT/isWait), and
+// currentLineAlreadyRead must reflect "was this line already read *before*
+// this visit" — false the first time a line displays, true on any later
+// visit to the same (storage, line), e.g. after a rollback/replay.
+func TestExecItemMarksLineReadOnFirstDisplayOnly(t *testing.T) {
+	origRead, origAlreadyRead := readLines, currentLineAlreadyRead
+	readLines = map[readLineKey]bool{}
+	defer func() { readLines, currentLineAlreadyRead = origRead, origAlreadyRead }()
+
+	r := newTestRenderer()
+	r.currentStorage = "first.ks"
+	r.line = 0
+	scripts := []any{
+		kag3.TextObject{Line: 5, Name: "text", Val: "hello"},
+	}
+	i := 0
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (first visit) error: %v", err)
+	}
+	if currentLineAlreadyRead {
+		t.Error("currentLineAlreadyRead = true on a line's first-ever display, want false")
+	}
+	if !readLines[readLineKey{"first.ks", 5}] {
+		t.Error("readLines[{first.ks, 5}] = false after displaying it, want true")
+	}
+
+	// Simulate revisiting the same line (e.g. rollback, or replaying the
+	// scenario from a save) — a fresh r.line so isNewLine is true again.
+	r.line = -1
+	i = 0
+	if err := r.execItem(fakeYield(), scripts, &i, 0); err != nil {
+		t.Fatalf("execItem (second visit) error: %v", err)
+	}
+	if !currentLineAlreadyRead {
+		t.Error("currentLineAlreadyRead = false on a line's second display, want true (already read)")
+	}
+}

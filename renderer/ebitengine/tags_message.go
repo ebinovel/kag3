@@ -94,6 +94,54 @@ func skipActive() bool {
 	return isSkip || ebiten.IsKeyPressed(ebiten.KeyControl)
 }
 
+// readLines is the process-lifetime "already read" registry: every line a
+// player has ever seen, keyed by (storage, source line number) so the same
+// line number in two different .ks files doesn't collide. Never persisted to
+// SaveData (tags_save.go) or reset on goToTitle/applySaveData — same
+// "transient, in-memory, reset only on process restart" treatment as backlog
+// (tags_message.go's own recordBacklog doc comment), since "have I ever read
+// this" is a per-session/per-install concept in most VN engines, not a
+// per-save one.
+type readLineKey struct {
+	Storage string
+	Line    int
+}
+
+var readLines = map[readLineKey]bool{}
+
+// currentLineAlreadyRead is markLineRead's result for whichever line is
+// currently revealing — set once per line in execItem (macro.go) at the same
+// isNewLine point that resets textStartT, so it stays in sync with whichever
+// line ticksPerChar()'s reveal timer is actually counting against (draw_message.go
+// runs one shared reveal cursor across all of r.texts, not a per-line one).
+var currentLineAlreadyRead bool
+
+// markLineRead records storage/line as read and reports whether it was
+// already read before this call — the "did the player see this before"
+// answer skipEffective() needs, captured at the moment the line starts
+// revealing rather than after a full read, so a line abandoned mid-reveal by
+// a jump still counts as visited (matching most VN engines' "seen" rather
+// than "finished reading" semantics).
+func markLineRead(storage string, line int) (alreadyRead bool) {
+	key := readLineKey{storage, line}
+	alreadyRead = readLines[key]
+	readLines[key] = true
+	return alreadyRead
+}
+
+// skipEffective is what ticksPerChar() and Update()'s skip auto-advance
+// should actually consult instead of skipActive() directly: when
+// unreadSkipEnabled (tags_oprow.go's 既読SKIP toggle / [unreadskip_config
+// mode="read_only"]) restricts skip to already-read text, an unread line
+// must reveal at normal speed and require a real click — exactly like skip
+// being off — even while the player is holding Ctrl or has SKIP toggled on.
+func skipEffective() bool {
+	if !skipActive() {
+		return false
+	}
+	return !unreadSkipEnabled || currentLineAlreadyRead
+}
+
 func init() {
 	textPosition = &kag3.TextPosition{}
 }
@@ -160,7 +208,7 @@ func init() {
 
 func ticksPerChar() int {
 	speed := textSpeedMs
-	if skipActive() {
+	if skipEffective() {
 		speed = skipCharSpeedMs
 	}
 	tpc := speed * ebiten.TPS() / 1000
