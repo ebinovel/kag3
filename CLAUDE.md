@@ -8,7 +8,10 @@ kag3 is a Go reimplementation of a TyranoScript-compatible visual novel engine, 
 [ebitengine](https://ebitengine.org/). It parses `.ks` scenario files (TyranoScript's own tag syntax)
 and executes them against an ebitengine `Game`. The goal is for real-world TyranoScript projects (the
 bundled `example`/`example2` are full copies of the official TyranoScript sample game) to run mostly
-unmodified.
+unmodified. See `docs/COMPATIBILITY.md` for the tag-by-tag compatibility matrix against
+[tyrano.jp/tag](https://tyrano.jp/tag) (also published at https://ebinovel.github.io/compatibility.html) —
+keep both in sync whenever a new tag is registered or an existing one's behavior changes in a way
+that affects compatibility.
 
 ## Commands
 
