@@ -63,7 +63,7 @@ touches the windowing system unconditionally) so it also runs headless in CI. `e
 layout with the real official TyranoScript assets — not referenced by any build, safe to leave behind
 entirely when copying this checkout elsewhere (the `.exe` inside it won't run on macOS/Linux anyway).
 
-## Mobile/wasm/macOS/Linux builds (`example/mobile`, `example/wasm`, `example/macos`, `example/linux`)
+## Mobile/wasm/macOS/Linux/Windows builds (`example/mobile`, `example/wasm`, `example/macos`, `example/linux`, `example/windows`)
 
 `example/game` (the `Game` struct implementing `ebiten.Game`) is deliberately its own package, not
 `package main`, specifically so it can be shared across every entrypoint below — `ebitenmobile bind`
@@ -139,6 +139,27 @@ plainly what has and hasn't been confirmed working:
   No app icon is set — `Icon=applications-games` falls back to a generic icon from whatever theme is
   active rather than a bundled file, the same "not done yet" state as macOS's commented-out
   `CFBundleIconFile`.
+- **Windows** (`example/windows/build-windows-installer.ps1` + `installer.iss`, PowerShell + Inno
+  Setup 6) — wraps the same `go build ./example` binary, built here with `-ldflags -H=windowsgui`
+  (this machine's own global convention for Go GUI apps — see `~/.claude/CLAUDE.md`; without it a
+  console window pops up alongside the game window) in a proper installer: Start Menu shortcut,
+  optional desktop icon, Add/Remove Programs entry with a working uninstaller. **Confirmed working
+  end-to-end** on this dev machine: build → `ISCC` compile → silent test install (`/VERYSILENT
+  /DIR=...` into a scratch temp dir) → launch (window title and responsiveness confirmed) → silent
+  uninstall — all succeeded, and the install dir/Start Menu folder/registry entry were all
+  confirmed gone afterward. Requires Inno Setup 6 (`ISCC.exe`) — already installed on this machine
+  at its default location; `$env:ISCC_PATH` overrides the lookup if it's somewhere else, and the
+  script throws with a download link if it's missing entirely. Two real issues this surfaced, now
+  fixed in `installer.iss`:
+  - `ArchitecturesInstallIn64BitMode=x64compatible` (the more correct modern value, also covering
+    ARM64 via x64 emulation) isn't recognized by this machine's Inno Setup 6.2.2 — reverted to the
+    older `x64`; worth revisiting if a newer Inno Setup is ever installed here.
+  - The default `PrivilegesRequired=admin` install failed outright in this environment (exit code
+    2, "Access to the path ...\msdtadmin is denied") — this looks like a sandboxed/non-interactive
+    session that can't satisfy a UAC elevation prompt. Switched to `PrivilegesRequired=lowest`
+    (per-user install under `{localappdata}\Programs`, no admin/UAC needed) — arguably the more
+    correct choice anyway for a single-player game with no reason to touch shared system
+    directories.
 
 Both `.ps1` scripts need PowerShell (`pwsh`) to run as-is; on macOS that means either installing
 `pwsh` or translating the handful of commands inside them manually — they're short and mostly
