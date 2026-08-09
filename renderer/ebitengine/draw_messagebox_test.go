@@ -1,12 +1,21 @@
 package ebitengine
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/ebinovel/kag3"
 )
 
-func TestFilledSpeedSegmentsScalesWithTextSpeedMs(t *testing.T) {
+// TestFilledSpeedSegmentsMatchesNearestSpeedStep is the regression test for
+// the indicator and config.ks's own text-speed slider disagreeing: this
+// used to scale continuously against a [5,100]ms range that matched
+// neither speedSteps' real extremes (20-140ms) nor its step count (5, not
+// this indicator's old 4 segments) — e.g. selecting config.ks's "標準"
+// (83ms) lit only 1 of 4 segments instead of landing in the middle.
+// filledSpeedSegments must now snap to whichever of the 5 real
+// speedSteps entries textSpeedMs is closest to.
+func TestFilledSpeedSegmentsMatchesNearestSpeedStep(t *testing.T) {
 	defer func() { textSpeedMs = 83 }()
 
 	cases := []struct {
@@ -14,11 +23,14 @@ func TestFilledSpeedSegmentsScalesWithTextSpeedMs(t *testing.T) {
 		ms   int
 		want int
 	}{
-		{"fastest clamps to all filled", 0, speedSegCount},
-		{"at min: fully filled", textSpeedIndicatorMinMs, speedSegCount},
-		{"at max: empty", textSpeedIndicatorMaxMs, 0},
-		{"slowest clamps to empty", 1000, 0},
-		{"midpoint: about half filled", (textSpeedIndicatorMinMs + textSpeedIndicatorMaxMs) / 2, speedSegCount / 2},
+		{"exact match: slowest (idx0, 140ms = 遅い)", 140, 1},
+		{"exact match: idx1 (110ms = やや遅い)", 110, 2},
+		{"exact match: standard (idx2, 83ms = 標準)", 83, 3},
+		{"exact match: idx3 (50ms = やや速い)", 50, 4},
+		{"exact match: fastest (idx4, 20ms = 速い)", 20, 5},
+		{"faster than fastest clamps to fastest", 0, 5},
+		{"slower than slowest clamps to slowest", 1000, 1},
+		{"nearest: between idx2(83) and idx3(50), closer to 83", 70, 3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -53,9 +65,10 @@ func TestDrawTextSpeedIndicatorNoopWithoutVisibleTextPosition(t *testing.T) {
 // whatever value filledSpeedSegments would, in turn, read back as i.
 func TestSetFilledSpeedSegmentsRoundTripsWithFilledSpeedSegments(t *testing.T) {
 	defer func() { textSpeedMs, defaultTextSpeedMs = 83, 83 }()
+	r := newTestRenderer()
 
 	for filled := 1; filled <= speedSegCount; filled++ {
-		setFilledSpeedSegments(filled)
+		setFilledSpeedSegments(r, filled)
 		if got := filledSpeedSegments(); got != filled {
 			t.Errorf("setFilledSpeedSegments(%d) then filledSpeedSegments() = %d, want %d (textSpeedMs=%d)", filled, got, filled, textSpeedMs)
 		}
@@ -65,17 +78,36 @@ func TestSetFilledSpeedSegmentsRoundTripsWithFilledSpeedSegments(t *testing.T) {
 	}
 }
 
+// TestSetFilledSpeedSegmentsSyncsTfSetSpeedIdx is the regression test for
+// clicking the message box's own indicator leaving config.ks's slider
+// (which reads tf.set_speed_idx, not textSpeedMs, to draw itself) showing
+// a stale selection, and [configsave] persisting that stale idx instead
+// of whatever speed the click actually set.
+func TestSetFilledSpeedSegmentsSyncsTfSetSpeedIdx(t *testing.T) {
+	defer func() { textSpeedMs, defaultTextSpeedMs = 83, 83 }()
+	r := newTestRenderer()
+
+	for filled := 1; filled <= speedSegCount; filled++ {
+		setFilledSpeedSegments(r, filled)
+		wantIdx := filled - 1
+		if got := r.vm.EvalString("tf.set_speed_idx"); got != strconv.Itoa(wantIdx) {
+			t.Errorf("setFilledSpeedSegments(%d): tf.set_speed_idx = %q, want %q", filled, got, strconv.Itoa(wantIdx))
+		}
+	}
+}
+
 // TestSetFilledSpeedSegmentsClampsOutOfRange covers the 0-and-below /
 // above-speedSegCount edges a stray click shouldn't be able to reach in
 // practice, but the function should still behave sanely for.
 func TestSetFilledSpeedSegmentsClampsOutOfRange(t *testing.T) {
 	defer func() { textSpeedMs, defaultTextSpeedMs = 83, 83 }()
+	r := newTestRenderer()
 
-	setFilledSpeedSegments(0)
+	setFilledSpeedSegments(r, 0)
 	if got := filledSpeedSegments(); got != 1 {
 		t.Errorf("setFilledSpeedSegments(0) then filledSpeedSegments() = %d, want clamped to 1", got)
 	}
-	setFilledSpeedSegments(speedSegCount + 5)
+	setFilledSpeedSegments(r, speedSegCount+5)
 	if got := filledSpeedSegments(); got != speedSegCount {
 		t.Errorf("setFilledSpeedSegments(overshoot) then filledSpeedSegments() = %d, want clamped to %d", got, speedSegCount)
 	}

@@ -2,7 +2,6 @@ package ebitengine
 
 import (
 	"image/color"
-	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -61,14 +60,25 @@ func messageBoxFillColor(style string) color.RGBA {
 // a "文字送り" label. ---
 
 const (
-	textSpeedIndicatorMinMs = 5   // config.ks's fastest slider option (*ch_speed_change)
-	textSpeedIndicatorMaxMs = 100 // config.ks's slowest slider option
-	speedSegCount           = 4
-	speedSegW, speedSegH    = 46.0, 8.0
-	speedSegGap             = 6.0
-	speedLabelFontSize      = 20
-	speedLabelGap           = 14.0
+	speedSegW, speedSegH = 46.0, 8.0
+	speedSegGap          = 6.0
+	speedLabelFontSize   = 20
+	speedLabelGap        = 14.0
 )
+
+// speedSteps mirrors first.ks's tf.speed_steps ([140, 110, 83, 50, 20]ms,
+// slowest to fastest) — the 5 discrete choices config.ks's own text-speed
+// slider offers (tf.speed_labels: 遅い/やや遅い/標準/やや速い/速い). Kept
+// in sync by hand: this indicator used to scale continuously against a
+// [5,100]ms range that matched neither this array's real extremes
+// (20-140ms) nor its step count (5, not the indicator's old 4 segments),
+// so e.g. selecting config.ks's "標準" (idx 2, 83ms) lit only 1 of 4
+// segments instead of landing in the middle. Update this array (and
+// speedSegCount, which derives from it) if first.ks's tf.speed_steps ever
+// changes.
+var speedSteps = [...]int{140, 110, 83, 50, 20}
+
+const speedSegCount = len(speedSteps)
 
 var (
 	speedSegFilledColor = color.RGBA{0x8f, 0xc0, 0xd8, 0xff}
@@ -76,28 +86,35 @@ var (
 	speedLabelColor     = color.RGBA{0x93, 0xa0, 0xac, 0xff}
 )
 
-// filledSpeedSegments reports how many of the bar's segments should be lit,
-// scaled against config.ks's own slider extremes. More filled = faster
-// (lower textSpeedMs) — a battery/power-level reading, not a "distance"
-// one; this is a judgment call (the mockup doesn't specify direction) and
-// this is the one place to flip it if it reads backwards on screen.
+// nearestSpeedStepIndex returns the index into speedSteps whose ms value is
+// closest to ms (ties favor the lower/faster index — arbitrary but
+// deterministic). Used both to light up the indicator for whatever
+// textSpeedMs [configdelay]/config.ks last set, and — via
+// setFilledSpeedSegments — to snap a click on the indicator itself onto
+// one of the same 5 real choices instead of an arbitrary in-between value.
+func nearestSpeedStepIndex(ms int) int {
+	best, bestDiff := 0, -1
+	for i, s := range speedSteps {
+		diff := ms - s
+		if diff < 0 {
+			diff = -diff
+		}
+		if bestDiff == -1 || diff < bestDiff {
+			bestDiff = diff
+			best = i
+		}
+	}
+	return best
+}
+
+// filledSpeedSegments reports how many of the bar's segments should be
+// lit: 1 + the index of whichever speedSteps entry textSpeedMs is
+// currently closest to. More filled = faster (lower textSpeedMs) — a
+// battery/power-level reading, not a "distance" one; this is a judgment
+// call (the mockup doesn't specify direction) and this is the one place
+// to flip it if it reads backwards on screen.
 func filledSpeedSegments() int {
-	lo, hi := float64(textSpeedIndicatorMinMs), float64(textSpeedIndicatorMaxMs)
-	ratio := (float64(textSpeedMs) - lo) / (hi - lo)
-	if ratio < 0 {
-		ratio = 0
-	}
-	if ratio > 1 {
-		ratio = 1
-	}
-	filled := int(math.Round(speedSegCount * (1 - ratio)))
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > speedSegCount {
-		filled = speedSegCount
-	}
-	return filled
+	return nearestSpeedStepIndex(textSpeedMs) + 1
 }
 
 // textSpeedIndicatorOrigin computes the segment bar's own top-left (segX,
@@ -151,23 +168,30 @@ func drawTextSpeedIndicator(r *Renderer, buf *ebiten.Image) {
 // setFilledSpeedSegments is filledSpeedSegments' inverse: given the number
 // of segments a click means to light up (1-indexed — clicking the 3rd
 // segment means "3 filled", matching how a battery/signal-bar control
-// reads), resolves and applies the textSpeedMs that reading corresponds to.
-// Sets defaultTextSpeedMs too, matching [configdelay]'s own "this is the
-// new baseline, not a one-off [delay]" semantics — a direct click on the
+// reads), applies the speedSteps value at that index. Sets
+// defaultTextSpeedMs too, matching [configdelay]'s own "this is the new
+// baseline, not a one-off [delay]" semantics — a direct click on the
 // message box's own indicator is exactly that kind of durable preference
 // change, not a scripted temporary effect.
-func setFilledSpeedSegments(filled int) {
+//
+// Also mirrors the choice into tf.set_speed_idx via r.vm.MergeTF:
+// config.ks's own slider reads tf.set_speed_idx/tf.speed_labels (not
+// textSpeedMs) to draw itself, so without this a click here would leave
+// that screen showing a stale selection if opened afterward, and
+// [configsave] would persist that stale idx instead of the speed this
+// click actually set.
+func setFilledSpeedSegments(r *Renderer, filled int) {
 	if filled < 1 {
 		filled = 1
 	}
 	if filled > speedSegCount {
 		filled = speedSegCount
 	}
-	ratio := 1 - float64(filled)/float64(speedSegCount)
-	lo, hi := float64(textSpeedIndicatorMinMs), float64(textSpeedIndicatorMaxMs)
-	ms := int(math.Round(lo + ratio*(hi-lo)))
+	idx := filled - 1
+	ms := speedSteps[idx]
 	textSpeedMs = ms
 	defaultTextSpeedMs = ms
+	r.vm.MergeTF(map[string]interface{}{"set_speed_idx": float64(idx)})
 }
 
 // handleTextSpeedIndicatorClick lets the player click directly on the
@@ -201,7 +225,7 @@ func (r *Renderer) dispatchTextSpeedIndicatorClickAt(mX, mY int, touch bool) {
 	for i := 0; i < speedSegCount; i++ {
 		segLeft := segX + float64(i)*(speedSegW+speedSegGap)
 		if isColisionTouch(mX, mY, int(segLeft), int(y), int(speedSegW), int(speedSegH), touch) {
-			setFilledSpeedSegments(i + 1)
+			setFilledSpeedSegments(r, i+1)
 			return
 		}
 	}
