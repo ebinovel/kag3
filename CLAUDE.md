@@ -63,7 +63,7 @@ touches the windowing system unconditionally) so it also runs headless in CI. `e
 layout with the real official TyranoScript assets — not referenced by any build, safe to leave behind
 entirely when copying this checkout elsewhere (the `.exe` inside it won't run on macOS/Linux anyway).
 
-## Mobile/wasm/macOS builds (`example/mobile`, `example/wasm`, `example/macos`)
+## Mobile/wasm/macOS/Linux builds (`example/mobile`, `example/wasm`, `example/macos`, `example/linux`)
 
 `example/game` (the `Game` struct implementing `ebiten.Game`) is deliberately its own package, not
 `package main`, specifically so it can be shared across every entrypoint below — `ebitenmobile bind`
@@ -122,6 +122,23 @@ plainly what has and hasn't been confirmed working:
   `PATH` (dies looking for `clang`; forcing `CGO_ENABLED=0` just trades that for a *different* set of
   undefined GLFW symbols instead of a working binary) — so this script must run on an actual Mac,
   unlike the two `.ps1` scripts below.
+- **Linux** (`example/linux/build-linux.sh`, bash) — wraps the same plain `go build ./example`
+  binary in a freedesktop.org `.desktop` entry (Desktop Entry spec), plus an `install.sh` that
+  copies both into `~/.local/bin`/`~/.local/share/applications` (no sudo, nothing outside `$HOME`
+  touched) so the game shows up in a normal desktop environment's app launcher instead of only being
+  runnable from a terminal. **Confirmed working end-to-end** via WSL2 + WSLg on a Windows host (no
+  native Linux desktop available in this project's usual dev environment — same caveat as the macOS
+  bullet above, but here a real screenshot *was* obtainable, via the Windows host's own screen
+  capture against WSLg's RDP-backed window): `go build` succeeds, the binary launches and renders
+  the title screen correctly (Japanese font included), `desktop-file-validate` reports zero
+  errors/warnings on the generated `.desktop`, and `install.sh` correctly rewrites the placeholder
+  `Exec=__EXEC_PATH__` to the real installed path before copying both files into place. Requires the
+  same native dev libraries ebitengine's Linux backend needs at build time (X11/GLFW + ALSA headers)
+  — not present by default even on a fresh Ubuntu WSL image: `sudo apt-get install libgl1-mesa-dev
+  libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxxf86vm-dev libasound2-dev pkg-config`.
+  No app icon is set — `Icon=applications-games` falls back to a generic icon from whatever theme is
+  active rather than a bundled file, the same "not done yet" state as macOS's commented-out
+  `CFBundleIconFile`.
 
 Both `.ps1` scripts need PowerShell (`pwsh`) to run as-is; on macOS that means either installing
 `pwsh` or translating the handful of commands inside them manually — they're short and mostly
