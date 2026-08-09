@@ -142,13 +142,13 @@ func TestDispatchOperationRowClickAtOpensConfigViaSleepgamePath(t *testing.T) {
 	startX, y := opRowOrigin(total)
 	var configItem *opRowItem
 	for idx := range items {
-		if items[idx].Btn.Label == "設定" {
+		if items[idx].Btn.Label == "config" {
 			configItem = &items[idx]
 			break
 		}
 	}
 	if configItem == nil {
-		t.Fatal("expected a 設定 button in the layout")
+		t.Fatal("expected a config button in the layout")
 	}
 
 	// loadScript("config.ks") will fail (no such file in this empty test

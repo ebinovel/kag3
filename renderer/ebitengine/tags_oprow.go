@@ -17,7 +17,7 @@ func init() {
 // message box. Role, when set, is looked up in buttonRoles (role_dispatch.go)
 // — the same map [button role=...] already dispatches through, so this row
 // reuses the exact same actions rather than re-implementing them. onClick
-// covers the two that don't map onto an existing role: 設定 (no "config"
+// covers the two that don't map onto an existing role: config (no "config"
 // role exists — see openConfigScreen) and 既読SKIP (no unread-skip logic
 // exists anywhere in the engine yet, see unreadSkipEnabled).
 type opRowButton struct {
@@ -62,7 +62,7 @@ func handleOpBarConfig(ctx *tagCtx) error {
 
 // opRowGroups returns the row's button groups left-to-right, exactly the
 // spec's grouping: [AUTO,SKIP,既読SKIP] | [LOG] | (optional) [Q.SAVE,Q.LOAD]
-// | [SAVE,LOAD,設定,Title]. LOG is its own group (always shown) separate
+// | [SAVE,LOAD,config,Title]. LOG is its own group (always shown) separate
 // from the quicksave/quickload group so opRowShowQuickSave=false only
 // removes the latter, matching the source design's own sc-if placement.
 // "Title" is not part of the source design's own mockup — added when the
@@ -91,13 +91,13 @@ func opRowGroups() [][]opRowButton {
 	groups = append(groups, []opRowButton{
 		{Label: "SAVE", Role: "save"},
 		{Label: "LOAD", Role: "load"},
-		{Label: "設定", onClick: openConfigScreen},
+		{Label: "config", onClick: openConfigScreen},
 		{Label: "Title", Role: "title"},
 	})
 	return groups
 }
 
-// openConfigScreen is 設定's onClick: title.ks's own config button uses
+// openConfigScreen is config's onClick: title.ks's own config button uses
 // [button role="sleepgame" storage="config.ks"], whose return-address
 // bookkeeping happens inline in hitButtons (input_hit.go) rather than
 // through buttonRoles — there's no "config" role to look up, so this
