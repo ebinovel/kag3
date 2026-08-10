@@ -3,6 +3,7 @@ package kag3
 import (
 	"errors"
 	"io/fs"
+	"runtime"
 
 	"github.com/BurntSushi/toml"
 )
@@ -115,22 +116,70 @@ type Config struct {
 	// ebitengine never reads these paths itself (it stays voicevox_core-
 	// oblivious, same as ConfigStorage/SaveDirFunc) — an entrypoint-side
 	// file (e.g. example/game/speech_desktop.go, example/mobile/speech_android.go)
-	// reads them to construct the actual synthesizer and wire
-	// ebitengine.SpeechSynth. On Android specifically, all three values
-	// mean something different from desktop's plain filesystem paths —
-	// there's no static absolute path a shared config.toml could hold, so
-	// VoicevoxCorePath becomes a bare .so filename and the other two
-	// become assets/ subdirectory names, resolved to real paths at
-	// runtime by example/mobile/voicevoxpaths.Resolve. On iOS
-	// (example/mobile/speech_ios.go), all three are instead bundle-relative
-	// path fragments (e.g. VoicevoxCorePath =
-	// "Frameworks/voicevox_core.framework/voicevox_core"), resolved
-	// against the app bundle directory at runtime by
-	// example/mobile/voicevoxpaths.ResolveIOS. See docs/VOICEVOX.md's
-	// "対応プラットフォーム" section for the concrete examples.
+	// calls VoicevoxPaths() (below) to construct the actual synthesizer and
+	// wire ebitengine.SpeechSynth, rather than reading these three fields
+	// directly. These three act as the fallback VoicevoxPaths() returns
+	// when VoicevoxPlatform has no entry for the current runtime.GOOS — see
+	// that field's own doc comment for why the same three strings mean a
+	// different *kind* of path on every platform (desktop: a real
+	// filesystem path; Android: a bare .so filename/assets subdirectory
+	// name; iOS: an app-bundle-relative path fragment), which is exactly
+	// why a single flat triple can't serve every build target from one
+	// config.toml. See docs/VOICEVOX.md's "対応プラットフォーム" section for
+	// concrete examples.
 	VoicevoxCorePath          string `toml:"VoicevoxCorePath"`
 	VoicevoxOpenJtalkDictPath string `toml:"VoicevoxOpenJtalkDictPath"`
 	VoicevoxModelsPath        string `toml:"VoicevoxModelsPath"`
+	// VoicevoxPlatform lets one config.toml carry a *different* Voicevox*
+	// path triple per build target, keyed by runtime.GOOS ("windows",
+	// "linux", "darwin", "android", "ios") — without it, a project that
+	// wants working [speak_on] on more than one platform would have to
+	// hand-edit config.toml between builds, since e.g. Android's bare
+	// ".so"-filename-plus-assets-subdirectory values are meaningless as a
+	// literal filesystem path on Windows, and even Windows/Linux/macOS
+	// alone already need different core-library filenames
+	// (voicevox_core.dll vs. libvoicevox_core.so vs. libvoicevox_core.dylib).
+	// A GOOS key with no entry (or entry omitted from config.toml entirely)
+	// falls back to the flat VoicevoxCorePath/VoicevoxOpenJtalkDictPath/
+	// VoicevoxModelsPath fields above wholesale — see VoicevoxPaths().
+	// Example:
+	//
+	//	[VoicevoxPlatform.windows]
+	//	CorePath = "voicevox_core.dll"
+	//	OpenJtalkDictPath = "dict/open_jtalk_dic_utf_8-1.11"
+	//	ModelsPath = "models"
+	//
+	//	[VoicevoxPlatform.android]
+	//	CorePath = "libvoicevox_core.so"
+	//	OpenJtalkDictPath = "voicevox/dict/open_jtalk_dic_utf_8-1.11"
+	//	ModelsPath = "voicevox/models"
+	VoicevoxPlatform map[string]VoicevoxPlatformPaths `toml:"VoicevoxPlatform"`
+}
+
+// VoicevoxPlatformPaths is one runtime.GOOS entry in Config.VoicevoxPlatform
+// — see that field's own doc comment.
+type VoicevoxPlatformPaths struct {
+	CorePath          string `toml:"CorePath"`
+	OpenJtalkDictPath string `toml:"OpenJtalkDictPath"`
+	ModelsPath        string `toml:"ModelsPath"`
+}
+
+// VoicevoxPaths resolves the (corePath, openJtalkDictPath, modelsPath)
+// triple to actually use for the current runtime.GOOS build: c's
+// VoicevoxPlatform[runtime.GOOS] entry if config.toml set one, otherwise
+// the flat VoicevoxCorePath/VoicevoxOpenJtalkDictPath/VoicevoxModelsPath
+// fields. Entrypoint-side TTS wiring (speech_desktop.go,
+// speech_android.go, voicevoxpaths.Resolve/ResolveIOS) should always go
+// through this rather than reading the Voicevox* fields directly, so a
+// single config.toml transparently serves every platform it has an entry
+// (or a working fallback) for. Whichever triple is returned keeps the
+// existing "" == disabled contract: callers already check all three for
+// emptiness before treating the feature as configured.
+func (c *Config) VoicevoxPaths() (corePath, openJtalkDictPath, modelsPath string) {
+	if p, ok := c.VoicevoxPlatform[runtime.GOOS]; ok {
+		return p.CorePath, p.OpenJtalkDictPath, p.ModelsPath
+	}
+	return c.VoicevoxCorePath, c.VoicevoxOpenJtalkDictPath, c.VoicevoxModelsPath
 }
 
 type Speeds struct {
