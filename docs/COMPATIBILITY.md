@@ -23,6 +23,27 @@ TyranoScript本家には無いkag3独自の目玉機能です。
 導入方法・タグの使い方・**利用規約とクレジット表記(重要)**は[docs/VOICEVOX.md](VOICEVOX.md)を
 必ず参照してください。
 
+## 🎨 PSD立ち絵読み込み — kag3だけの機能です
+
+`[chara_new_psd]`はTyranoScript本家に相当するタグの無い、kag3独自の拡張タグです。表情差分違いの
+PNGを1枚ずつ用意する代わりに、レイヤー分けされた1枚のPSDファイルと
+[PSDToolFavorites](https://github.com/oov/psd)形式の`.pfv`プリセット定義ファイルから、
+キャラクターの立ち絵を直接読み込めます。[oov/psd](https://github.com/oov/psd)でPSDのレイヤー木を
+解析し、[raa0121/pfv](https://github.com/raa0121/pfv)で`.pfv`のプリセット(表示するレイヤーの組み
+合わせ)を読み、[raa0121/ppi](https://github.com/raa0121/ppi)で実際にレイヤーを合成します。
+`.pfv`が定義するプリセットはそれぞれ1つの表情/ポーズとして`[chara_show face=]`/`[chara_mod face=]`
+にそのまま渡せます(`[chara_face]`を1つずつ呼ぶのと同じ結果になります)。
+
+```
+[chara_new_psd name="akane" storage="chara/akane.psd" favorite="chara/akane.pfv" face="通常"]
+[chara_show name="akane"]
+[chara_mod name="akane" face="笑顔"]
+```
+
+セーブ/ロードにも対応しています(生成した画像そのものではなく、PSD/pfv/プリセット名を指す文字列を
+`charas[name].Storage`/`Faces`に保存し、ロード時に読み込み直す設計 — 新規プロセスでロードしても
+`[chara_new_psd]`を再実行する必要はありません)。
+
 ## カテゴリ別対応状況
 
 | カテゴリ | 対応状況 | 備考 |
@@ -30,7 +51,7 @@ TyranoScript本家には無いkag3独自の目玉機能です。
 | メッセージ・テキスト | 全対応 | `l` `p` `graph` `r` `er` `cm` `ct` `current` `fuki_start` `fuki_stop` `fuki_chara` `ptext` `mtext` `ruby` `mark` `endmark` |
 | メッセージ関連の設定 | 全対応 | 既読テキストの追跡・既読のみスキップ(`unreadskip_config`、`config_record_label`)・既読テキストの色分け(`config_record_label color=`)に対応 — 既読判定の粒度については下記「既知の制約」参照 |
 | ラベル・ジャンプ操作 | 全対応 | `jump` `link`/`endlink` `button` `glink` `glink_config` `clickable` |
-| キャラクター操作 | 全対応 | `chara_show` `chara_mod` `chara_move` `chara_layer` 等、パーツ制御まで含め対応 |
+| キャラクター操作 | 全対応 | `chara_show` `chara_mod` `chara_move` `chara_layer` 等、パーツ制御まで含め対応。kag3独自拡張の`chara_new_psd`でPSD立ち絵読み込みにも対応(上記「🎨 PSD立ち絵読み込み」参照) |
 | 画像・背景・レイヤ操作 | 全対応 | `bg` `bg2` `image` `trans` `locate` `layopt` 等 |
 | 演出・効果・動画 | 動画関連のみ未対応 | `quake` `filter` `mask` などの演出は対応。`movie` `bgmovie` `wait_bgmovie` `stop_bgmovie` `layermode_movie` は対象外(Non-goal) |
 | アニメーション | 全対応 | `anim` `keyframe` `kanim` `xanim` 系すべて |
@@ -90,7 +111,8 @@ TyranoScript本家には無いkag3独自の目玉機能です。
 
 TyranoScript本家には無い、kag3独自のタグです。前半4つはメッセージウィンドウの再デザイン
 (操作ボタン行・文字送りゲージ等)向けで、プロジェクト側で `MessageBoxStyle = "redesigned"` を
-`config.toml` に設定した場合のみ意味を持ちます。最後の1つ(読み上げ機能)はそれとは独立しています。
+`config.toml` に設定した場合のみ意味を持ちます。残り2つ(読み上げ機能・PSD立ち絵読み込み)は
+それとは独立しています。
 
 - `[opbar_config]` — 操作ボタン行の表示/非表示・クイックセーブ行の有無を設定
 - `[msgbox_opacity]` — メッセージ欄の不透明度を設定
@@ -98,6 +120,8 @@ TyranoScript本家には無い、kag3独自のタグです。前半4つはメッ
 - `[configsave]` / `[configload]` — `config.ks` が使う `tf` 名前空間の変数をJSONファイルへ保存/復元
 - `[speak_config name= style=]` — VOICEVOXのキャラクターごとの読み上げスタイル(声)を設定。
   `name`省略時はモノローグ用のグローバルデフォルト。詳細は[docs/VOICEVOX.md](VOICEVOX.md)
+- `[chara_new_psd name= storage= favorite= face= jname= encoding=]` — PSD+`.pfv`からキャラクターの
+  立ち絵を読み込む。詳細は上記「🎨 PSD立ち絵読み込み」参照
 
 ## 詳細な実装状況を自分で確認する
 
