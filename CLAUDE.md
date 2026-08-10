@@ -162,7 +162,7 @@ plainly what has and hasn't been confirmed working:
   (`docs/VOICEVOX.md`), mirroring `speech_android.go`'s hook shape but needing neither its JNI bridge
   nor its startup-race retry loop — iOS has no JVM/Context-equivalent registration step at all, so path
   resolution (`example/mobile/voicevoxpaths.ResolveIOS`) runs synchronously, no cgo involved.
-  **Now built and run on a real Mac (iOS Simulator, Apple Silicon)** — `example/mobile/ios/Voicevox/`
+  **Now built and run on a real iOS device** — `example/mobile/ios/Voicevox/`
   (git-excluded, staged by hand) holds `voicevox_core.xcframework` (0.16.4, downloaded as-is) and a
   hand-packaged `voicevox_onnxruntime.xcframework` (upstream ships this as a bare `.dylib`, not a
   `.framework` — repackaged with a corrected `LC_ID_DYLIB` so `voicevox_core`'s own
@@ -203,7 +203,7 @@ plainly what has and hasn't been confirmed working:
   *every* `[speak_on]` line hit this), replaced with one persistent worker goroutine
   (`ensureSpeechWorker`/`speechWorker`) that makes a throwaway warm-up call before serially draining a
   buffered job channel for the rest of the process's life — harmless, arguably better practice, on
-  every other `SpeechSynth` backend too. **Confirmed working end-to-end** on the iOS Simulator:
+  every other `SpeechSynth` backend too. **Confirmed working end-to-end** on a real iOS device:
   `[speak_on]` synthesizes and plays with zero error output. (Android hit this same bug
   independently later — see the Android bullet above for why the one-time warm-up alone turned out
   not to be enough there, and the retry-based strengthening in `example/mobile/speech_common.go` that

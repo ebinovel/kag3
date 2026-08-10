@@ -188,7 +188,7 @@ Android/iOS両方の値を持っています。3キーとも空の場合(そのG
     APKの`assets/`配下のサブディレクトリ名(例: `"voicevox/dict/open_jtalk_dic_utf_8-1.11"`
     `"voicevox/models"`)です。実行時に`Context.getFilesDir()`配下へ自動展開されます。
     デスクトップと違い、絶対/相対のファイルシステムパスをそのまま書いても機能しません。
-- **iOS**: 実装済み・**シミュレータで音声合成・再生まで動作確認済み**
+- **iOS**: 実装済み・**実機で音声合成・再生まで動作確認済み**
   (`example/mobile/speech_ios.go`)。以前は「VOICEVOX COREを静的xcframeworkとして配布しているため
   dlopenできない」としていましたが誤りで、`voicevox_core-ios-xcframework-cpu-*.zip`/
   `voicevox_onnxruntime-ios-*.tgz`いずれも中身はMach-O**動的**共有ライブラリ(`file`コマンドで
@@ -203,7 +203,7 @@ Android/iOS両方の値を持っています。3キーとも空の場合(そのG
     パス解決が完結します——cgo/Objective-Cのブリッジコードも書いていません。
   - iOSのバンドルリソース(Xcodeの「Bundle Resources」で追加したファイル)はビルド時点で`.app`内に
     実ファイルとして配置されるため、Androidのassetsのような実行時展開処理も不要です。フラットな
-    バンドル構造(実行ファイルとリソースフォルダが同階層)であることも実機シミュレータで確認済み。
+    バンドル構造(実行ファイルとリソースフォルダが同階層)であることも実機で確認済み。
   - iOSも`config.toml`の3キーの意味がデスクトップと異なります(バンドル相対パスの断片):
     ```toml
     VoicevoxCorePath = "Frameworks/voicevox_core.framework/voicevox_core"
@@ -237,7 +237,7 @@ Android/iOS両方の値を持っています。3キーとも空の場合(そのG
     永続するワーカーgoroutineに集約し、実際のジョブを処理する前に1回だけ使い捨ての
     ウォームアップ呼び出しを行うようにしました(`renderer/ebitengine/tags_speech.go`、
     kag3側の共有コードでの修正——iOS固有の回避策ではなく、他プラットフォームでも安全)。
-    シミュレータで`[speak_on]`のエラーログが一切出ず、音声合成・再生まで動作することを確認済み。
+    実機で`[speak_on]`のエラーログが一切出ず、音声合成・再生まで動作することを確認済み。
     後日Android実機でも同一バグの再現が確認され(上記Androidの節)、そちらでは「ウォームアップ1回
     だけでは不十分で、同一goroutine内でも不定期に複数回再発しうる」ことも判明したため、
     `mobileSpeechSynth`(`example/mobile/speech_common.go`、Android/iOS共有コード)自体に
