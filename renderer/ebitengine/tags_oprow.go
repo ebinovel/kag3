@@ -92,7 +92,7 @@ func opRowGroups() [][]opRowButton {
 	groups = append(groups, []opRowButton{
 		{Label: "SAVE", Role: "save"},
 		{Label: "LOAD", Role: "load"},
-		{Label: "config", onClick: openConfigScreen},
+		{Label: "CONFIG", onClick: openConfigScreen},
 		{Label: "Title", Role: "title"},
 	})
 	return groups

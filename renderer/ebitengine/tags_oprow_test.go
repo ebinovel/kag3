@@ -142,7 +142,7 @@ func TestDispatchOperationRowClickAtOpensConfigViaSleepgamePath(t *testing.T) {
 	startX, y := opRowOrigin(total)
 	var configItem *opRowItem
 	for idx := range items {
-		if items[idx].Btn.Label == "config" {
+		if items[idx].Btn.Label == "CONFIG" {
 			configItem = &items[idx]
 			break
 		}
