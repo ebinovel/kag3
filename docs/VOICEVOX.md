@@ -63,6 +63,50 @@ VoicevoxModelsPath = "models"
 デフォルトで、その場合`[speak_on]`は静かなno-op(エラーにならない)になります — 読み上げ機能を
 使わないプロジェクトは何もする必要がありません。
 
+#### プラットフォームごとに別の値を指定する(`VoicevoxPlatform`)
+
+下の「対応プラットフォーム」で説明する通り、この3つの値は**プラットフォームによって意味その
+ものが変わります**(デスクトップは実ファイルシステムパス、Androidは`.so`ファイル名+assetsサブ
+ディレクトリ名、iOSはアプリバンドル相対のパス断片)。そのため、上記のトップレベルの3キーだけ
+だと、Windows/Android/iOSなど複数プラットフォーム向けにビルドするたびに`config.toml`を
+手で書き換える必要がありました。
+
+`[VoicevoxPlatform.<goos>]`テーブル(`<goos>`は`windows`/`linux`/`darwin`/`android`/`ios` —
+Goの`runtime.GOOS`の値そのもの)を使うと、1つの`config.toml`に全プラットフォーム分の値を
+同時に書いておけます。実行時、そのビルドの`runtime.GOOS`に一致するテーブルがあればそちらが
+優先され、無ければトップレベルの3キーにフォールバックします:
+
+```toml
+# 未設定時のフォールバック(例: Windows向けの値をここに書いておく)
+VoicevoxCorePath = "voicevox_core.dll"
+VoicevoxOpenJtalkDictPath = "dict/open_jtalk_dic_utf_8-1.11"
+VoicevoxModelsPath = "models"
+
+[VoicevoxPlatform.linux]
+CorePath = "libvoicevox_core.so"
+OpenJtalkDictPath = "dict/open_jtalk_dic_utf_8-1.11"
+ModelsPath = "models"
+
+[VoicevoxPlatform.darwin]
+CorePath = "libvoicevox_core.dylib"
+OpenJtalkDictPath = "dict/open_jtalk_dic_utf_8-1.11"
+ModelsPath = "models"
+
+[VoicevoxPlatform.android]
+CorePath = "libvoicevox_core.so"
+OpenJtalkDictPath = "voicevox/dict/open_jtalk_dic_utf_8-1.11"
+ModelsPath = "voicevox/models"
+
+[VoicevoxPlatform.ios]
+CorePath = "Frameworks/voicevox_core.framework/voicevox_core"
+OpenJtalkDictPath = "dict/open_jtalk_dic_utf_8-1.11"
+ModelsPath = "models"
+```
+
+`example/game/resources/config.toml`(kag3リポジトリ自身のデモプロジェクト)も実際にこの形式で
+Android/iOS両方の値を持っています。3キーとも空の場合(そのGOOSのテーブルが無く、トップレベルも
+未設定)は従来通り`[speak_on]`が静かなno-opになります。
+
 ## タグの使い方
 
 ```
