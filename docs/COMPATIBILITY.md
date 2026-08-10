@@ -9,8 +9,19 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 
 ## 対応方針
 
-3D・AR・動画・HTML/CSS・音声合成(読み上げ)・パッチ配信は対象外です。これらを除いた実用スコープでは、
+3D・AR・動画・HTML/CSS・パッチ配信は対象外です。これらを除いた実用スコープでは、
 ほぼ全てのタグに対応しています。
+
+## 🎤 読み上げ機能(VOICEVOX CORE) — kag3だけの機能です
+
+`speak_on`/`speak_off`はtyrano.jp/tagにタグ名としては載っていますが、本家の実装がどう動くかは
+未確認です(ブラウザのWeb Speech APIを想定していると思われます)。**kag3の実装はそれとは別物で、
+[VOICEVOX CORE](https://github.com/VOICEVOX/voicevox_core)によるオフラインの高品質ニューラル音声合成**
+です。ネットワーク接続不要で、シナリオのセリフをそのまま声優品質の音声で読み上げられる、
+TyranoScript本家には無いkag3独自の目玉機能です。
+
+導入方法・タグの使い方・**利用規約とクレジット表記(重要)**は[docs/VOICEVOX.md](VOICEVOX.md)を
+必ず参照してください。
 
 ## カテゴリ別対応状況
 
@@ -30,7 +41,7 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 | マクロ・分岐・サブルーチン | 全対応 | `if`/`elsif`/`else`/`endif`、`macro`/`endmacro`(パーサー側で処理)、`call`/`return` 等 |
 | 変数・JS操作・ファイル読込 | `loadcss` のみ未対応 | `iscript`/`endscript`・`eval`・`emb` は [goja](https://github.com/dop251/goja) 埋め込みで評価。`loadcss` はHTML/CSS非対応につき対象外(Non-goal) |
 | オーディオ | 全対応 | BGM/SE の再生・フェード・音量調整まですべて |
-| ボイス・読み上げ | 音声合成(読み上げ)のみ未対応 | `voconfig` `vostart` `vostop` によるボイスファイルの自動再生に対応。`speak_on` `speak_off`(音声合成)は対象外(Non-goal) |
+| ボイス・読み上げ | 全対応 | `voconfig` `vostart` `vostop` によるボイスファイルの自動再生に加え、`speak_on` `speak_off` によるVOICEVOX CORE経由のオフライン音声合成に対応(kag3独自拡張の`speak_config`でキャラごとの声を設定)。詳細は上記「🎤 読み上げ機能」参照 |
 | 入力フォーム | 全対応 | `edit`(ASCIIのみ、IME連動は未対応) `commit` |
 | 3D関連 | 未対応(Non-goal) | `3d_*` 系タグ約36本すべて |
 | AR関連 | 未対応(Non-goal) | `bgcamera` `qr_*` 系タグすべて |
@@ -61,17 +72,32 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
   `fs.FS` キーがあればそこから、無ければSEと同じ `ses` から読みます(本家もボイスとSEを同じ `data/sound`
   に置きます)。
 - **`[edit]` はASCIIのみ**: IME(日本語入力)と連動したテキストボックスの実装は未対応です。
+- **読み上げ機能(`speak_on`/`speak_off`)は`config.toml`未設定なら静かに無効**: VOICEVOX CORE
+  本体・ONNX Runtime・OpenJTalk辞書・音声モデルはkag3に同梱されておらず、`config.toml` の
+  `VoicevoxCorePath`/`VoicevoxOpenJtalkDictPath`/`VoicevoxModelsPath`(いずれも空文字がデフォルト)
+  を設定しない限り機能そのものが無効です(エラーにはならず、`[speak_on]`が静かなno-opになるだけ)。
+  導入手順・**利用規約とクレジット表記**は[docs/VOICEVOX.md](VOICEVOX.md)を参照してください。
+  VOICEVOXのスタイルID一覧を取得するAPI(`voicevox_synthesizer_create_metas_json`等)はまだ
+  Go側のラッパー([nanoda](https://github.com/aethiopicuschan/nanoda))に実装されていないため、
+  スタイルIDはVOICEVOX公式サイトで確認する必要があります。合成は非同期(バックグラウンドの
+  goroutine)で行われるため文字送りは止まりませんが、その分`[wse buf="speech"]`のような
+  「読み上げ待ち」は合成中の間は正しく機能しません。Windows/Linux/macOSに加え、Android・iOSでも
+  実機での音声合成・再生を確認済みです(`config.toml`の3キーの意味がプラットフォームごとに
+  異なります)。wasmのみpuregoにjs/wasmターゲットが無いため非対応です。詳細は
+  [docs/VOICEVOX.md](VOICEVOX.md)の「対応プラットフォーム」を参照してください。
 
 ## kag3 独自の拡張タグ
 
-メッセージウィンドウの再デザイン(操作ボタン行・文字送りゲージ等)向けに、TyranoScript本家には
-無い以下のタグを追加しています。プロジェクト側で `MessageBoxStyle = "redesigned"` を
-`config.toml` に設定した場合のみ意味を持ちます。
+TyranoScript本家には無い、kag3独自のタグです。前半4つはメッセージウィンドウの再デザイン
+(操作ボタン行・文字送りゲージ等)向けで、プロジェクト側で `MessageBoxStyle = "redesigned"` を
+`config.toml` に設定した場合のみ意味を持ちます。最後の1つ(読み上げ機能)はそれとは独立しています。
 
 - `[opbar_config]` — 操作ボタン行の表示/非表示・クイックセーブ行の有無を設定
 - `[msgbox_opacity]` — メッセージ欄の不透明度を設定
 - `[unreadskip_config]` — 既読SKIPボタンの状態(`mode="read_only"`/`"all"`)を設定
 - `[configsave]` / `[configload]` — `config.ks` が使う `tf` 名前空間の変数をJSONファイルへ保存/復元
+- `[speak_config name= style=]` — VOICEVOXのキャラクターごとの読み上げスタイル(声)を設定。
+  `name`省略時はモノローグ用のグローバルデフォルト。詳細は[docs/VOICEVOX.md](VOICEVOX.md)
 
 ## 詳細な実装状況を自分で確認する
 
