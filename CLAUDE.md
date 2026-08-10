@@ -11,7 +11,19 @@ bundled `example`/`example2` are full copies of the official TyranoScript sample
 unmodified. See `docs/COMPATIBILITY.md` for the tag-by-tag compatibility matrix against
 [tyrano.jp/tag](https://tyrano.jp/tag) (also published at https://ebinovel.github.io/compatibility.html) —
 keep both in sync whenever a new tag is registered or an existing one's behavior changes in a way
-that affects compatibility.
+that affects compatibility. `docs/VOICEVOX.md` (synced with `../ebinovel.github.io/voice.html`) covers
+kag3's own read-aloud feature (`[speak_on]`/`[speak_off]`, VOICEVOX CORE via
+[nanoda](https://github.com/aethiopicuschan/nanoda)) — setup, `config.toml` fields, and the
+per-character licensing/crediting requirements that come with it.
+
+**Temporary state**: kag3 currently depends on nanoda's unmerged 0.16.x support
+([PR #8](https://github.com/aethiopicuschan/nanoda/pull/8)) via a local, gitignored `go.work` that
+points at a sibling `../nanoda` checkout — `go.mod` itself has no `require` for it (workspace mode
+resolves the import without one). This means `renderer/ebitengine` and `example/game`'s TTS wiring
+only build here, on this machine, with that sibling checkout present; anyone else cloning kag3 is
+missing the same `go.work` and the build will fail to resolve `github.com/aethiopicuschan/nanoda/v2`
+entirely. Once that PR merges and is tagged, replace this with a normal
+`go get github.com/aethiopicuschan/nanoda/v2@<tag>` and delete `go.work`/`go.work.sum`.
 
 ## Commands
 
@@ -85,7 +97,51 @@ plainly what has and hasn't been confirmed working:
   Android-specific piece to know about if save/load misbehaves only on Android — `MobilePlatform`/
   `TG.config.isMobile` (lets `config.ks` hide UI that only makes sense on desktop, e.g. the
   window/fullscreen toggle) used to live in this file too but is now shared with iOS via
-  `platform_mobile.go` (see the iOS bullet below for why).
+  `platform_mobile.go` (see the iOS bullet below for why). `example/mobile/speech_android.go`
+  (`//go:build android`) is the equivalent bridge for VOICEVOX CORE TTS (`docs/VOICEVOX.md`) —
+  Android was long assumed to need bespoke NDK plumbing nobody had tried, but purego/nanoda already
+  compile for Android unmodified (see that file's own doc comment); what's actually new is resolving
+  real on-disk paths for the bundled native library and assets at runtime, plus a background-goroutine
+  init to dodge a startup-order race against `Seq.setContext` (also explained in the doc comment).
+  **Confirmed working end-to-end on a real device (2026-08)**, including actual audio playback —
+  `example/game/resources/senarios/demo_speech.ks`'s three lines of dialogue all synthesize and play
+  with no errors. Getting there involved two dead ends worth knowing about if this ever needs
+  revisiting:
+  - **"`LoadAllModels` hangs" was a misdiagnosis.** Early testing showed `libvoicevox_core.so`
+    `dlopen`ing and `NewSynthesizer` succeeding, then nothing — no further log lines, looked exactly
+    like a deadlock inside `LoadAllModels`'s FFI call. The actual cause: gomobile's
+    `internal/mobileinit` `os.Stdout` log pipe is unreliable on-device, so `fmt.Println` calls were
+    silently going nowhere — there was no hang, just no visible output past that point. Switching
+    debug logging to `fmt.Fprintln(os.Stderr, ...)` (that pipe *does* work) showed `LoadAllModels`
+    completing normally all along. **Prefer `os.Stderr` over `os.Stdout` for any ad-hoc logging on
+    Android** — this cost real time to root-cause.
+  - **The real bug, once past that**: the same purego goroutine-first-call corruption bug iOS hit
+    independently (see the iOS bullet below for the full story) — `voicevox_synthesizer_tts` returns
+    success with `output_wav_length` silently left at `0`. iOS's fix (one persistent worker goroutine,
+    `speechWorker`/`SpeechWarmup` in `renderer/ebitengine/tags_speech.go`, that pays down the
+    corruption with a throwaway warm-up call before serving real jobs) helped but wasn't sufficient on
+    Android by itself — real-device testing showed the corruption can recur intermittently on *later*
+    calls too, not just the worker's very first one, even while pinned to one OS thread
+    (`runtime.LockOSThread`). The actual fix: `mobileSpeechSynth`
+    (`example/mobile/speech_common.go`, shared by both platforms) now retries its own call up to 5
+    times, validating a real non-empty WAV body before returning success — a strictly stronger
+    guarantee than the one-time warm-up alone, and iOS inherits it for free since the code is shared.
+  Also needed, independent of either debugging dead end above, to get a build running on-device at
+  all: NDK's own `libc++_shared.so` copied into `jniLibs/arm64-v8a/` alongside `libvoicevox_core.so`/
+  `libvoicevox_onnxruntime.so` (voicevox_core dynamically depends on it, and this machine's pinned
+  NDK — r22 — ships a libc++ too old to satisfy the symbols voicevox_core's official Android build
+  was linked against; a newer NDK, r29 here, had to be fetched solely to lift its `libc++_shared.so`
+  out — see `example/mobile/androidapp/app/src/main/jniLibs/arm64-v8a/` for what's staged there,
+  gitignored/excluded like the rest of `example/`); `app/build.gradle`'s `androidResources.noCompress`
+  and `gradle.properties`' `org.gradle.jvmargs=-Xmx4096m` (the ~99MB Open JTalk dictionary OOM'd
+  `compressDebugAssets` at the default heap otherwise); and `packaging.jniLibs.useLegacyPackaging`
+  (AGP's replacement for the older `android:extractNativeLibs` manifest attribute, needed for
+  `libvoicevox_core.so` to land at a real path under `ApplicationInfo.nativeLibraryDir` rather than
+  staying mmap'd inside the APK). None of the actual binary assets (the two `.so` files, the
+  dictionary, the `.vvm` model) are tracked or bundled by this repo — they were fetched by hand for
+  this test run into the same untracked `example/mobile/androidapp/app/src/main/{jniLibs,assets}/`
+  paths; reproducing this needs fetching them again the same way `docs/VOICEVOX.md`'s desktop
+  instructions describe, targeting Android platform builds instead.
 - **iOS** (`example/mobile/build-ios.sh`, `example/mobile/ios/README.md`) — needs a Mac with a full
   Xcode install; this repository has never had one available itself, so treat the script/guide as
   written by reasoning from the Android side and ebitengine's public docs, not a verified recipe —
@@ -102,6 +158,57 @@ plainly what has and hasn't been confirmed working:
   `game.New()` regardless of file-lexical ordering. Storage persistence still hasn't needed its own
   bridge the way Android's JNI one does — see the README's own note on trying the default
   `os.UserHomeDir()` fallback first — but expect further iteration on anything not mentioned above.
+  `example/mobile/speech_ios.go` (`//go:build ios`) is the VOICEVOX CORE TTS registrant
+  (`docs/VOICEVOX.md`), mirroring `speech_android.go`'s hook shape but needing neither its JNI bridge
+  nor its startup-race retry loop — iOS has no JVM/Context-equivalent registration step at all, so path
+  resolution (`example/mobile/voicevoxpaths.ResolveIOS`) runs synchronously, no cgo involved.
+  **Now built and run on a real Mac (iOS Simulator, Apple Silicon)** — `example/mobile/ios/Voicevox/`
+  (git-excluded, staged by hand) holds `voicevox_core.xcframework` (0.16.4, downloaded as-is) and a
+  hand-packaged `voicevox_onnxruntime.xcframework` (upstream ships this as a bare `.dylib`, not a
+  `.framework` — repackaged with a corrected `LC_ID_DYLIB` so `voicevox_core`'s own
+  `@rpath/voicevox_onnxruntime.framework/voicevox_onnxruntime` load command resolves; see
+  `example/mobile/ios/README.md`'s VOICEVOX section for the exact repackaging steps).
+  **Real bug found and fixed**: iOS's `voicevox_core` build only exports the `VOICEVOX_LINK_ONNXRUNTIME`
+  API (`voicevox_onnxruntime_init_once`/`voicevox_onnxruntime_get` — ONNX Runtime is a normal link-time
+  dependency dyld resolves automatically) — confirmed straight from the bundled `voicevox_core.h`, which
+  documents this as the *documented, deliberate* per-platform split: iOS ships only
+  `VOICEVOX_LINK_ONNXRUNTIME`, every other platform (including Android) ships only
+  `VOICEVOX_LOAD_ONNXRUNTIME` (`voicevox_get_onnxruntime_lib_versioned_filename` +
+  `voicevox_onnxruntime_load_once` — manually dlopen a separate library by resolved filename). `nanoda`'s
+  `internal/core/core_0_16_0` package (the local fork at `../nanoda`, see `go.work`/go.mod's `replace`)
+  only ever implemented the LOAD-mode half, so the very first native call
+  (`core_0_16_0.New`'s `purego.RegisterLibFunc` for `voicevox_get_onnxruntime_lib_versioned_filename`)
+  panicked with `dlsym: symbol not found` on iOS — that symbol was never compiled into the iOS binary at
+  all. Fixed by splitting the onnxruntime half of `core_0_16_0` into two build-tag-gated files
+  (`onnxruntime_other.go` `//go:build !ios`, `onnxruntime_ios.go` `//go:build ios`), each providing the
+  same `registerOnnxruntime()`/`loadOnnxruntime()` shape against the platform-appropriate C functions —
+  a genuine upstream-`nanoda`-shaped fix, not a kag3-side workaround, done directly in the local fork.
+  **Second real bug found and fixed: a freshly spawned goroutine's *first* native call silently
+  corrupts pointer-out-parameters, on this platform.** Past the onnxruntime fix, `voicevox_core` loaded
+  and `voicevox_synthesizer_tts` returned success (`code == 0`, a plausible non-null `output_wav`
+  pointer) but `output_wav_length` came back `0`, so `wav.DecodeWithSampleRate`
+  (`renderer/ebitengine/tags_speech.go`) rejected the zero-byte read as an invalid header. Root-caused
+  with a from-scratch isolation harness bypassing nanoda/kag3 entirely: a minimal **C** program linked
+  straight against the xcframeworks confirmed `voicevox_core` itself is fine (a real, correct WAV
+  length came back); a minimal **Go**+`purego` program (no nanoda) replicated nanoda's exact
+  struct-as-uintptr call technique called from `main()` — also fine; the *same* call launched inside a
+  **freshly spawned goroutine** failed exactly like the real app (both out-params stayed at their
+  zero-initialized sentinels); a **second** call immediately after, on that same now-"warmed"
+  goroutine, always succeeded. So the bug is specific to the very first `purego`-marshalled native call
+  any given goroutine ever makes on this platform — plausibly a `purego`/Go-runtime interaction around
+  a freshly spawned goroutine's still-growing stack racing the low-level FFI trampoline
+  (`runtime_cgocall` + a hand-written assembly syscall stub), though not definitively confirmed beyond
+  "this repro reliably reproduces it and a second call reliably fixes it." **Fixed in shared code, not
+  iOS-specific**: `tags_speech.go`'s `speakLine` used to spawn a brand-new goroutine per line (meaning
+  *every* `[speak_on]` line hit this), replaced with one persistent worker goroutine
+  (`ensureSpeechWorker`/`speechWorker`) that makes a throwaway warm-up call before serially draining a
+  buffered job channel for the rest of the process's life — harmless, arguably better practice, on
+  every other `SpeechSynth` backend too. **Confirmed working end-to-end** on the iOS Simulator:
+  `[speak_on]` synthesizes and plays with zero error output. (Android hit this same bug
+  independently later — see the Android bullet above for why the one-time warm-up alone turned out
+  not to be enough there, and the retry-based strengthening in `example/mobile/speech_common.go` that
+  iOS inherits for free since the fix is shared.) See `example/mobile/ios/README.md`'s
+  VOICEVOX section (steps 8–10) for the full repro/fix detail.
 - **wasm** (`example/wasm/build-wasm.ps1`, PowerShell) — plain `GOOS=js GOARCH=wasm go build`, no
   special toolchain. `-Publish` also builds a stripped copy into `../ebinovel.github.io/play/` (a
   sibling repo — see that repo's own README) for the public browser demo. `renderer/ebitengine/storage_js.go`
