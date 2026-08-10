@@ -473,7 +473,13 @@ func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage m
 			// from charaStorage[c.Name] (buildSaveData's charas[name].Storage
 			// snapshot) to match, same as handleCharaMod's own face switch.
 			if want := charaStorage[c.Name]; want != "" && want != reg.Storage {
-				if img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], want); err != nil {
+				// loadImage, not ebitenutil.NewImageFromFileSystem directly:
+				// want may be a [chara_new_psd]-generated storage descriptor
+				// (tags_chara_psd.go), which isn't a real file path at all —
+				// loadImage is the one place that knows how to regenerate
+				// one of those from scratch, exactly what a fresh process
+				// (that never ran [chara_new_psd] itself) needs here.
+				if img, err := loadImage(r, "", want); err != nil {
 					fmt.Printf("save/load: %s の画像 %s の読み込みに失敗したため表情を復元できません: %v\n", c.Name, want, err)
 				} else {
 					reg.Image = img
@@ -488,7 +494,7 @@ func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage m
 			fmt.Printf("save/load: %s の画像パスが無いため復元できません(スキップします)\n", c.Name)
 			continue
 		}
-		img, _, err := ebitenutil.NewImageFromFileSystem(r.fses["images"], storage)
+		img, err := loadImage(r, "", storage)
 		if err != nil {
 			fmt.Printf("save/load: %s の画像読み込みに失敗したためスキップします: %v\n", c.Name, err)
 			continue

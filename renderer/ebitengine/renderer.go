@@ -351,7 +351,14 @@ func resolveFolderImage(r *Renderer, folder, graphic string) (imgFS fs.FS, name 
 // loadImage resolves folder/storage via resolveFolderImage and loads the
 // result, folding the two-step "resolve fs.FS + path, then load" sequence
 // that's repeated at every [button]/[image]/chara call site into one call.
+// A storage carrying psdFaceStorageSentinel (tags_chara_psd.go) is not a
+// real file path at all — it's a self-describing descriptor for a
+// [chara_new_psd]-generated face, regenerated (or served from cache) by
+// loadPSDFace instead of ever reaching resolveFolderImage/fs.FS.
 func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
+	if strings.HasPrefix(storage, psdFaceStorageSentinel) {
+		return loadPSDFace(r, storage)
+	}
 	imgFS, name := resolveFolderImage(r, folder, storage)
 	img, _, err := ebitenutil.NewImageFromFileSystem(imgFS, name)
 	if err != nil {
