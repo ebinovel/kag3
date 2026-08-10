@@ -315,12 +315,22 @@ func swapSEPlayer(fsys fs.FS, buf, storage string, se *kag3.BGM) error {
 		return err
 	}
 	se.Player = player
+	setSEPlayer(buf, se)
+	return nil
+}
+
+// setSEPlayer registers se (its Player already built) under buf, pausing
+// and closing whatever was there before. Split out of swapSEPlayer so
+// callers that already have a ready-made *audio.Player from somewhere
+// other than a file — [speak_on]'s synthesized WAV bytes
+// (stepSpeechSynthesis, tags_speech.go) being the reason this exists —
+// can register it without swapSEPlayer's fs.FS/loadAudioPlayer detour.
+func setSEPlayer(buf string, se *kag3.BGM) {
 	if old, ok := ses[buf]; ok && old.Player != nil {
 		old.Player.Pause()
 		old.Player.Close()
 	}
 	ses[buf] = se
-	return nil
 }
 
 func handlePlaySE(ctx *tagCtx) error {

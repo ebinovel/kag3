@@ -66,6 +66,18 @@ func (r *Renderer) goToTitle() {
 	// doesn't stop the BGM either.
 	voiceConfigs = map[string]*voiceConfig{}
 	voiceAutoPlay = false
+	// [speak_on]/[speak_config] state (tags_speech.go) — same process-
+	// lifetime/unsaved treatment as voiceConfigs just above, for the same
+	// reason. lastAppliedSpeechSeq jumps to the current speechSeq (rather
+	// than resetting either to 0) specifically so a synthesis job already
+	// in flight when the player backs out to title — which nothing can
+	// cancel once started — gets silently discarded by
+	// stepSpeechSynthesis when it eventually completes, instead of
+	// speaking over the title screen a few seconds later.
+	speechAutoPlay = false
+	speechStyles = map[string]uint32{}
+	defaultSpeechStyle = 0
+	lastAppliedSpeechSeq = speechSeq
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see

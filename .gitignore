@@ -3,3 +3,10 @@
 .idea/
 .claude/
 .DS_Store
+# Local-only: points at a sibling ../nanoda checkout while
+# github.com/aethiopicuschan/nanoda/v2's 0.16.x support (PR #8) is
+# unmerged. Never commit this — it references a path that only exists on
+# this machine. Remove once the PR merges and go.mod's require points at
+# a real tagged version instead.
+go.work
+go.work.sum

@@ -112,6 +112,14 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 			}
 		}
 		if isNewLine && len(object.Val) > 0 {
+			// r.texts[object.Line] is fully built at this point (the
+			// concatenation loop above has already merged every
+			// untagged continuation line into it) — the right moment for
+			// [speak_on]'s TTS to grab this line's actual text, as
+			// opposed to playCharaVoice above, which only needs the
+			// speaker's name and fires earlier, at the "#name" line
+			// itself.
+			r.speakLine(charaName, lineText(r.texts[object.Line]))
 			y()
 			y.Until(false, func() bool { return isWait })
 		}

@@ -107,6 +107,30 @@ type Config struct {
 	// redesign are real bugfixes, not part of this style switch, and stay
 	// unconditional — see tags_text.go/renderer.go.)
 	MessageBoxStyle string `toml:"MessageBoxStyle"`
+	// VoicevoxCorePath/VoicevoxOpenJtalkDictPath/VoicevoxModelsPath configure
+	// [speak_on]/[speak_off] (tags_speech.go) — kag3's own TTS extension,
+	// with no equivalent in real TyranoScript. All three default to "" (see
+	// docs/VOICEVOX.md): empty means the feature is simply unavailable,
+	// [speak_on] becomes a silent no-op, nothing else changes. renderer/
+	// ebitengine never reads these paths itself (it stays voicevox_core-
+	// oblivious, same as ConfigStorage/SaveDirFunc) — an entrypoint-side
+	// file (e.g. example/game/speech_desktop.go, example/mobile/speech_android.go)
+	// reads them to construct the actual synthesizer and wire
+	// ebitengine.SpeechSynth. On Android specifically, all three values
+	// mean something different from desktop's plain filesystem paths —
+	// there's no static absolute path a shared config.toml could hold, so
+	// VoicevoxCorePath becomes a bare .so filename and the other two
+	// become assets/ subdirectory names, resolved to real paths at
+	// runtime by example/mobile/voicevoxpaths.Resolve. On iOS
+	// (example/mobile/speech_ios.go), all three are instead bundle-relative
+	// path fragments (e.g. VoicevoxCorePath =
+	// "Frameworks/voicevox_core.framework/voicevox_core"), resolved
+	// against the app bundle directory at runtime by
+	// example/mobile/voicevoxpaths.ResolveIOS. See docs/VOICEVOX.md's
+	// "対応プラットフォーム" section for the concrete examples.
+	VoicevoxCorePath          string `toml:"VoicevoxCorePath"`
+	VoicevoxOpenJtalkDictPath string `toml:"VoicevoxOpenJtalkDictPath"`
+	VoicevoxModelsPath        string `toml:"VoicevoxModelsPath"`
 }
 
 type Speeds struct {
@@ -207,6 +231,12 @@ func (c *Config) LoadDefault() {
 	c.DefaultFontSize = 28
 	c.ContinueMarkStyle = "follow"
 	c.MessageBoxStyle = "legacy"
+	// Left "" (Go's zero value) deliberately, not just left unset: this is
+	// the documented off-switch for [speak_on]/[speak_off], not merely an
+	// omitted field. See the struct field's own doc comment.
+	c.VoicevoxCorePath = ""
+	c.VoicevoxOpenJtalkDictPath = ""
+	c.VoicevoxModelsPath = ""
 }
 
 func (c *Config) Load(dir fs.FS, file string) {

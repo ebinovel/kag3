@@ -263,6 +263,7 @@ func (r *Renderer) Update() {
 		return
 	}
 	stepAudioFades()
+	stepSpeechSynthesis()
 	stepAnimations()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
