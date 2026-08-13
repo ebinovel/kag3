@@ -1186,16 +1186,84 @@ func TestDrawBacklogNoPanic(t *testing.T) {
 	drawBacklog(r, buf) // must not panic
 }
 
+// TestUpdateBacklogDragDistinguishesClickFromDrag is the regression test
+// for a real bug: handleBacklogClick's "click outside the backlog closes
+// it" behavior used backlogDragging to decide "was this a click or a
+// drag," but backlogDragging goes true on a plain click's very first
+// pressed frame too (pressed starts false, so that frame always takes the
+// "not currently dragging -> start dragging" branch) — before
+// handleBacklogClick's own justPressed check ever ran. That made the
+// dismiss branch permanently unreachable: no click, no matter where it
+// landed, could ever close the backlog by clicking outside it. Confirmed
+// by reproducing the exact one-frame sequence a plain click produces
+// before this fix existed.
+//
+// backlogDidDrag is the fix: it only ever becomes true once the pointer
+// actually moves while held down, which this test drives directly.
+func TestUpdateBacklogDragDistinguishesClickFromDrag(t *testing.T) {
+	savedDragging, savedDidDrag, savedLastY, savedScrollY := backlogDragging, backlogDidDrag, backlogDragLastY, backlogScrollY
+	defer func() {
+		backlogDragging, backlogDidDrag, backlogDragLastY, backlogScrollY = savedDragging, savedDidDrag, savedLastY, savedScrollY
+	}()
+
+	t.Run("a plain click that never moves must not be classified as a drag", func(t *testing.T) {
+		backlogDragging, backlogDidDrag, backlogDragLastY = false, false, 0
+
+		// Frame 1: press begins (this is also justPressed's frame in the
+		// real Update() loop). No movement yet.
+		if delta := updateBacklogDrag(true, 500); delta != 0 {
+			t.Errorf("scrollDelta on press-begin = %v, want 0 (no movement yet)", delta)
+		}
+		if backlogDidDrag {
+			t.Fatal("BUG: backlogDidDrag is already true on the very first pressed frame — a click could never dismiss the backlog by clicking outside it, since handleBacklogClick's dismiss check runs on this same justPressed frame")
+		}
+
+		// Frame 2: released, no movement ever happened.
+		if delta := updateBacklogDrag(false, 500); delta != 0 {
+			t.Errorf("scrollDelta on release = %v, want 0", delta)
+		}
+		if backlogDidDrag {
+			t.Error("backlogDidDrag became true on release with no movement, want it to stay false for a plain click")
+		}
+	})
+
+	t.Run("an actual drag is still detected and scrolled", func(t *testing.T) {
+		backlogDragging, backlogDidDrag, backlogDragLastY = false, false, 0
+
+		updateBacklogDrag(true, 500) // press begins at y=500
+		// Pointer moves up by 30px (dragging up reveals newer entries —
+		// backlogScrollY decreases, matching the field's own doc comment
+		// on the opposite direction).
+		delta := updateBacklogDrag(true, 470)
+		if delta != 30 {
+			t.Errorf("scrollDelta after moving from y=500 to y=470 = %v, want 30 (backlogDragLastY - mY)", delta)
+		}
+		if !backlogDidDrag {
+			t.Error("backlogDidDrag = false after the pointer actually moved while held, want true")
+		}
+	})
+
+	t.Run("a fresh press resets backlogDidDrag from a previous drag", func(t *testing.T) {
+		backlogDragging, backlogDidDrag, backlogDragLastY = false, true, 0 // leftover true from a prior drag
+
+		updateBacklogDrag(true, 300) // a brand new press-begin frame
+		if backlogDidDrag {
+			t.Error("backlogDidDrag = true on a fresh press-begin frame, want it reset to false regardless of what a previous gesture left it at")
+		}
+	})
+}
+
 func TestHandleBacklogClickClosesOnCloseButton(t *testing.T) {
 	savedBacklogViewing, savedOpenedFrame := backlogViewing, backlogOpenedFrame
-	savedDragging := backlogDragging
+	savedDragging, savedDidDrag := backlogDragging, backlogDidDrag
 	defer func() {
-		backlogViewing, backlogOpenedFrame, backlogDragging = savedBacklogViewing, savedOpenedFrame, savedDragging
+		backlogViewing, backlogOpenedFrame = savedBacklogViewing, savedOpenedFrame
+		backlogDragging, backlogDidDrag = savedDragging, savedDidDrag
 	}()
 
 	backlogViewing = true
 	backlogOpenedFrame = t2Sentinel() // definitely not the current frame
-	backlogDragging = false
+	backlogDragging, backlogDidDrag = false, false
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
 	r.manager.Config = &kag3.Config{ScreenWidth: 1920, ScreenHeight: 1080}

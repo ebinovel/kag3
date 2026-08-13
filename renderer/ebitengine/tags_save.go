@@ -1132,6 +1132,11 @@ var (
 	backlogScrollY   float64
 	backlogDragging  bool
 	backlogDragLastY int
+	// backlogDidDrag is "has the pointer moved since it was first pressed"
+	// — deliberately a separate flag from backlogDragging ("is the pointer
+	// currently held down at all"). See updateBacklogDrag's doc comment for
+	// why collapsing these into one flag doesn't work.
+	backlogDidDrag bool
 )
 
 const (
@@ -1364,6 +1369,48 @@ func drawBacklog(r *Renderer, buf *ebiten.Image) {
 	}
 }
 
+// updateBacklogDrag advances the backlog's drag-to-scroll state by one
+// frame given this frame's raw pointer state, and reports how much to add
+// to backlogScrollY (0 if nothing changed). Split out from
+// handleBacklogClick so the drag/click distinction is testable without
+// faking ebiten's real input state — this package has no way to do that
+// directly (see skipShouldAdvance's own doc comment, renderer.go, for the
+// same constraint on a different feature).
+//
+// backlogDidDrag exists as a separate flag from backlogDragging
+// specifically because collapsing them doesn't work: a plain click's very
+// first frame already has pressed=true with backlogDragging previously
+// false, so the "not currently dragging -> start dragging" branch below
+// sets backlogDragging = true on that exact frame — before
+// handleBacklogClick's own justPressed check ever runs. Using
+// backlogDragging there to mean "was this a click or a drag" meant every
+// click, including one landing outside the backlog specifically to dismiss
+// it, was misclassified as a drag before dismissal could ever be
+// evaluated: the "click outside closes the backlog" behavior documented on
+// handleBacklogClick below was unreachable. backlogDidDrag instead only
+// ever becomes true once the pointer actually moves while held down, and
+// is reset the moment a fresh press begins — so a click that never moves
+// still reports backlogDidDrag == false on its own justPressed frame.
+func updateBacklogDrag(pressed bool, mY int) (scrollDelta float64) {
+	if pressed {
+		if !backlogDragging {
+			backlogDragging = true
+			backlogDidDrag = false
+			backlogDragLastY = mY
+		} else if mY != backlogDragLastY {
+			// Dragging down reveals older entries (content moves down with
+			// the pointer), so backlogScrollY — which measures up from the
+			// newest entry — increases.
+			scrollDelta = float64(backlogDragLastY - mY)
+			backlogDragLastY = mY
+			backlogDidDrag = true
+		}
+	} else {
+		backlogDragging = false
+	}
+	return scrollDelta
+}
+
 // handleBacklogClick drives the backlog screen's input: wheel/drag-to-scroll,
 // the header's 閉じる✕ button, and any-other-click/right-click to close
 // (preserving the pre-redesign "any click dismisses" behavior for clicks
@@ -1389,20 +1436,9 @@ func (r *Renderer) handleBacklogClick() {
 	}
 
 	mX, mY, justPressed, pressed, touch := pointerState()
-	if pressed {
-		if !backlogDragging {
-			backlogDragging = true
-			backlogDragLastY = mY
-		} else if mY != backlogDragLastY {
-			// Dragging down reveals older entries (content moves down with
-			// the pointer), so backlogScrollY — which measures up from the
-			// newest entry — increases.
-			backlogScrollY += float64(backlogDragLastY - mY)
-			backlogDragLastY = mY
-			clampBacklogScroll(viewportH)
-		}
-	} else {
-		backlogDragging = false
+	if delta := updateBacklogDrag(pressed, mY); delta != 0 {
+		backlogScrollY += delta
+		clampBacklogScroll(viewportH)
 	}
 
 	if t == backlogOpenedFrame {
@@ -1425,7 +1461,11 @@ func (r *Renderer) handleBacklogClick() {
 			backlogViewing = false
 			return
 		}
-		if !backlogDragging {
+		// backlogDidDrag, not backlogDragging — see updateBacklogDrag's doc
+		// comment for why the latter is always true by this point on a
+		// plain click's own justPressed frame, and would make this branch
+		// unreachable.
+		if !backlogDidDrag {
 			backlogViewing = false
 		}
 	}
