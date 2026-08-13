@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"io/fs"
 	"math"
-	"slices"
 	"strings"
 
 	"github.com/ebinovel/kag3"
@@ -632,78 +631,3 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	captureSnapshot(buf)
 	drawModal(r, buf)
 }
-
-// drawPTexts renders every named [ptext] area. The one registered as the
-// character name-plate via [chara_config ptext="..."] shows charaName;
-// every other one shows its own literal .Text. Sorted by name for
-// deterministic draw order.
-//
-// A [ptext bg="..."] area draws its BgImage first, with the text offset by
-// (ptextBgPaddingX, ptextBgPaddingY) into it (draw_messagebox.go) — a plain
-// "image's own top-left + fixed padding" rule, not per-image 9-slice
-// metadata. When the resolved content is empty (e.g. the monologue case,
-// charaName == "") the whole area — background image included — is skipped
-// entirely, so an empty name never leaves an orphaned tab graphic on screen.
-func drawPTexts(r *Renderer, screen *ebiten.Image) {
-	if len(ptexts) == 0 {
-		return
-	}
-	names := make([]string, 0, len(ptexts))
-	for name := range ptexts {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	for _, name := range names {
-		pt := ptexts[name]
-		content := ptextContent(name)
-		if content == "" {
-			continue
-		}
-		textX, textY := float64(pt.X), float64(pt.Y)
-		if pt.BgImage != nil {
-			bgOp := &ebiten.DrawImageOptions{}
-			bgOp.GeoM.Translate(textX, textY)
-			screen.DrawImage(pt.BgImage, bgOp)
-			textX += ptextBgPaddingX
-			textY += ptextBgPaddingY
-		}
-		op := &text.DrawOptions{}
-		op.GeoM.Translate(textX, textY)
-		if pt.Color != nil {
-			op.ColorScale.ScaleWithColor(pt.Color)
-		} else {
-			op.ColorScale.ScaleWithColor(color.White)
-		}
-		text.Draw(screen, content, ptextFace(r, pt), op)
-	}
-}
-
-// ptextFace builds the font face a [ptext] area draws with: its own size=
-// (config.ks's settings screen needs several distinct sizes — 34/26/22/20 —
-// on screen at once) falling back to r.nameFontFace's size when size= was
-// never given, so every pre-existing [ptext] (the character name-plate,
-// chiefly) keeps rendering exactly as before. size= was previously parsed
-// into kag3.PText.Size and then never read anywhere — this is the first
-// consumer of it.
-func ptextFace(r *Renderer, pt *kag3.PText) *text.GoTextFace {
-	size := float64(pt.Size)
-	if size == 0 {
-		size = r.nameFontFace.Size
-	}
-	return &text.GoTextFace{Source: r.nameFontFace.Source, Size: size, Language: r.nameFontFace.Language}
-}
-
-// ptextContent is the string a named ptext area should currently display:
-// charaName for the one registered via [chara_config ptext=...], its own
-// literal .Text otherwise. Split out from drawPTexts so the name-plate
-// resolution logic is testable without an ebiten screen/font.
-func ptextContent(name string) string {
-	if name == charaNamePText {
-		return charaName
-	}
-	if pt, ok := ptexts[name]; ok {
-		return pt.Text
-	}
-	return ""
-}
-
