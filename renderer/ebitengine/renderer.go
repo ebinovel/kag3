@@ -144,25 +144,54 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	return
 }
 
+// lookupLabel resolves a jump target against r.labels, accepting it written
+// either with or without its leading "*". r.labels is keyed on
+// kag3.LabelInfo's bare name (parser.go strips the "*" when it records a
+// label, and reindexLabels keeps that keying), but scripts always write
+// targets as "*name" — and some callers (kag3-runner's -label flag) pass
+// either form.
+//
+// This is the single label-resolution path for every caller that turns a
+// target= into a position: [jump] (handleJump, tags_flow.go), [link]/[glink]
+// clicks (hitLinks/hitGLinks, input_hit.go), [button target=]
+// (buttonTargetJump below) and StartAtLabel. Each of those used to inline
+// its own variant, and two problems came with that:
+//
+//   - A bare target[1:] slice panics outright ("slice bounds out of range
+//     [1:0]") when target is empty — reachable from perfectly ordinary
+//     script, e.g. clicking a [link storage="scene2.ks"]...[endlink] that
+//     names no target= at all, since the click handler ran the lookup
+//     unconditionally before checking anything.
+//   - Several sites looked the target up *twice* (raw, then target[1:]) and
+//     let whichever hit came second win. Labels are only ever stored bare,
+//     so TrimPrefix covers both spellings in one lookup with no such
+//     ambiguity.
+//
+// An empty target (or a bare "*") reports not-found rather than resolving:
+// "no target given" must not accidentally match a label whose own name
+// parsed as empty.
+func (r *Renderer) lookupLabel(target string) (kag3.LabelInfo, bool) {
+	name := strings.TrimPrefix(target, "*")
+	if name == "" {
+		return kag3.LabelInfo{}, false
+	}
+	v, ok := r.labels[name]
+	return v, ok
+}
+
 // StartAtLabel makes the script loop begin at the named label instead of
 // index 0. It must be called between NewRenderer and the first Update():
 // initScript's loop checks isJump unconditionally at the top of its very
 // first iteration (see its own doc comment), so a pending jump set here
 // beforehand is picked up before anything else executes.
 //
-// name may be given with or without its leading "*", matching how
-// handleJump ([jump]'s own handler) looks labels up — r.labels is keyed
-// on kag3.LabelInfo's bare name, but callers (like kag3-runner's -label
-// flag) may pass either form.
+// name may be given with or without its leading "*" — see lookupLabel.
 //
 // Returns false, doing nothing, if name isn't a known label — the caller
 // is expected to report that rather than silently starting at the top of
 // the script.
 func (r *Renderer) StartAtLabel(name string) bool {
-	v, ok := r.labels[name]
-	if !ok {
-		v, ok = r.labels[strings.TrimPrefix(name, "*")]
-	}
+	v, ok := r.lookupLabel(name)
 	if !ok {
 		return false
 	}
@@ -378,10 +407,7 @@ func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
 // increment" lands back on whatever tag is currently blocking (typically
 // [s]), re-entering it cleanly.
 func (r *Renderer) buttonTargetJump(target string) {
-	v, ok := r.labels[target]
-	if !ok {
-		v, ok = r.labels[target[1:]]
-	}
+	v, ok := r.lookupLabel(target)
 	if !ok {
 		return
 	}

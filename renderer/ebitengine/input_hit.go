@@ -58,7 +58,13 @@ func hitLinks(r *Renderer) {
 						screenChanged = true
 						r.loadScript(link.Storage)
 					}
-					if v, ok := r.labels[link.Target[1:]]; ok {
+					// lookupLabel (renderer.go), not a bare Target[1:] —
+					// a [link storage="x.ks"] with no target= at all is
+					// ordinary script, and slicing "" panicked the game on
+					// click. A missing/unknown target now simply means "this
+					// link only changes storage", which is exactly what such
+					// a link is asking for.
+					if v, ok := r.lookupLabel(link.Target); ok {
 						fmt.Printf("click label:%+v\n", v)
 						jumpIndex = v.Index
 						isJump = true
@@ -85,12 +91,11 @@ func hitGLinks(r *Renderer) {
 					screenChanged = true
 					r.loadScript(glink.Storage)
 				}
-				if v, ok := r.labels[glink.Target]; ok {
-					fmt.Printf("label:%+v\n", v)
-					jumpIndex = v.Index
-					isJump = true
-				}
-				if v, ok := r.labels[glink.Target[1:]]; ok {
+				// One lookupLabel call (renderer.go) replaces what used to be
+				// two lookups — raw, then Target[1:] — whose "second hit
+				// wins" ordering was arbitrary, and whose second half
+				// panicked on a [glink] with no target= of its own.
+				if v, ok := r.lookupLabel(glink.Target); ok {
 					fmt.Printf("label:%+v\n", v)
 					jumpIndex = v.Index
 					isJump = true
@@ -99,6 +104,23 @@ func hitGLinks(r *Renderer) {
 			}
 		}
 	}
+}
+
+// buttonHitTestable reports whether a button can be clicked at all. A
+// zero-area button can't: isColision's bounds are inclusive on both edges,
+// so a 0x0 rect still "contains" its own top-left corner — and with
+// isColisionTouch's padding that corner becomes a 32x32 tap zone. Left
+// unguarded, any sizeless button (a [clickable] with no width=/height=, or a
+// [button] with neither a graphic to measure nor an explicit size — see
+// handleButton, tags_link.go) would sit at the screen's top-left corner
+// silently swallowing clicks meant for whatever is actually drawn there.
+//
+// Split out as its own function rather than inlined into hitButtons' loop
+// so it's testable without faking ebiten's real input state — the same
+// reason skipShouldAdvance (renderer.go) and movieShouldFinish
+// (tags_movie.go) are separate functions.
+func buttonHitTestable(b *kag3.Button) bool {
+	return b.Width > 0 && b.Height > 0
 }
 
 // hitButtons hit-tests every [button]/[clickable] against the cursor,
@@ -118,6 +140,9 @@ func hitGLinks(r *Renderer) {
 // (regression: Android's スキップ対象 toggle showing the wrong highlight).
 func hitButtons(r *Renderer) {
 	for _, button := range buttons {
+		if !buttonHitTestable(button) {
+			continue
+		}
 		mX, mY, justPressed, _, touch := pointerState()
 		if isColisionTouch(mX, mY, button.X, button.Y, button.Width, button.Height, touch) {
 			hoveringClickable = true

@@ -160,7 +160,14 @@ func handleButton(ctx *tagCtx) error {
 	if v, ok := getString(pm, "preexp"); ok {
 		button.PreExp = v
 	}
-	if button.Width == 0 && button.Height == 0 {
+	// Falling back to the graphic's own size only works when there *is* a
+	// graphic. A [button] carrying neither graphic= nor width=/height= — an
+	// invisible hit zone, the same thing [clickable] registers — used to
+	// nil-deref here and take the whole game down. Such a button stays 0x0
+	// and is simply never hit (isColision against an empty rect can't
+	// match), which is the honest outcome: nothing to draw, nothing to
+	// click, but nothing crashed either.
+	if button.Width == 0 && button.Height == 0 && button.Graphic != nil {
 		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
 	}
 	fmt.Printf("button: %+v\n", button)
@@ -303,16 +310,28 @@ func handleLink(ctx *tagCtx) error {
 			link.KeyForcus = v
 		}
 	}
-	for {
-		if v, ok := r.scripts[*ctx.i].(kag3.TagObject); ok {
-			if v.Name == "endlink" {
-				break
-			}
+	// Bounded scan: this used to be a bare `for {}` that walked *ctx.i
+	// forward until it happened to find an [endlink], so a [link] with no
+	// matching [endlink] — one unclosed tag in one .ks file — ran straight
+	// off the end of r.scripts and killed the whole game with an
+	// index-out-of-range panic. Stopping at the end of the script instead
+	// keeps whatever text was collected and lets the scenario carry on,
+	// matching how every other scan-forward handler here tolerates a
+	// missing terminator (see handleIgnore, tags_flow.go).
+	for *ctx.i < len(r.scripts) {
+		if v, ok := r.scripts[*ctx.i].(kag3.TagObject); ok && v.Name == "endlink" {
+			break
 		}
 		if v, ok := r.scripts[*ctx.i].(kag3.TextObject); ok {
 			link.Texts = append(link.Texts, v)
 		}
 		(*ctx.i)++
+	}
+	// Ran out of script without finding [endlink]: leave *ctx.i on the last
+	// item so the enclosing loop's own increment ends the script cleanly,
+	// rather than leaving it one past the end for later code to read.
+	if *ctx.i >= len(r.scripts) {
+		*ctx.i = len(r.scripts) - 1
 	}
 	links = append(links, link)
 	fmt.Printf("links:%+v\n", links)

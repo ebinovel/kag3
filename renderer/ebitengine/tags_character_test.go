@@ -7,6 +7,7 @@ import (
 	"image/gif"
 	"image/png"
 	"io/fs"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -365,6 +366,49 @@ func TestHandleCharaModUpdatesStorage(t *testing.T) {
 	}
 	if charas["akane"].Storage != "akane_smile.png" {
 		t.Errorf("charas[akane].Storage = %q, want %q", charas["akane"].Storage, "akane_smile.png")
+	}
+}
+
+// TestHandleCharaFaceUnregisteredNameReportsError is the regression test for
+// a nil-pointer crash: [chara_face] used to index charas directly
+// (charas[name].Faces[...] = ...), so any name= that wasn't registered — a
+// typo, or a [chara_face] reached before its own [chara_new] — dereferenced
+// nil and took the whole game down with an opaque runtime error instead of
+// naming the missing character. Every other [chara_*] handler resolves
+// through mustChara; this one now does too.
+func TestHandleCharaFaceUnregisteredNameReportsError(t *testing.T) {
+	delete(charas, "nosuch")
+	r := newTestRenderer()
+	tag := kag3.TagObject{Name: "chara_face", Pm: map[string]string{
+		"name": "nosuch", "face": "happy", "storage": "happy.png",
+	}}
+	i := 0
+	// A panic fails the test on its own; the error is what should come back.
+	err := dispatchTag(r, fakeYield(), tag, &i, 0)
+	if err == nil {
+		t.Fatal("chara_face on an unregistered name returned nil, want an error naming the character")
+	}
+	if !strings.Contains(err.Error(), "nosuch") {
+		t.Errorf("error = %q, want it to name the missing character", err)
+	}
+}
+
+// TestHandleCharaFaceRegistersOntoNilFacesMap covers a *kag3.Character built
+// without a Faces map (nothing constructs one that way today, but assigning
+// into a nil map is the same class of crash the fix above removes).
+func TestHandleCharaFaceRegistersOntoNilFacesMap(t *testing.T) {
+	charas["akane"] = &kag3.Character{Name: "akane"} // Faces deliberately nil
+	defer delete(charas, "akane")
+	r := newTestRenderer()
+	tag := kag3.TagObject{Name: "chara_face", Pm: map[string]string{
+		"name": "akane", "face": "happy", "storage": "akane_happy.png",
+	}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_face dispatch error: %v", err)
+	}
+	if got := charas["akane"].Faces["happy"]; got != "akane_happy.png" {
+		t.Errorf("Faces[happy] = %q, want %q", got, "akane_happy.png")
 	}
 }
 

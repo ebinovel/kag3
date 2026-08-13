@@ -83,9 +83,26 @@ func handleCharaHide(ctx *tagCtx) error {
 	return nil
 }
 
+// handleCharaFace registers one face variant against an already-[chara_new]'d
+// character. Resolved through mustChara like every other [chara_*] handler
+// in this file: this one alone used to index charas directly and nil-deref
+// on any name that isn't registered — a plain typo in name=, or a
+// [chara_face] reached before its own [chara_new] ran, both of which took
+// the whole game down instead of reporting which character was missing.
+// The Faces nil-guard covers a *kag3.Character built without one (only
+// [chara_new]/[chara_new_psd]/reconcileViewCharas populate it today, but a
+// nil map assignment would be the same class of crash this fix exists to
+// remove).
 func handleCharaFace(ctx *tagCtx) error {
 	object := ctx.tag
-	charas[object.Pm["name"]].Faces[object.Pm["face"]] = object.Pm["storage"]
+	c, err := mustChara(object.Pm["name"])
+	if err != nil {
+		return err
+	}
+	if c.Faces == nil {
+		c.Faces = make(map[string]string)
+	}
+	c.Faces[object.Pm["face"]] = object.Pm["storage"]
 	return nil
 }
 

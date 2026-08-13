@@ -42,12 +42,11 @@ func handleJump(ctx *tagCtx) error {
 			*ctx.i = 0
 		}
 	} else {
-		if v, ok := r.labels[jump.Target]; ok {
-			fmt.Printf("label:%+v\n", v)
-			jumpIndex = v.Index
-			*ctx.i = v.Index
-		}
-		if v, ok := r.labels[jump.Target[1:]]; ok {
+		// One lookupLabel call (renderer.go) replaces what used to be two
+		// lookups — raw, then Target[1:] — of which the second panicked
+		// ("slice bounds out of range [1:0]") on a bare [jump] carrying
+		// neither storage= nor target=.
+		if v, ok := r.lookupLabel(jump.Target); ok {
 			fmt.Printf("label:%+v\n", v)
 			jumpIndex = v.Index
 			*ctx.i = v.Index

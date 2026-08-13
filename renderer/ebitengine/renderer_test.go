@@ -329,6 +329,48 @@ func TestButtonTargetJumpPushesCallFrameForReturnToResume(t *testing.T) {
 	}
 }
 
+// TestLookupLabel covers the single label-resolution path every target=
+// consumer now shares ([jump], [link]/[glink] clicks, [button target=],
+// StartAtLabel). The empty-target cases are the regression half: each of
+// those call sites used to slice target[1:] inline, which panics with
+// "slice bounds out of range [1:0]" on an empty target — reachable from
+// ordinary script, e.g. clicking a [link storage="x.ks"] that names no
+// target= at all, or a bare [jump] carrying neither attribute.
+func TestLookupLabel(t *testing.T) {
+	r := newTestRenderer()
+	r.labels = map[string]kag3.LabelInfo{"here": {Name: "here", Index: 7}}
+
+	for _, target := range []string{"*here", "here"} {
+		v, ok := r.lookupLabel(target)
+		if !ok || v.Index != 7 {
+			t.Errorf("lookupLabel(%q) = %+v/%v, want index 7 (both spellings must resolve)", target, v, ok)
+		}
+	}
+	// "" and "*" both mean "no target given" — they must not resolve, and
+	// above all must not panic.
+	for _, target := range []string{"", "*", "*nosuch", "nosuch"} {
+		if _, ok := r.lookupLabel(target); ok {
+			t.Errorf("lookupLabel(%q) resolved, want not-found", target)
+		}
+	}
+}
+
+// TestHandleJumpWithoutStorageOrTarget is the [jump] half of the same fix:
+// a bare [jump] used to reach r.labels[jump.Target[1:]] with an empty
+// Target and panic the whole coroutine.
+func TestHandleJumpWithoutStorageOrTarget(t *testing.T) {
+	r := newTestRenderer()
+	r.scripts = []any{kag3.TagObject{Name: "jump", Pm: map[string]string{}}}
+	i := 0
+	// A panic fails the test on its own; reaching the assertion is the point.
+	if err := r.execItem(fakeYield(), r.scripts, &i, 0); err != nil {
+		t.Fatalf("execItem error: %v", err)
+	}
+	if i != 0 {
+		t.Errorf("i = %d, want 0 (a [jump] with nowhere to go must not move execution)", i)
+	}
+}
+
 // TestHandleButtonParsesExpAndPreExp covers the other half of the exp=
 // crash fix: the [button] tag itself must capture exp=/preexp= onto the
 // registered kag3.Button so EvalButtonExp has something to run on click.
