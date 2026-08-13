@@ -389,8 +389,21 @@ func (r *Renderer) initScript() {
 			if i >= len(r.scripts) {
 				break
 			}
+			// A tag handler error (bad attribute value, missing asset, ...)
+			// must not take the whole game down — this used to panic here,
+			// so a single malformed attribute anywhere in a script (e.g.
+			// [delay speed="user"], strconv.Atoi failing on a non-numeric
+			// value) crashed every player instantly, unlike an *unknown* tag
+			// name, which dispatchTag already just logs and continues past
+			// (see its own comment). Logging and moving on to the next tag
+			// makes both cases behave the same way. expandMacro's own
+			// execItem calls (macro.go) return their error the same way
+			// execItem itself does, so a failing tag inside a [macro] body
+			// is caught here too — the whole macro call is skipped, which is
+			// far better than panicking, even though it means the macro's
+			// remaining tags don't run either.
 			if err := r.execItem(y, r.scripts, &i, 0); err != nil {
-				panic(err)
+				fmt.Printf("タグの実行でエラーが発生したためスキップします (index=%d): %v\n", i, err)
 			}
 			i++
 			y()

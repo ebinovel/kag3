@@ -67,9 +67,11 @@ var settingsStore struct {
 //
 // Every failure here is non-fatal (matches handleConfigLoad's own tolerant
 // handling below) rather than returned as an error: initScript's tag loop
-// (renderer.go) panics on any non-nil tag error, and a config screen visit
-// failing to persist must not freeze the whole game over what's ultimately
-// just a missed preference write.
+// (renderer.go) logs and skips past any non-nil tag error rather than
+// panicking, but a config screen visit failing to persist should still just
+// be logged as what it is — a missed preference write — rather than
+// silently skipping whatever tag happens to come after [configsave] in the
+// same script.
 func handleConfigSave(ctx *tagCtx) error {
 	r := ctx.r
 	b, err := json.MarshalIndent(r.vm.ExportTF(), "", "  ")
