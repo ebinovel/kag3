@@ -150,9 +150,28 @@ func ClickQuickMenuTitle(sess *driver.Session) error {
 // button set changes; unlike the quick menu's fixed pixel grid, this
 // row is right-aligned and its item widths depend on font metrics, so
 // there's no simple formula to hand-derive these from.
+//
+// Last re-derived by exactly that method. The row's items and their
+// horizontal spans, at startX=852.08 / total width=915.92, y spanning
+// 698..720 (so 709 is every item's vertical center):
+//
+//	AUTO     852..909      SKIP     931..979     既読SKIP 1001..1093
+//	LOG     1146..1188     Q.SAVE  1241..1316    Q.LOAD  1338..1416
+//	SAVE    1469..1520     LOAD    1542..1598    CONFIG  1620..1700
+//	Title   1722..1768
+//
+// SAVE and LOAD were previously listed here as 1530 and 1606 — both of
+// which land in the *gaps between* labels (1520..1542 and 1598..1620), so
+// every click on them missed the row entirely. That went unnoticed because
+// a miss isn't silent-but-harmless: Update() runs doNext() on any click at
+// all, so a missed click still advances the dialogue and still changes the
+// screen, which is the only thing clickGlinkRetry (flows_test.go) checks.
+// The failure therefore surfaced several steps later as "the save file
+// doesn't exist", not as "that click missed". Title (1745) was correct,
+// which is why only the save/load flow failed.
 const (
-	OpRowSaveX, OpRowSaveY   = 1530, 709
-	OpRowLoadX, OpRowLoadY   = 1606, 709
+	OpRowSaveX, OpRowSaveY   = 1495, 709
+	OpRowLoadX, OpRowLoadY   = 1570, 709
 	OpRowTitleX, OpRowTitleY = 1745, 709
 )
 
