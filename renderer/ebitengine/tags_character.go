@@ -143,6 +143,77 @@ func handleCharaMod(ctx *tagCtx) error {
 	return nil
 }
 
+// applyCharaShowAttrs parses [chara_show]'s attributes onto an existing
+// *kag3.CharaShow, overwriting only the fields whose attribute was actually
+// given — split out of handleCharaShow so it runs identically whether the
+// character is being shown for the first time or re-shown after
+// [chara_hide] (see handleCharaShow's own comment on why re-display can't
+// skip this).
+func applyCharaShowAttrs(r *Renderer, chara *kag3.CharaShow, name string, pm map[string]string) error {
+	if v, ok := getString(pm, "name"); ok {
+		chara.Name = v
+	}
+	if v, ok, err := getInt(pm, "time"); err != nil {
+		return err
+	} else if ok {
+		chara.Time = v
+	}
+	if v, ok, err := getInt(pm, "zindex"); err != nil {
+		return err
+	} else if ok {
+		chara.Zindex = v
+	}
+	if v, ok := getString(pm, "depth"); ok {
+		chara.Depth = v
+	}
+	if v, ok := getString(pm, "page"); ok {
+		chara.Page = v
+	}
+	if v, ok, err := getBool(pm, "wait"); err != nil {
+		return err
+	} else if ok {
+		chara.Wait = v
+	}
+	if v, ok := getString(pm, "face"); ok {
+		if fv, ok := charas[name].Faces[v]; ok {
+			chara.Face = fv
+		}
+	}
+	if v, ok := getString(pm, "storage"); ok {
+		charaImage, err := loadImage(r, "", v)
+		if err != nil {
+			return err
+		}
+		charas[name].Image = charaImage
+	}
+	if v, ok, err := getBool(pm, "refrect"); err != nil {
+		return err
+	} else if ok {
+		chara.Reflect = v
+	}
+	if v, ok, err := getInt(pm, "width"); err != nil {
+		return err
+	} else if ok {
+		chara.Width = v
+	}
+	if v, ok, err := getInt(pm, "height"); err != nil {
+		return err
+	} else if ok {
+		chara.Height = v
+	}
+	if v, ok, err := getInt(pm, "left"); err != nil {
+		return err
+	} else if ok {
+		chara.Left = v
+	}
+	if v, ok, err := getInt(pm, "top"); err != nil {
+		return err
+	} else if ok {
+		chara.Top = v
+	}
+	return nil
+}
+
 func handleCharaShow(ctx *tagCtx) error {
 	r := ctx.r
 	object := ctx.tag
@@ -166,68 +237,17 @@ func handleCharaShow(ctx *tagCtx) error {
 		chara.Opacity = 255
 		chara.ScaleX = 1
 		chara.ScaleY = 1
-		pm := object.Pm
-		if v, ok := getString(pm, "name"); ok {
-			chara.Name = v
-		}
-		if v, ok, err := getInt(pm, "time"); err != nil {
-			return err
-		} else if ok {
-			chara.Time = v
-		}
-		if v, ok, err := getInt(pm, "zindex"); err != nil {
-			return err
-		} else if ok {
-			chara.Zindex = v
-		}
-		if v, ok := getString(pm, "depth"); ok {
-			chara.Depth = v
-		}
-		if v, ok := getString(pm, "page"); ok {
-			chara.Page = v
-		}
-		if v, ok, err := getBool(pm, "wait"); err != nil {
-			return err
-		} else if ok {
-			chara.Wait = v
-		}
-		if v, ok := getString(pm, "face"); ok {
-			if fv, ok := charas[name].Faces[v]; ok {
-				chara.Face = fv
-			}
-		}
-		if v, ok := getString(pm, "storage"); ok {
-			charaImage, err := loadImage(r, "", v)
-			if err != nil {
-				return err
-			}
-			charas[name].Image = charaImage
-		}
-		if v, ok, err := getBool(pm, "refrect"); err != nil {
-			return err
-		} else if ok {
-			chara.Reflect = v
-		}
-		if v, ok, err := getInt(pm, "width"); err != nil {
-			return err
-		} else if ok {
-			chara.Width = v
-		}
-		if v, ok, err := getInt(pm, "height"); err != nil {
-			return err
-		} else if ok {
-			chara.Height = v
-		}
-		if v, ok, err := getInt(pm, "left"); err != nil {
-			return err
-		} else if ok {
-			chara.Left = v
-		}
-		if v, ok, err := getInt(pm, "top"); err != nil {
-			return err
-		} else if ok {
-			chara.Top = v
-		}
+	}
+	// Applied regardless of charaNew: a re-[chara_show] of a [chara_hide]'d
+	// character (charaNew==false) must still honor its own attributes
+	// (e.g. [chara_show name=x left=800] after [chara_hide name=x]) rather
+	// than silently ignoring every attribute but leaving whatever the
+	// character's position/face/etc. happened to be before it was hidden.
+	// Unspecified attributes simply leave chara's existing field alone,
+	// which is exactly re-display's intended semantics (and, for charaNew,
+	// is applied on top of the zero-value defaults just above).
+	if err := applyCharaShowAttrs(r, chara, name, object.Pm); err != nil {
+		return err
 	}
 	herfWidth := charas[name].Image.Bounds().Dx() / 2
 	charaSpace := r.manager.Config.ScreenWidth / (len(viewCharas) + 2)
