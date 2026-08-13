@@ -82,7 +82,7 @@ func handleImage(ctx *tagCtx) error {
 		img.Reflect = v
 	}
 	if v, ok := getString(pm, "pos"); ok {
-		img.Depth = v
+		img.Pos = v
 	}
 	if v, ok, err := getBool(pm, "animimg"); err != nil {
 		return err
