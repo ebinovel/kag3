@@ -3,19 +3,14 @@ package ebitengine
 import (
 	"fmt"
 	"image/color"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io/fs"
 	"math"
-	"path"
 	"slices"
 	"strings"
 
 	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
@@ -411,56 +406,6 @@ func (r *Renderer) initScript() {
 	}
 }
 
-// resolveFolderImage loads a [button]-style graphic against folder=,
-// matching real Tyrano's convention that folder names a *subdirectory* of
-// the images root (e.g. folder="bgimage" -> images/bgimage/…) rather than a
-// separate top-level asset root. tyrano.ks's own bundled cg_image_button/
-// replay_image_button macros also lean on a real-Tyrano-specific relative
-// escape for their shared "no image" placeholder (folder="bgimage" plus a
-// graphic of "../../tyrano/images/system/noimage.png") that plain
-// fs.Sub(images, folder) can't resolve — Go's io/fs deliberately rejects any
-// ".." path component. After path.Clean, if the joined path still tries to
-// climb above the images root, this looks for a "system/" path component to
-// redirect the remainder to r.fses["system/images"] (kag3's own equivalent
-// of Tyrano's bundled engine-asset folder) — the one real asset this
-// pattern needs, noimage.png, lives exactly there.
-func resolveFolderImage(r *Renderer, folder, graphic string) (imgFS fs.FS, name string) {
-	full := graphic
-	if folder != "" && folder != "images" {
-		full = path.Join(folder, graphic)
-	}
-	full = path.Clean(full)
-	if full == ".." || strings.HasPrefix(full, "../") {
-		if idx := strings.LastIndex(full, "system/"); idx >= 0 {
-			return r.fses["system/images"], full[idx+len("system/"):]
-		}
-		full = strings.TrimPrefix(full, "../")
-		for strings.HasPrefix(full, "../") {
-			full = full[len("../"):]
-		}
-	}
-	return r.fses["images"], full
-}
-
-// loadImage resolves folder/storage via resolveFolderImage and loads the
-// result, folding the two-step "resolve fs.FS + path, then load" sequence
-// that's repeated at every [button]/[image]/chara call site into one call.
-// A storage carrying psdFaceStorageSentinel (tags_chara_psd.go) is not a
-// real file path at all — it's a self-describing descriptor for a
-// [chara_new_psd]-generated face, regenerated (or served from cache) by
-// loadPSDFace instead of ever reaching resolveFolderImage/fs.FS.
-func loadImage(r *Renderer, folder, storage string) (*ebiten.Image, error) {
-	if strings.HasPrefix(storage, psdFaceStorageSentinel) {
-		return loadPSDFace(r, storage)
-	}
-	imgFS, name := resolveFolderImage(r, folder, storage)
-	img, _, err := ebitenutil.NewImageFromFileSystem(imgFS, name)
-	if err != nil {
-		return nil, err
-	}
-	return img, nil
-}
-
 // buttonTargetJump resolves a clicked button's target= against r.labels and,
 // if found, jumps there — call-style, not a plain [jump]: real Tyrano's
 // official config.ks (this repo's example/game/resources/senarios/config.ks) ends
@@ -523,47 +468,6 @@ func clearNonFixButtons() {
 		}
 	}
 	buttons = kept
-}
-
-// setButtonImageByClass implements the one real effect of the $ shim's
-// attr("src", ...) — see SetJQueryHooks/browserShimJS in vm.go. Every
-// button whose Name (comma-separated, e.g. "bgmvol,bgmvol_10") contains
-// selector (with its leading "." stripped) as a token gets its Graphic
-// reloaded from path. Config.ks's own volume/speed/skip buttons are
-// exactly this pattern: [button name="bgmvol,bgmvol_10" ...] plus an
-// iscript that resets the whole "bgmvol" group to the off graphic, then
-// sets just the "bgmvol_10" one to the on graphic. A path that fails to
-// load is logged and skipped, not fatal — matching how a missing/renamed
-// asset is handled elsewhere in this engine.
-func (r *Renderer) setButtonImageByClass(selector, path string) {
-	class := strings.TrimPrefix(selector, ".")
-	if class == "" {
-		return
-	}
-	var img *ebiten.Image
-	for _, b := range buttons {
-		matched := false
-		for _, name := range strings.Split(b.Name, ",") {
-			if strings.TrimSpace(name) == class {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		if img == nil {
-			loaded, err := loadImage(r, "", path)
-			if err != nil {
-				if traceTags {
-					fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
-				}
-				return
-			}
-			img = loaded
-		}
-		b.Graphic = img
-	}
 }
 
 // renderBuffer is where drawScene actually renders each frame; Draw then

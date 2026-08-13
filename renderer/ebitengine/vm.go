@@ -6,6 +6,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/ebinovel/kag3"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // VM wraps a goja.Runtime and exposes the Tyrano-style global variable
@@ -353,6 +354,47 @@ func (v *VM) RestoreSF(vars map[string]interface{}) {
 	}
 	v.sf = obj
 	v.rt.Set("sf", obj)
+}
+
+// setButtonImageByClass implements the one real effect of the $ shim's
+// attr("src", ...) — see SetJQueryHooks/browserShimJS in vm.go. Every
+// button whose Name (comma-separated, e.g. "bgmvol,bgmvol_10") contains
+// selector (with its leading "." stripped) as a token gets its Graphic
+// reloaded from path. Config.ks's own volume/speed/skip buttons are
+// exactly this pattern: [button name="bgmvol,bgmvol_10" ...] plus an
+// iscript that resets the whole "bgmvol" group to the off graphic, then
+// sets just the "bgmvol_10" one to the on graphic. A path that fails to
+// load is logged and skipped, not fatal — matching how a missing/renamed
+// asset is handled elsewhere in this engine.
+func (r *Renderer) setButtonImageByClass(selector, path string) {
+	class := strings.TrimPrefix(selector, ".")
+	if class == "" {
+		return
+	}
+	var img *ebiten.Image
+	for _, b := range buttons {
+		matched := false
+		for _, name := range strings.Split(b.Name, ",") {
+			if strings.TrimSpace(name) == class {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		if img == nil {
+			loaded, err := loadImage(r, "", path)
+			if err != nil {
+				if traceTags {
+					fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
+				}
+				return
+			}
+			img = loaded
+		}
+		b.Graphic = img
+	}
 }
 
 // expandParams resolves Tyrano's "&expression" and "%name" / "%name|default"
