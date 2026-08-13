@@ -20,6 +20,24 @@ func init() {
 	register("clearstack", handleClearStack)
 }
 
+// handleJump implements [jump storage=... target=...]: optionally switch
+// scenario file, then optionally seek to a label. The two attributes are
+// independent and either may be omitted — which is what the two bugs fixed
+// here both came from, since the old shape treated them as mutually
+// exclusive alternatives.
+//
+//   - target= was only ever honored when storage= was *absent* (the lookup
+//     lived in an else branch), so [jump storage="x.ks" target="*y"] loaded
+//     x.ks and then carried on from whatever index the [jump] tag itself
+//     occupied in the file it just left — an arbitrary position in a
+//     different script. replay.ks's own
+//     `@jump storage=&tf.selected_replay_obj.storage target=&...target`
+//     is exactly this shape, so it was live, not theoretical.
+//   - [jump storage=...] with no target= set *ctx.i to 0, but the enclosing
+//     loop (initScript, renderer.go) increments once more after this handler
+//     returns — so execution actually resumed at index 1, silently skipping
+//     the new script's first item. handleCall has had this right all along
+//     (it sets -1 and says why); this now matches it.
 func handleJump(ctx *tagCtx) error {
 	object := ctx.tag
 	r := ctx.r
@@ -38,16 +56,25 @@ func handleJump(ctx *tagCtx) error {
 			return err
 		}
 		clearNonFixButtons()
-		if jump.Target == "" {
-			*ctx.i = 0
-		}
-	} else {
-		// One lookupLabel call (renderer.go) replaces what used to be two
-		// lookups — raw, then Target[1:] — of which the second panicked
-		// ("slice bounds out of range [1:0]") on a bare [jump] carrying
-		// neither storage= nor target=.
+		// -1 so the enclosing loop's increment lands exactly on index 0.
+		// Also the right fallback when target= is given but doesn't resolve
+		// in the file just loaded: start at its top rather than wherever a
+		// stale index from the previous file happens to point.
+		*ctx.i = -1
+	}
+	if jump.Target != "" {
+		// Resolved after any loadScript above, so r.labels is the *new*
+		// file's label table — that ordering is what makes storage+target
+		// work at all. lookupLabel (renderer.go) accepts the target with or
+		// without its leading "*" in one lookup; this used to be two
+		// lookups whose second half sliced Target[1:] and panicked outright
+		// on a bare [jump] carrying neither attribute.
 		if v, ok := r.lookupLabel(jump.Target); ok {
 			fmt.Printf("label:%+v\n", v)
+			// Inert on its own — initScript only reads jumpIndex when
+			// isJump is set, and every caller that sets isJump assigns
+			// jumpIndex itself. Kept in sync rather than left stale,
+			// matching what this handler has always done.
 			jumpIndex = v.Index
 			*ctx.i = v.Index
 		}

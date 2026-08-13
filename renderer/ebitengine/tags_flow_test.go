@@ -1,6 +1,7 @@
 package ebitengine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ebinovel/kag3"
@@ -187,6 +188,95 @@ func TestJumpStorageClearsNonFixButtons(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("buttons = %+v, want the fix=true \"fixed\" button to survive the storage change", buttons)
+	}
+}
+
+// runJumpScript drives main.ks through execItem exactly like initScript
+// does — including re-reading len(r.scripts) every iteration, since
+// [jump storage=...] swaps the slice out mid-loop — and returns everything
+// rendered along the way as one string.
+//
+// One string rather than runFlow's per-segment set: execItem merges
+// consecutive untagged text lines into a single segment ("タグを挟まない
+// 連続するテキスト行を1つに連結"), so "first line\nsecond line" arrives as
+// the single segment "first linesecond line" and an exact-match set can't
+// answer "did this line run". Callers assert with strings.Contains instead.
+func runJumpScript(t *testing.T, senarios map[string]string) string {
+	t.Helper()
+	m := newTestManager(t, senarios)
+	if err := m.LoadScript("main.ks"); err != nil {
+		t.Fatalf("LoadScript(main.ks): %v", err)
+	}
+	r := &Renderer{
+		texts:          make(map[int][]Text),
+		vm:             newVM(),
+		manager:        m,
+		scripts:        m.Senario,
+		labels:         m.Labels,
+		currentStorage: m.CurrentStorage,
+	}
+	for i := 0; i < len(r.scripts); i++ {
+		if err := r.execItem(fakeYield(), r.scripts, &i, 0); err != nil {
+			t.Fatalf("execItem error: %v", err)
+		}
+	}
+	var sb strings.Builder
+	for _, segs := range r.texts {
+		for _, seg := range segs {
+			sb.WriteString(seg.Text)
+		}
+	}
+	return sb.String()
+}
+
+// TestJumpStorageWithTargetSeeksInNewFile is the regression test for
+// [jump storage="x.ks" target="*label"]: target= used to be honored only in
+// the branch taken when storage= was *absent*, so this combination loaded
+// the new file and then resumed from whatever index the [jump] tag itself
+// had occupied in the old one. replay.ks's own
+// `@jump storage=&... target=&...` is exactly this shape.
+func TestJumpStorageWithTargetSeeksInNewFile(t *testing.T) {
+	got := runJumpScript(t, map[string]string{
+		"main.ks": "[jump storage=\"sub.ks\" target=\"*here\"]",
+		"sub.ks":  "before label\n*here\nafter label",
+	})
+	if !strings.Contains(got, "after label") {
+		t.Errorf("rendered %q, want the text after *here to have run", got)
+	}
+	if strings.Contains(got, "before label") {
+		t.Errorf("rendered %q, want the text before *here to have been skipped", got)
+	}
+}
+
+// TestJumpStorageWithoutTargetRunsFirstItem is the regression test for the
+// off-by-one: [jump storage=...] with no target= set *ctx.i to 0, but the
+// enclosing loop increments once more afterward, so the new script's very
+// first item never ran. handleCall's own -1 (and its comment) had this
+// right already.
+func TestJumpStorageWithoutTargetRunsFirstItem(t *testing.T) {
+	got := runJumpScript(t, map[string]string{
+		"main.ks": "[jump storage=\"sub.ks\"]",
+		"sub.ks":  "first line\n[r]\nsecond line",
+	})
+	if !strings.Contains(got, "first line") {
+		t.Errorf("rendered %q, want sub.ks's first item to have run", got)
+	}
+	if !strings.Contains(got, "second line") {
+		t.Errorf("rendered %q, want sub.ks's remaining items to have run", got)
+	}
+}
+
+// TestJumpStorageWithUnknownTargetStartsAtTop covers the fallback: a
+// target= that doesn't resolve in the newly loaded file must leave
+// execution at that file's top, not at the stale index the [jump] tag
+// occupied in the file being left behind.
+func TestJumpStorageWithUnknownTargetStartsAtTop(t *testing.T) {
+	got := runJumpScript(t, map[string]string{
+		"main.ks": "padding one\n[r]\npadding two\n[jump storage=\"sub.ks\" target=\"*nosuch\"]",
+		"sub.ks":  "first line\n[r]\nsecond line",
+	})
+	if !strings.Contains(got, "first line") || !strings.Contains(got, "second line") {
+		t.Errorf("rendered %q, want all of sub.ks to have run from its top", got)
 	}
 }
 
