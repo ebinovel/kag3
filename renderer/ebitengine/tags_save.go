@@ -253,7 +253,7 @@ func (r *Renderer) buildSaveData() *saveData {
 		SleepStack:        sleepStackToCallFrames(r.sleepStack),
 		SFVars:            r.vm.ExportSF(),
 		FVars:             r.vm.ExportF(),
-		ViewCharas:        append([]*kag3.CharaShow(nil), viewCharas...),
+		ViewCharas:        copyCharaShows(viewCharas),
 		CharaStorage:      charaStorage,
 		CharaFaces:        charaFaces,
 		Bg:                snapshotBg(bg),
@@ -269,6 +269,23 @@ func (r *Renderer) buildSaveData() *saveData {
 		Links:             append([]*kag3.Link(nil), links...),
 		GLinks:            append([]*kag3.GLink(nil), glinks...),
 	}
+}
+
+// copyCharaShows deep-copies viewCharas: stepAnimations (tags_animation.go)
+// mutates a *kag3.CharaShow in place via SetLeft/SetTop/SetOpacity/
+// SetScaleX/SetScaleY/SetRotation while [anim]/[kanim] is running, so a
+// shallow append (sharing the original *CharaShow pointers) let an [anim]
+// running after [checkpoint] silently corrupt the snapshot [rollback] later
+// restores from. CharaShow's fields are all scalars (see its own
+// declaration in kag3.go), so a top-level struct copy is a full deep copy,
+// same reasoning as copyTextStyle.
+func copyCharaShows(src []*kag3.CharaShow) []*kag3.CharaShow {
+	out := make([]*kag3.CharaShow, len(src))
+	for i, c := range src {
+		cp := *c
+		out[i] = &cp
+	}
+	return out
 }
 
 // copyTexts deep-copies texts, including each segment's TextStyle pointer
@@ -535,7 +552,14 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	r.sleepStack = callFramesToSleepStack(d.SleepStack)
 	r.vm.RestoreF(d.FVars)
 	r.vm.RestoreSF(d.SFVars)
-	viewCharas = reconcileViewCharas(r, append([]*kag3.CharaShow(nil), d.ViewCharas...), d.CharaStorage, d.CharaFaces)
+	// Copied again (not aliased directly), same reasoning as textStyle a few
+	// lines below: [rollback] can apply the same *saveData (checkpointData)
+	// more than once, and reconcileViewCharas hands its result straight to
+	// the live viewCharas — which stepAnimations (tags_animation.go) mutates
+	// in place while [anim]/[kanim] runs. Without this copy, a second
+	// rollback to the same checkpoint would see whatever the first
+	// rollback's aftermath did to it, not the state actually captured.
+	viewCharas = reconcileViewCharas(r, copyCharaShows(d.ViewCharas), d.CharaStorage, d.CharaFaces)
 	if err := applyBgFromSnapshot(r, bg, d.Bg); err != nil {
 		fmt.Printf("save/load: 背景 %s の読み込みに失敗しました: %v\n", d.Bg.Storage, err)
 	}

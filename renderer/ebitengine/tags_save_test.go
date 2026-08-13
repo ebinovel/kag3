@@ -235,6 +235,74 @@ func TestRollbackDoesNotAliasCheckpointTextStyle(t *testing.T) {
 	}
 }
 
+// TestCheckpointRollbackRestoresCharaShowLeft is the regression test for
+// #16: buildSaveData used to append viewCharas' *CharaShow pointers
+// directly into checkpointData rather than copying them, so a [chara_show]/
+// [anim] mutating a character in place (stepAnimations, tags_animation.go)
+// after [checkpoint] silently rewrote the checkpoint too — [rollback] then
+// "restored" the already-mutated value instead of the one actually
+// captured.
+func TestCheckpointRollbackRestoresCharaShowLeft(t *testing.T) {
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	origCharas, origViewCharas := charas, viewCharas
+	defer func() {
+		bg, textPosition = &kag3.Background{}, &kag3.TextPosition{}
+		charas, viewCharas, checkpointData = origCharas, origViewCharas, nil
+	}()
+
+	charas = map[string]*kag3.Character{"akane": {Name: "akane", Storage: "akane.png"}}
+	viewCharas = []*kag3.CharaShow{{Name: "akane", Left: 100}}
+
+	r := newSaveTestRendererWithVars(t)
+	checkpointData = r.buildSaveData()
+
+	// Simulate [anim]/stepAnimations mutating the live CharaShow in place
+	// after the checkpoint was taken.
+	viewCharas[0].Left = 999
+
+	if err := r.applySaveData(checkpointData); err != nil {
+		t.Fatalf("applySaveData (rollback): %v", err)
+	}
+	if len(viewCharas) != 1 || viewCharas[0].Left != 100 {
+		t.Errorf("viewCharas after rollback = %+v, want Left=100 (the value at checkpoint time)", viewCharas)
+	}
+}
+
+// TestRollbackDoesNotAliasCheckpointCharaShow mirrors
+// TestRollbackDoesNotAliasCheckpointTextStyle for viewCharas: applySaveData
+// used to hand reconcileViewCharas the checkpoint's own *CharaShow pointers
+// unmodified, so a second rollback to the same checkpoint would reflect
+// whatever the first rollback's aftermath (e.g. a post-rollback [anim]) did
+// to them, not the state actually captured.
+func TestRollbackDoesNotAliasCheckpointCharaShow(t *testing.T) {
+	bg = &kag3.Background{}
+	textPosition = &kag3.TextPosition{}
+	origCharas, origViewCharas := charas, viewCharas
+	defer func() {
+		bg, textPosition = &kag3.Background{}, &kag3.TextPosition{}
+		charas, viewCharas, checkpointData = origCharas, origViewCharas, nil
+	}()
+
+	charas = map[string]*kag3.Character{"akane": {Name: "akane", Storage: "akane.png"}}
+	viewCharas = []*kag3.CharaShow{{Name: "akane", Left: 100}}
+
+	r := newSaveTestRendererWithVars(t)
+	checkpointData = r.buildSaveData()
+
+	if err := r.applySaveData(checkpointData); err != nil {
+		t.Fatalf("applySaveData (1st rollback): %v", err)
+	}
+	viewCharas[0].Left = 999
+
+	if err := r.applySaveData(checkpointData); err != nil {
+		t.Fatalf("applySaveData (2nd rollback): %v", err)
+	}
+	if len(viewCharas) != 1 || viewCharas[0].Left != 100 {
+		t.Errorf("viewCharas after 2nd rollback = %+v, want Left=100 (checkpoint must not have been mutated by the 1st rollback's aftermath)", viewCharas)
+	}
+}
+
 // TestSaveSlotRoundTripRestoresMenuButtonVisible is the regression test for
 // a real reported bug: the corner @showmenubutton icon was visible at save
 // time, later hidden by [hidemenubutton] further into the story, and
