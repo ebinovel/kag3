@@ -174,6 +174,45 @@ func drawMessageVertical(r *Renderer, buf *ebiten.Image, x, marginTop float64, l
 	}
 }
 
+// wrapText hard-wraps s into as many "\n"-separated rows as it takes for
+// every row to measure within maxWidth, using the same pixel-measured,
+// rune-granularity fitting check as the rest of this file (no word-boundary
+// awareness — matches how CJK text is conventionally wrapped, and this
+// engine has never distinguished words for this purpose). Used in place of
+// inserting a single break at the first point text overflows maxWidth,
+// which only ever produced one extra row no matter how long s was — text
+// more than roughly 2x maxWidth wide (e.g. demo_movie.ks's credit line,
+// several times that) kept overflowing off the right edge of the message
+// box on every row after the first.
+func wrapText(s string, face *text.GoTextFace, lineSpacing, maxWidth float64) string {
+	remaining := []rune(s)
+	var lines []string
+	for {
+		w, _ := text.Measure(string(remaining), face, lineSpacing)
+		if w <= maxWidth {
+			lines = append(lines, string(remaining))
+			break
+		}
+		split := len(remaining) - 1
+		for split > 0 {
+			ww, _ := text.Measure(string(remaining[:split]), face, lineSpacing)
+			if ww <= maxWidth {
+				break
+			}
+			split--
+		}
+		if split == 0 {
+			// Not even a single rune fits maxWidth (a pathologically narrow
+			// message box) — take one anyway so the loop always makes
+			// forward progress instead of spinning forever.
+			split = 1
+		}
+		lines = append(lines, string(remaining[:split]))
+		remaining = remaining[split:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // drawMessageHorizontal lays out r.texts as normal left-to-right rows: the
 // active line (r.line) reveals glyph-by-glyph up to count, every earlier
 // line on the same page draws fully revealed (see the applyTextStyle
@@ -266,17 +305,7 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					wrapRows = 0
 					lastLineX = xOffset + w
 					if w > maxWidth {
-						rn := []rune(vText)
-						key := len(rn) - 1
-						for idx := key; idx >= 0; idx-- {
-							ww, _ := text.Measure(string(rn[:idx]), r.fontFace, tOp.LineSpacing)
-							if ww <= maxWidth {
-								rn = append(rn[:idx+1], rn[idx:]...)
-								rn[idx] = []rune("\n")[0]
-								break
-							}
-						}
-						vText = string(rn)
+						vText = wrapText(vText, r.fontFace, tOp.LineSpacing, maxWidth)
 						w, _ = text.Measure(vText, r.fontFace, tOp.LineSpacing)
 						wrapLines := strings.Split(vText, "\n")
 						wrapRows = len(wrapLines) - 1
@@ -365,17 +394,7 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				w, _ := text.Measure(vText, r.fontFace, tOp.LineSpacing)
 				maxWidth := float64(textPosition.Width - textPosition.MarginLeft - textPosition.MarginRight)
 				if w > maxWidth {
-					rn := []rune(vText)
-					key := len(rn) - 1
-					for idx := key; idx >= 0; idx-- {
-						ww, _ := text.Measure(string(rn[:idx]), r.fontFace, tOp.LineSpacing)
-						if ww <= maxWidth {
-							rn = append(rn[:idx+1], rn[idx:]...)
-							rn[idx] = []rune("\n")[0]
-							break
-						}
-					}
-					vText = string(rn)
+					vText = wrapText(vText, r.fontFace, tOp.LineSpacing, maxWidth)
 					w, _ = text.Measure(vText, r.fontFace, tOp.LineSpacing)
 				}
 				tOp.GeoM.Translate(marginLeft+xOffset, marginTop+rowY+rubyLineHeight)

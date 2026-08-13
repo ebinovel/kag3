@@ -2,6 +2,7 @@ package ebitengine
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/ebinovel/kag3"
@@ -92,6 +93,38 @@ func TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine(t *testing.T) {
 	lastLineWidth, _ := text.Measure("えお", r.fontFace, r.fontFace.Size)
 	if math.Abs(textEndX-lastLineWidth) > 0.5 {
 		t.Errorf("textEndX = %v, want ~%v (width of the second wrapped row \"えお\", not the whole block's widest row)", textEndX, lastLineWidth)
+	}
+}
+
+// TestWrapTextWrapsRepeatedlyForVeryLongText is the regression test for a
+// real reported bug: the auto-wrap in drawMessageHorizontal/drawMessage
+// used to insert a break only at the first point text overflowed maxWidth
+// and stop there, so text more than roughly 2x maxWidth wide (e.g.
+// demo_movie.ks's Wikimedia credit line, several times that) kept
+// overflowing off the right edge of the message box on every row after the
+// first, instead of wrapping onto as many rows as it actually needed.
+func TestWrapTextWrapsRepeatedlyForVeryLongText(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+
+	threeCharsWidth, _ := text.Measure("あいう", r.fontFace, r.fontFace.Size)
+	maxWidth := threeCharsWidth + 2
+
+	got := wrapText("あいうえおかきくけこ", r.fontFace, r.fontFace.Size, maxWidth)
+	gotLines := strings.Split(got, "\n")
+	wantLines := []string{"あいう", "えおか", "きくけ", "こ"}
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("wrapText produced %d lines %q, want %d lines %q", len(gotLines), gotLines, len(wantLines), wantLines)
+	}
+	for i, want := range wantLines {
+		if gotLines[i] != want {
+			t.Errorf("line %d = %q, want %q", i, gotLines[i], want)
+		}
+	}
+	for i, line := range gotLines {
+		if w, _ := text.Measure(line, r.fontFace, r.fontFace.Size); w > maxWidth {
+			t.Errorf("line %d %q measures %v, want <= maxWidth %v (every row must actually fit, not just the first)", i, line, w, maxWidth)
+		}
 	}
 }
 
