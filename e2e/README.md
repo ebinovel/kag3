@@ -29,24 +29,46 @@ Y軸が反映されない等)ため、クリック・キー入力はWin32 API
 1. Windows 10 (1809+) または Windows 11
 2. **Developer Mode を有効化**: 設定 → プライバシーとセキュリティ → 開発者向け
 3. **WinAppDriver をインストール**: [Releases](https://github.com/microsoft/WinAppDriver/releases)
-   から `.msi` を取得してインストール(デフォルトパス:
-   `C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe`)。
-   別パスに入れた場合は環境変数 `WINAPPDRIVER_PATH` でそのパスを指定する
+   から `.msi` を取得してインストール。`TestMain` は 32bit 側・64bit 側の
+   両方の Program Files を探索する(`%ProgramFiles(x86)%` →
+   `%ProgramFiles%` の順。インストーラの公式なデフォルトは前者だが、
+   実際に後者に入るケースを確認済み)。どちらでもない場所に入れた場合のみ、
+   環境変数 `WINAPPDRIVER_PATH` でそのパスを指定する
 4. Go 1.25 以上
 
-`TestMain` の自動起動が失敗する環境がある — 対話的なターミナルからなら
-通常問題ないが、詳細と回避策は「既知のこの環境固有の制約」を参照。
+Developer Mode が無効なままだと WinAppDriver は
+`Developer mode is not enabled ... Failed to initialize: 0x80004005` を
+出して初期化に失敗する。この場合 `TestMain` からは
+「起動したがリッスンしなかった」というエラーに見えるので、まずここを疑うこと。
 
 ## 実行方法
 
 ```powershell
 # 1. example をビルド(kag3リポジトリルートで実行)
+#    ここでは GOWORK=off にしないこと(理由は下記)
 go build -o e2e/testdata/kag3example.exe ./example
 
 # 2. E2E テスト実行
 cd e2e
+$env:GOWORK = "off"
 go test ./... -v
 ```
+
+### `GOWORK=off` が必要な理由
+
+`e2e/` は独立モジュールで、リポジトリルートの `go.work` に**含まれていない**。
+そのためワークスペースモードのままだと `go` がパッケージパターンごと拒否する:
+
+```
+pattern ./...: directory prefix . does not contain modules listed in go.work
+or their selected dependencies
+```
+
+**手順2の `go test` にだけ**必要な点に注意。手順1の `go build` は逆に
+ワークスペースが有効でなければならない(`example/` は `go.work` 経由でしか
+nanoda を解決できないため)。ここで `GOWORK=off` を設定してしまうと
+`no required module provides package github.com/aethiopicuschan/nanoda/v2`
+と大量の go.sum エントリ不足で失敗する。
 
 `TestMain` が WinAppDriver の起動状態を自動確認し、起動していなければ
 `WinAppDriver.exe` を自動起動する(自動起動した場合のみ、テスト終了後に
@@ -65,8 +87,10 @@ e2e/
 │              ウィンドウはUI Automationツリーがほぼ空の単一canvasのため)
 ├── helpers/   kag3固有のヘルパー(座標変換・スクショ安定待ち・セーブJSON読み取り等)
 ├── testdata/  ビルド済みexample.exe(gitignore対象)
-├── main_test.go   TestMain(WinAppDriver自動起動)
-└── flows_test.go  実際のE2Eフロー
+├── main_test.go           TestMain(WinAppDriver自動起動)
+├── flows_test.go          既定で実行されるE2Eフロー(アサーションあり)
+└── manual_newgame_test.go 目視確認用のスクリーンショット撮影ウォークスルー
+                           (既定でSKIP — KAG3_MANUAL_SCREENSHOT_DIR参照)
 ```
 
 ## kag3本体への追加フック
@@ -79,6 +103,34 @@ e2e/
 - `KAG3_E2E_FAST`: 起動時に `textNoWait` を強制 `true` にする
   (`renderer/ebitengine/tags_message.go`) — 文字送りアニメーションを
   スキップし、E2Eの待ち時間を大幅に削減する
+
+いずれも `helpers.LaunchGame` が自動で設定するため、手で指定する必要はない。
+
+## `KAG3_MANUAL_SCREENSHOT_DIR`(目視確認用)
+
+これはkag3本体ではなく `e2e/` 側だけで読む環境変数。`manual_newgame_test.go`
+の `TestManual*` 6件は、ゲームを実際に進めながら各所でスクリーンショットを
+撮って指定ディレクトリにPNGとして書き出す「目視確認用のウォークスルー」。
+操作が実行できなければ `t.Fatalf` で止まるが、**描画結果が正しいかどうかの
+アサーションは持たない**(`t.Error` は1つもなく、正しさの判断は撮れた画像を
+見る人間側に委ねられている) — その点が `flows_test.go` との違い。
+未設定だと全件SKIPされる:
+
+```powershell
+cd e2e
+$env:GOWORK = "off"
+$env:KAG3_MANUAL_SCREENSHOT_DIR = "$env:TEMP\kag3shots"
+# 出力先はテスト側では作られない。事前に用意しておくこと
+New-Item -ItemType Directory -Force $env:KAG3_MANUAL_SCREENSHOT_DIR | Out-Null
+go test ./... -run TestManual -v
+```
+
+ディレクトリを作り忘れると、最初の撮影で
+`create d01_....png: ... The system cannot find the path specified.` と
+なって落ちる(テストは `os.Create` するだけで `MkdirAll` はしない)。
+
+既定のフローテストより時間がかかり、撮影結果を人間が見て初めて意味がある
+ため、通常のリグレッション確認では設定しないでよい。
 
 ## 座標・行数がハードコードされている理由と注意点
 
@@ -101,12 +153,15 @@ ebitengineのウィンドウには要素検索の手段がなく、座標クリ�
 
 ## 実機確認済みの内容
 
-3フローとも実機(Windows 11)で `go test ./... -v` を通してPASS確認済み
-(各テスト60〜75秒程度、フルスイートで3〜4分程度)。
+既定で実行されるフローテストは以下の2件。実機(Windows 11)で
+`GOWORK=off go test ./... -v` を通してPASS確認済み(それぞれ17秒・20秒、
+フルスイートで40秒弱)。
 
-- `TestQuickSaveWritesCurrentPtextsPosition`
 - `TestTitleReturnDoesNotLeakPreviousPlaythroughStyle`
 - `TestQuickSaveThenLoadRestoresSceneText`
+
+`manual_newgame_test.go` の `TestManual*` 6件は既定でSKIPされる(下記の
+`KAG3_MANUAL_SCREENSHOT_DIR` を参照)。
 
 この過程で実際に発見・修正したkag3本体側のバグ:
 
@@ -132,15 +187,15 @@ ebitengineのウィンドウには要素検索の手段がなく、座標クリ�
   (この環境固有のタイミング競合)。`flows_test.go` の `advanceOne` は
   画面のスクリーンショットが実際に変化したかを確認し、変化なければ
   最大5回まで再送するリトライ方式で吸収している。
-- **`TestMain` によるWinAppDriverの自動起動が非対話シェルから失敗する
-  ことがある**: WinAppDriver.exeは「Press ENTER to exit.」という標準入力
-  待ちを行うため、標準入力がまともなコンソールに繋がっていない状態
-  (このセッションを含む、ツール経由でコマンドを実行する非対話シェル)
-  から `exec.Command` で直接起動すると、リッスンを開始した直後に標準
-  入力のEOFを読んで自分で終了してしまう。この場合は`go test`を実行する
-  前に、リダイレクトなしで(自分のコンソールを持たせて)WinAppDriverを
-  事前に起動しておく——例えば PowerShell で
-  `Start-Process "C:\Program Files (x86)\Windows Application Driver\WinAppDriver.exe" -WindowStyle Hidden`
-  としてから `go test ./... -v` を実行する。通常の対話的な PowerShell/
-  cmd ターミナルから直接 `go test` を実行する場合はこの問題は起きない
-  (`TestMain` の自動起動で問題なく動く)。
+- **WinAppDriverの標準入力EOF問題(修正済み — 手動の回避策はもう不要)**:
+  WinAppDriver.exeは「Press ENTER to exit.」という標準入力待ちを行うため、
+  標準入力がまともなコンソールに繋がっていない状態から `exec.Command` で
+  起動すると、リッスンを開始した直後に標準入力のEOFを読んで自分で終了して
+  しまう。`os/exec` は Stdin が nil の子プロセスに null デバイスを渡すので、
+  対話的ターミナルから実行した場合でもこれは起きうる(症状は
+  「起動したがリッスンしなかった」というタイムアウト)。
+  現在は `TestMain` が誰も書き込まない `os.Pipe` の読み側を標準入力として
+  渡し、その書き込み側をテストバイナリの寿命ぶん開いたままにすることで
+  この読み取りをブロックさせ続けている。事前にWinAppDriverを手動起動して
+  おく必要はない(既に起動しているインスタンスがあればそれを使い、
+  テスト終了後もそのまま残す挙動は従来どおり)。

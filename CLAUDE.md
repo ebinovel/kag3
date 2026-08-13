@@ -407,12 +407,24 @@ see "Repository layout gotcha" above) has no effect on `e2e/` until rebuilt:
 
 ```sh
 go build -o e2e/testdata/kag3example.exe ./example
-cd e2e && go test ./... -v
+cd e2e && GOWORK=off go test ./... -v
 ```
+
+`GOWORK=off` on the test step is required, not optional: `e2e/` is its own module and is **not**
+listed in the repo-root `go.work` (see "Temporary state" above), so with workspace mode active `go`
+refuses the package pattern outright —
+`pattern ./...: directory prefix . does not contain modules listed in go.work or their selected
+dependencies`. Note it applies to the `go test` only. The `go build` above must run *with* the
+workspace (i.e. don't set `GOWORK=off` for it), since `example/` reaches nanoda through exactly that
+`go.work`; setting it there instead fails with `no required module provides package
+github.com/aethiopicuschan/nanoda/v2` plus a pile of missing go.sum entries.
 
 If a given run reports WinAppDriver unreachable, or the environment genuinely lacks a real desktop,
 fall back to handing off to the user or saying explicitly that the change needs manual confirmation.
-Full setup/known caveats are in `e2e/README.md`.
+WinAppDriver also refuses to initialize at all unless Windows Developer Mode is on (it prints
+`Developer mode is not enabled ... Failed to initialize: 0x80004005` and exits), which needs admin
+rights to change — hand that to the user rather than trying to enable it. Full setup/known caveats
+are in `e2e/README.md`.
 
 kag3 itself has exactly two env var hooks for it, both no-ops unless set: `KAG3_SAVE_DIR` (absolute
 override for `saveDir()`, `tags_save.go` — lets an external test process sandbox saves the way
