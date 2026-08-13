@@ -5,11 +5,46 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ebinovel/kag3"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
+
+// activeLineGlyphCount reports how many glyphs (horizontal layout, counted
+// the same way drawMessageHorizontal does via text.AppendGlyphs — font
+// metrics affect glyph count, so a plain rune count wouldn't match what's
+// actually drawn) or runes (vertical layout, which lays out one rune per
+// cell with no font-dependent shaping) the currently-revealing line
+// (r.line) has in total. This is the same total drawMessageHorizontal/
+// drawMessageVertical compare their reveal counter against to decide a
+// line has finished — factored out so revealActiveLine (renderer.go) can
+// make that same decision from Update(), not just from Draw(). Returns 0
+// for a line with no text yet (r.texts[r.line] absent or empty), matching
+// both draw functions' own "nothing to compare against, don't touch
+// isWait" behavior for that case.
+func activeLineGlyphCount(r *Renderer, vertical bool) int {
+	segs := r.texts[r.line]
+	if vertical {
+		n := 0
+		for _, v := range segs {
+			n += utf8.RuneCountInString(v.Text)
+		}
+		return n
+	}
+	total := 0
+	for _, v := range segs {
+		if len(v.Text) == 0 {
+			continue
+		}
+		tOp := &text.DrawOptions{}
+		tOp.LineSpacing = r.fontFace.Size
+		g := text.AppendGlyphs(nil, v.Text, r.fontFace, &tOp.LayoutOptions)
+		total += len(g)
+	}
+	return total
+}
 
 // drawMessageWindow draws the message box frame (or configured FrameImage),
 // every [ptext] area (including the character name-plate), and the current
@@ -173,16 +208,12 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 			}
 		}
 		if lineNum == r.line {
-			totalGlyphs := 0
-			for _, v := range segs {
-				if len(v.Text) == 0 {
-					continue
-				}
-				tOp2 := &text.DrawOptions{}
-				tOp2.LineSpacing = r.fontFace.Size
-				g := text.AppendGlyphs(nil, v.Text, r.fontFace, &tOp2.LayoutOptions)
-				totalGlyphs += len(g)
-			}
+			// Same total activeLineGlyphCount computes (it reads
+			// r.texts[r.line], which is exactly segs here since lineNum ==
+			// r.line) — shared so Update()'s revealActiveLine and this
+			// function can never disagree about what "fully revealed"
+			// means for the active line.
+			totalGlyphs := activeLineGlyphCount(r, false)
 			if totalGlyphs > 0 {
 				charsToShow := totalGlyphs
 				if !isWait {

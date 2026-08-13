@@ -11,6 +11,105 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
+// TestRevealActiveLineAdvancesWithoutDraw is the headline regression test
+// for revealActiveLine (Update()'s own call in this file): it drives the
+// exact scenario that used to be unreachable from a unit test entirely —
+// glyph-by-glyph text reveal completing — without ever calling Draw or
+// anything that reaches drawMessageWindow/drawMessageHorizontal. Before
+// this fix, isWait was flipped *only* inside those draw functions, so
+// "has this line finished revealing" (and therefore whether a bare
+// TextObject's y.Until(false, func() bool { return isWait }) in execItem,
+// macro.go, can ever unblock) silently depended on Draw() having actually
+// run for the frame — invisible under normal play (ebitengine calls Draw
+// right after Update on every platform this ships to), but real whenever
+// Draw is skipped (window minimized/occluded), where the whole story
+// (AUTO/SKIP included, both of which also read isWait) would freeze
+// completely until the window became visible again.
+//
+// Uses "tt" instead of "t" for the *testing.T parameter, same as
+// TestHandleAnimMovesCharaOverTime (tags_animation_test.go) — this test
+// drives the package-level tick counter "t" directly.
+func TestRevealActiveLineAdvancesWithoutDraw(tt *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(tt)
+	beforeTextSize = r.fontFace.Size
+	textPosition = &kag3.TextPosition{Visible: true, Width: 1000, Height: 200}
+	defer func() { textPosition = nil }()
+	r.texts = map[int][]Text{0: {{Text: "こんにちは"}}}
+	r.line = 0
+	textStartT = t
+	isWait = false
+	defer func() { isWait = false }()
+
+	total := activeLineGlyphCount(r, false)
+	if total == 0 {
+		tt.Fatal("test setup produced 0 glyphs — activeLineGlyphCount can't be exercised")
+	}
+
+	// Not enough elapsed time yet: must not flip isWait early (that would
+	// make the reveal instantaneous instead of glyph-by-glyph).
+	t = textStartT + (total-1)*ticksPerChar()
+	r.revealActiveLine()
+	if isWait {
+		tt.Fatal("isWait went true before the reveal's elapsed time reached the line's full length")
+	}
+
+	// Now enough ticks have passed for every glyph — this is the moment
+	// that used to require Draw() to ever notice.
+	t = textStartT + total*ticksPerChar()
+	r.revealActiveLine()
+	if !isWait {
+		tt.Error("isWait is still false after enough ticks elapsed for the whole line — revealActiveLine must be able to finish a line without Draw ever running")
+	}
+}
+
+// TestRevealActiveLineNoopsWhenAlreadyWaitingOrHidden covers
+// revealActiveLine's early-return guards: it must never touch isWait once
+// already true, and must never fabricate a finished reveal for a
+// hidden/absent message window or a line with no text yet.
+func TestRevealActiveLineNoopsWhenAlreadyWaitingOrHidden(tt *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(tt)
+	beforeTextSize = r.fontFace.Size
+	defer func() { textPosition = nil; isWait = false }()
+
+	tt.Run("already waiting", func(tt *testing.T) {
+		textPosition = &kag3.TextPosition{Visible: true, Width: 1000, Height: 200}
+		r.texts = map[int][]Text{0: {{Text: "a"}}}
+		r.line = 0
+		textStartT = t
+		isWait = true
+		r.revealActiveLine()
+		if !isWait {
+			tt.Error("revealActiveLine must not clear isWait once already true")
+		}
+	})
+
+	tt.Run("message window hidden", func(tt *testing.T) {
+		textPosition = &kag3.TextPosition{Visible: false, Width: 1000, Height: 200}
+		r.texts = map[int][]Text{0: {{Text: "a"}}}
+		r.line = 0
+		textStartT = t - 100000
+		isWait = false
+		r.revealActiveLine()
+		if isWait {
+			tt.Error("revealActiveLine must not finish a reveal for a hidden message window")
+		}
+	})
+
+	tt.Run("no text on the active line yet", func(tt *testing.T) {
+		textPosition = &kag3.TextPosition{Visible: true, Width: 1000, Height: 200}
+		r.texts = map[int][]Text{}
+		r.line = 0
+		textStartT = t - 100000
+		isWait = false
+		r.revealActiveLine()
+		if isWait {
+			tt.Error("revealActiveLine must not finish a reveal for a line with no text at all")
+		}
+	})
+}
+
 // TestDrawSceneButtonWithoutEnterImgDoesNotPanicOnHover reproduces a real
 // crash: config.ks's volume/speed slider buttons (e.g.
 // [button graphic="&tf.btn_path_off" ... ] with no enterimg= at all) have

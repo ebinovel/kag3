@@ -295,11 +295,63 @@ func (r *Renderer) Update() {
 	stepSpeechSynthesis()
 	stepAnimations()
 	stepMovie()
+	r.revealActiveLine()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
 			break
 		}
 		tick++
+	}
+}
+
+// revealActiveLine decides whether the currently-revealing line (r.line)
+// has finished its glyph-by-glyph reveal and, if so, sets isWait — the one
+// flag that unblocks a bare TextObject's y.Until(false, func() bool {
+// return isWait }) (execItem, macro.go), and everything downstream of that
+// ([p]'s isTextEndedOrJumped, [l]'s isClicked, AUTO/SKIP in this very
+// function above).
+//
+// This decision used to be made *only* inside drawMessageWindow/
+// drawMessageHorizontal/drawMessageVertical (draw_message.go) — meaning
+// whether the story could advance at all silently depended on Draw()
+// having actually run this frame. ebitengine calls Update immediately
+// followed by Draw on every platform this project ships to under normal
+// conditions, so that dependency was invisible in practice — but Draw is
+// skipped whenever the window isn't actually being presented (minimized,
+// occluded on some platforms) while Update keeps running regardless.
+// In that window the whole story — AUTO/SKIP included, both of which read
+// isWait a few lines up in this same function — used to freeze completely
+// until the window became visible again. It's also why no test in this
+// package could ever exercise real glyph-by-glyph reveal: nothing in the
+// suite calls Draw.
+//
+// Called right before the coroutine is stepped, matching drawMessageWindow's
+// own timing: Draw normally runs immediately after Update, so a line
+// finishing its reveal becomes visible to the coroutine on the very next
+// frame's co.Next() call either way, whether this function or Draw is what
+// actually flips isWait. drawMessageWindow's own isWait/isTextEnd
+// bookkeeping is deliberately left in place, not removed or rerouted
+// through this function — isTextEnd and textEndX/textEndY (the "waiting"
+// mark's screen position, tags_sysdesign.go) are purely a draw-time
+// concern with no bearing on whether the coroutine can proceed, and folding
+// them in here would be a much larger rework (untangling glyph-position
+// tracking from actual glyph drawing) for no correctness gain — this fix's
+// scope is deliberately just the one flag that was actually able to freeze
+// the game.
+func (r *Renderer) revealActiveLine() {
+	if isWait || textPosition == nil || !textPosition.Visible {
+		return
+	}
+	total := activeLineGlyphCount(r, textPosition.Vertical)
+	if total == 0 {
+		return
+	}
+	count := math.MaxInt32
+	if !textNoWait {
+		count = (t - textStartT) / ticksPerChar()
+	}
+	if count >= total {
+		isWait = true
 	}
 }
 
