@@ -120,14 +120,11 @@ e2e/
 cd e2e
 $env:GOWORK = "off"
 $env:KAG3_MANUAL_SCREENSHOT_DIR = "$env:TEMP\kag3shots"
-# 出力先はテスト側では作られない。事前に用意しておくこと
-New-Item -ItemType Directory -Force $env:KAG3_MANUAL_SCREENSHOT_DIR | Out-Null
 go test ./... -run TestManual -v
 ```
 
-ディレクトリを作り忘れると、最初の撮影で
-`create d01_....png: ... The system cannot find the path specified.` と
-なって落ちる(テストは `os.Create` するだけで `MkdirAll` はしない)。
+出力先ディレクトリは存在しなければ自動で作られる
+(`manualScreenshotDir`)。事前に用意しておく必要はない。
 
 既定のフローテストより時間がかかり、撮影結果を人間が見て初めて意味がある
 ため、通常のリグレッション確認では設定しないでよい。

@@ -13,16 +13,36 @@ import (
 	"github.com/ebinovel/kag3/e2e/helpers"
 )
 
+// manualScreenshotDir resolves KAG3_MANUAL_SCREENSHOT_DIR for a TestManual*
+// walkthrough: skips the calling test when it isn't set (these exist purely
+// to produce screenshots for a human to look at, so with nowhere to write
+// them there is nothing to do) and makes sure the directory exists.
+//
+// The MkdirAll is the part worth having: every shot closure below just
+// os.Create()s straight into this directory, so pointing the variable at a
+// path that didn't exist yet failed on the very first screenshot with a bare
+// "create d01_....png: ... The system cannot find the path specified." —
+// which reads like the test is broken rather than like the directory was
+// the caller's job to create.
+func manualScreenshotDir(t *testing.T) string {
+	t.Helper()
+	dir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
+	if dir == "" {
+		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("creating screenshot directory %s: %v", dir, err)
+	}
+	return dir
+}
+
 // TestManualNewGameWalkthrough is a throwaway manual-verification script
 // for the new original "たそがれ図書室" example: launches the game and
 // walks all the way through the opening, the choice branch (rooftop
 // route), the ending, back to title, and into the demo hub, screenshotting
 // each stop.
 func TestManualNewGameWalkthrough(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
@@ -215,10 +235,7 @@ func clickGlinkRetry(t *testing.T, sess *driver.Session, lx, ly int, what string
 // (alone route) into ending_b, then back to title. Companion to
 // TestManualNewGameWalkthrough, which only covers the go_rooftop branch.
 func TestManualRouteB(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
 		t.Fatalf("resolving example path: %v", err)
@@ -297,10 +314,7 @@ func TestManualRouteB(t *testing.T) {
 // that hub navigation and the demo scenarios themselves work — not
 // exhaustive over all six items.
 func TestManualHubDemos(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
 		t.Fatalf("resolving example path: %v", err)
@@ -404,10 +418,7 @@ func TestManualHubDemos(t *testing.T) {
 // 0" — fixed by switching those mentions to fullwidth ［ ］ brackets so
 // they're plain text instead of real tag invocations).
 func TestManualHubRemainingDemos(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
 		t.Fatalf("resolving example path: %v", err)
@@ -537,10 +548,7 @@ func TestManualHubRemainingDemos(t *testing.T) {
 // dropped when the corner menu button (@showmenubutton) was removed from
 // demo_save.ks — see the comment at the end of this test.
 func TestManualConfigAndMenu(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
 		t.Fatalf("resolving example path: %v", err)
@@ -620,10 +628,7 @@ func TestManualConfigAndMenu(t *testing.T) {
 // a separate entry point into the slot picker from the quick menu's SAVE
 // button already covered by TestManualConfigAndMenu.
 func TestManualTitleLoadButton(t *testing.T) {
-	outDir := os.Getenv("KAG3_MANUAL_SCREENSHOT_DIR")
-	if outDir == "" {
-		t.Skip("KAG3_MANUAL_SCREENSHOT_DIR not set")
-	}
+	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
 	if err != nil {
 		t.Fatalf("resolving example path: %v", err)
