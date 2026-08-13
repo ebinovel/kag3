@@ -14,7 +14,10 @@ keep both in sync whenever a new tag is registered or an existing one's behavior
 that affects compatibility. `docs/VOICEVOX.md` (synced with `../ebinovel.github.io/voice.html`) covers
 kag3's own read-aloud feature (`[speak_on]`/`[speak_off]`, VOICEVOX CORE via
 [nanoda](https://github.com/aethiopicuschan/nanoda)) — setup, `config.toml` fields, and the
-per-character licensing/crediting requirements that come with it.
+per-character licensing/crediting requirements that come with it. `docs/VIDEO.md` covers `[movie]`
+(fullscreen video playback via [govid](https://github.com/liqMix/govid), a pure-Go/no-cgo decoder —
+supported codecs, the `se=` companion-audio workaround for govid's lack of any audio decoding, and
+why AV1 is rejected outright).
 
 **Temporary state**: kag3 currently depends on nanoda's unmerged 0.16.x support
 ([PR #8](https://github.com/aethiopicuschan/nanoda/pull/8)) via a local, gitignored `go.work` that

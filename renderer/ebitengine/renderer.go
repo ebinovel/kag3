@@ -265,6 +265,7 @@ func (r *Renderer) Update() {
 	stepAudioFades()
 	stepSpeechSynthesis()
 	stepAnimations()
+	stepMovie()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
 			break
@@ -615,6 +616,11 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
 	drawEditBox(r, buf)
+	// Fullscreen video, drawn last among ordinary scene content so it
+	// covers everything drawn above (message window, buttons, ptexts...)
+	// — see drawMovie's own doc comment (tags_movie.go) for why it still
+	// sits before captureSnapshot/drawModal.
+	drawMovie(buf)
 	// Save slot thumbnails (see captureSnapshot in tags_save.go) are kept
 	// fresh here, every frame, specifically *before* drawModal — buf has
 	// the full scene at this point but none of any modal overlay's own

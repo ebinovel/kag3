@@ -78,6 +78,13 @@ func (r *Renderer) goToTitle() {
 	speechStyles = map[string]uint32{}
 	defaultSpeechStyle = 0
 	lastAppliedSpeechSeq = speechSeq
+	// [movie] (tags_movie.go): stopMovie, not finishMovie — the coroutine
+	// currently blocked inside [movie wait=true]'s y.Until (if any) is
+	// being abandoned entirely by the isJump/jumpIndex reset below, not
+	// resumed past it, so there is no "story" reason to mark it finished.
+	// Leaking its decode goroutine otherwise would be a real resource
+	// leak every time a player backs out to title mid-movie.
+	stopMovie()
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see

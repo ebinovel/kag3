@@ -9,8 +9,9 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 
 ## 対応方針
 
-3D・AR・動画・HTML/CSS・パッチ配信は対象外です。これらを除いた実用スコープでは、
-ほぼ全てのタグに対応しています。
+3D・AR・HTML/CSS・パッチ配信は対象外です。これらを除いた実用スコープでは、
+ほぼ全てのタグに対応しています。動画は`[movie]`(全画面再生)のみ対応、
+`[bgmovie]`系(背景としてのループ再生)は今のところ対象外です。
 
 ## 🎤 読み上げ機能(VOICEVOX CORE) — kag3だけの機能です
 
@@ -44,6 +45,23 @@ PNGを1枚ずつ用意する代わりに、レイヤー分けされた1枚のPSD
 `charas[name].Storage`/`Faces`に保存し、ロード時に読み込み直す設計 — 新規プロセスでロードしても
 `[chara_new_psd]`を再実行する必要はありません)。
 
+## 🎬 動画再生
+
+`speak_on`/`speak_off`と同様、`movie`はtyrano.jp/tagに載っているタグ名ですが、kag3の実装は
+[github.com/liqmix/govid](https://github.com/liqMix/govid)(純Go・cgo不使用・ffmpeg不要の
+動画デコードライブラリ)によるものです。MP4(H.264)・WebM(VP8)・MPEG-1のフルスクリーン再生に
+対応しています。
+
+```
+[movie storage="op.mp4" se="op.ogg" skip=true]
+```
+
+**govidは映像のみで、動画ファイル自体の音声トラックは一切デコードできません。** 音声が必要な場合は
+`se=`属性で別の音声ファイルを指定し、`[playse]`と同じ`ses[]`経由で同時再生してください。
+AV1コーデックは対応していません(govid自身が「AV1デコーダは未完成」としているため、MP4/WebMが
+AV1エンコードの場合はエラーになります — H.264/VP8/MPEG-1を使ってください)。詳細・エンコード方法は
+[docs/VIDEO.md](VIDEO.md)を参照してください。
+
 ## カテゴリ別対応状況
 
 | カテゴリ | 対応状況 | 備考 |
@@ -53,7 +71,7 @@ PNGを1枚ずつ用意する代わりに、レイヤー分けされた1枚のPSD
 | ラベル・ジャンプ操作 | 全対応 | `jump` `link`/`endlink` `button` `glink` `glink_config` `clickable` |
 | キャラクター操作 | 全対応 | `chara_show` `chara_mod` `chara_move` `chara_layer` 等、パーツ制御まで含め対応。kag3独自拡張の`chara_new_psd`でPSD立ち絵読み込みにも対応(上記「🎨 PSD立ち絵読み込み」参照) |
 | 画像・背景・レイヤ操作 | 全対応 | `bg` `bg2` `image` `trans` `locate` `layopt` 等 |
-| 演出・効果・動画 | 動画関連のみ未対応 | `quake` `filter` `mask` などの演出は対応。`movie` `bgmovie` `wait_bgmovie` `stop_bgmovie` `layermode_movie` は対象外(Non-goal) |
+| 演出・効果・動画 | `bgmovie`系のみ未対応 | `quake` `filter` `mask` などの演出、`movie`(全画面動画再生、govid経由)に対応。詳細は上記「🎬 動画再生」参照。`bgmovie` `wait_bgmovie` `stop_bgmovie` `layermode_movie`(背景としてのループ再生)は対象外(Non-goal) |
 | アニメーション | 全対応 | `anim` `keyframe` `kanim` `xanim` 系すべて |
 | カメラ操作 | 全対応 | `camera` `reset_camera` `wait_camera` |
 | システム操作 | パッチ配信のみ未対応 | `save`/`load` 系・`rollback`・`dialog` 等は対応。`apply_local_patch` `check_web_patch` は対象外(Non-goal) |
@@ -106,6 +124,12 @@ PNGを1枚ずつ用意する代わりに、レイヤー分けされた1枚のPSD
   実機での音声合成・再生を確認済みです(`config.toml`の3キーの意味がプラットフォームごとに
   異なります)。wasmのみpuregoにjs/wasmターゲットが無いため非対応です。詳細は
   [docs/VOICEVOX.md](VOICEVOX.md)の「対応プラットフォーム」を参照してください。
+- **`[movie]`は動画ファイル自体の音声を再生しません**: 使っているgovidが映像のみのデコード
+  ライブラリのため、音が必要な場合は`se=`属性で別の音声ファイルを用意してください
+  (docs/VIDEO.md参照)。AV1コーデックのMP4/WebMはエラーになります。また`[movie]`は
+  エントリーポイント側が`fs.FS`マップに`"videos"`キーを登録して初めて機能します —
+  未登録のプロジェクトでは静かなno-opになります(`renderer/ebitengine`は他プロジェクトとも
+  共有しているため、この種の設定省略は全て「機能を使わないだけ」として扱われます)。
 
 ## kag3 独自の拡張タグ
 
