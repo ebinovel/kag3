@@ -50,7 +50,9 @@ func handleJump(ctx *tagCtx) error {
 			jump.Target = value
 		}
 	}
-	fmt.Printf("jump:%+v\n", jump)
+	if traceTags {
+		fmt.Printf("jump:%+v\n", jump)
+	}
 	if jump.Storage != "" {
 		if err := r.loadScript(jump.Storage); err != nil {
 			return err
@@ -70,7 +72,9 @@ func handleJump(ctx *tagCtx) error {
 		// lookups whose second half sliced Target[1:] and panicked outright
 		// on a bare [jump] carrying neither attribute.
 		if v, ok := r.lookupLabel(jump.Target); ok {
-			fmt.Printf("label:%+v\n", v)
+			if traceTags {
+				fmt.Printf("label:%+v\n", v)
+			}
 			// Inert on its own — initScript only reads jumpIndex when
 			// isJump is set, and every caller that sets isJump assigns
 			// jumpIndex itself. Kept in sync rather than left stale,

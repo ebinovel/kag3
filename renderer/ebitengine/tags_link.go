@@ -170,7 +170,9 @@ func handleButton(ctx *tagCtx) error {
 	if button.Width == 0 && button.Height == 0 && button.Graphic != nil {
 		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
 	}
-	fmt.Printf("button: %+v\n", button)
+	if traceTags {
+		fmt.Printf("button: %+v\n", button)
+	}
 	buttons = append(buttons, button)
 	return nil
 }
@@ -334,6 +336,8 @@ func handleLink(ctx *tagCtx) error {
 		*ctx.i = len(r.scripts) - 1
 	}
 	links = append(links, link)
-	fmt.Printf("links:%+v\n", links)
+	if traceTags {
+		fmt.Printf("links:%+v\n", links)
+	}
 	return nil
 }

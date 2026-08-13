@@ -78,7 +78,9 @@ func handleCharaHide(ctx *tagCtx) error {
 	object := ctx.tag
 	for _, chara := range viewCharas {
 		chara.Remove(object.Pm["name"])
-		fmt.Printf("chara_hide:%+v\n", chara)
+		if traceTags {
+			fmt.Printf("chara_hide:%+v\n", chara)
+		}
 	}
 	return nil
 }
@@ -253,8 +255,10 @@ func handleCharaShow(ctx *tagCtx) error {
 	if charaNew {
 		viewCharas = append(viewCharas, chara)
 	}
-	fmt.Printf("viewCharas:%+v\n", chara)
-	fmt.Printf("viewCharas:%+v\n", viewCharas)
+	if traceTags {
+		fmt.Printf("viewCharas:%+v\n", chara)
+		fmt.Printf("viewCharas:%+v\n", viewCharas)
+	}
 
 	if chara.Wait {
 		ctx.y.Until(true, func() bool {

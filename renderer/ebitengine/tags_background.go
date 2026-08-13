@@ -69,7 +69,9 @@ func handleBG2(ctx *tagCtx) error {
 func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	r := ctx.r
 	object := ctx.tag
-	fmt.Printf("bg:%+v\n", target)
+	if traceTags {
+		fmt.Printf("bg:%+v\n", target)
+	}
 	*tick = t
 	target.IsEnd = false
 	images := "images"

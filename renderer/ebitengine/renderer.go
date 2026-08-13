@@ -463,7 +463,9 @@ func (r *Renderer) buttonTargetJump(target string) {
 	if !ok {
 		return
 	}
-	fmt.Printf("label:%+v\n", v)
+	if traceTags {
+		fmt.Printf("label:%+v\n", v)
+	}
 	r.callStack = append(r.callStack, callFrame{
 		Storage: r.currentStorage,
 		Index:   currentScriptIndex,
@@ -541,7 +543,9 @@ func (r *Renderer) setButtonImageByClass(selector, path string) {
 		if img == nil {
 			loaded, err := loadImage(r, "", path)
 			if err != nil {
-				fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
+				if traceTags {
+					fmt.Printf("$(%q).attr(\"src\", %q): %v\n", selector, path, err)
+				}
 				return
 			}
 			img = loaded

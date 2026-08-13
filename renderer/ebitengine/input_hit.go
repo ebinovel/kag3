@@ -65,7 +65,9 @@ func hitLinks(r *Renderer) {
 					// link only changes storage", which is exactly what such
 					// a link is asking for.
 					if v, ok := r.lookupLabel(link.Target); ok {
-						fmt.Printf("click label:%+v\n", v)
+						if traceTags {
+							fmt.Printf("click label:%+v\n", v)
+						}
 						jumpIndex = v.Index
 						isJump = true
 					}
@@ -96,7 +98,9 @@ func hitGLinks(r *Renderer) {
 				// wins" ordering was arbitrary, and whose second half
 				// panicked on a [glink] with no target= of its own.
 				if v, ok := r.lookupLabel(glink.Target); ok {
-					fmt.Printf("label:%+v\n", v)
+					if traceTags {
+						fmt.Printf("label:%+v\n", v)
+					}
 					jumpIndex = v.Index
 					isJump = true
 				}
@@ -147,14 +151,18 @@ func hitButtons(r *Renderer) {
 		if isColisionTouch(mX, mY, button.X, button.Y, button.Width, button.Height, touch) {
 			hoveringClickable = true
 			if justPressed {
-				fmt.Printf("click button:%+v\n", button)
-				fmt.Printf("labels:%+v\n", r.labels)
+				if traceTags {
+					fmt.Printf("click button:%+v\n", button)
+					fmt.Printf("labels:%+v\n", r.labels)
+				}
 				// Must run before Storage/Role/Target below: config.ks's
 				// volume buttons set tf.current_bgm_vol etc. via exp=,
 				// which *vol_bgm_change (jumped to next) reads.
 				r.vm.EvalButtonExp(button.PreExp, button.Exp)
 				if button.Storage != "" {
-					fmt.Printf("button.Storage:%+v\n", button.Storage)
+					if traceTags {
+						fmt.Printf("button.Storage:%+v\n", button.Storage)
+					}
 					// role="sleepgame" must record its return address
 					// (see [awakegame]/handleAwakeGame in tags_system.go)
 					// against the *old* storage/position, before loadScript
