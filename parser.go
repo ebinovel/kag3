@@ -152,8 +152,43 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 	return result, mapLabel, nil
 } //}}}
 
+// quotedSpace/quotedEquals stand in for a space or an "=" that appeared
+// *inside* a quoted attribute value, for exactly as long as it takes
+// makeTag to finish tokenizing. Both characters are structural to the
+// tokenizer below — attributes are separated by splitting on runs of
+// spaces, and a key is separated from its value by splitting on "=" — so
+// occurrences that came from inside quotes have to be hidden from those
+// two splits and put back afterwards.
+//
+// Control characters, deliberately: this used to substitute the *space*
+// with nothing at all (destroying it outright — `[ptext text="Hello World"]`
+// arrived as "HelloWorld") and the "=" with "#", which was then mapped back
+// with a blanket ReplaceAll("#", "="). That second half quietly corrupted
+// any value legitimately containing a "#": `color="#FF0000"` parsed as
+// "=FF0000". A stand-in only works if it cannot occur in real source text,
+// which "#" plainly can and NUL/SOH cannot — and makeTag strips them from
+// its input up front (see below) so even a pathological .ks file can't
+// smuggle one in to forge an attribute boundary.
+const (
+	quotedSpace  = "\x00"
+	quotedEquals = "\x01"
+)
+
+// unescapeQuoted restores the characters quotedSpace/quotedEquals stood in
+// for. Applied per key and per value, after tokenizing and after
+// TrimSpace — so ordinary whitespace around an attribute is still trimmed
+// while whitespace the author actually quoted survives verbatim.
+func unescapeQuoted(s string) string {
+	s = strings.ReplaceAll(s, quotedEquals, "=")
+	s = strings.ReplaceAll(s, quotedSpace, " ")
+	return s
+}
+
 func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	tag := TagObject{}
+	// Strip the stand-ins from the input so the only ones present later are
+	// the ones this function put there itself (see quotedSpace's comment).
+	s = strings.NewReplacer(quotedSpace, "", quotedEquals, "").Replace(s)
 	c := strings.Split(s, "")
 	quoteStr := ""
 	tmpStr := ""
@@ -175,10 +210,10 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 					quoteCount = 0
 				} else {
 					if cc == "=" {
-						cc = "#"
+						cc = quotedEquals
 					}
 					if cc == " " {
-						cc = ""
+						cc = quotedSpace
 					}
 
 					tmpStr += cc
@@ -201,7 +236,7 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 	tag.Pm = make(map[string]string)
 	for _, cc := range strs {
 		tmp := strings.Split(cc, "=")
-		key := strings.TrimSpace(tmp[0])
+		key := unescapeQuoted(strings.TrimSpace(tmp[0]))
 		val := ""
 
 		if len(tmp) > 1 {
@@ -212,7 +247,7 @@ func (ks *KS) makeTag(s string, lineNum int) TagObject { // {{{
 			tag.Pm["*"] = ""
 		}
 		if val != "" {
-			tag.Pm[key] = strings.ReplaceAll(val, "#", "=")
+			tag.Pm[key] = unescapeQuoted(val)
 		}
 		if val == "undefined" {
 			tag.Pm[key] = ""

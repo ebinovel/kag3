@@ -154,6 +154,81 @@ func TestParserSpacedEquals(t *testing.T) {
 	}
 }
 
+// TestParserQuotedValuesPreserved guards the two lossy substitutions
+// makeTag used to perform on quoted attribute values: a space inside quotes
+// was deleted outright, and an "=" inside quotes was swapped for "#" and
+// then mapped back with a blanket ReplaceAll("#", "="), which corrupted any
+// value that legitimately contained a "#".
+func TestParserQuotedValuesPreserved(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want map[string]string
+	}{
+		{
+			"spaces inside quotes survive",
+			`@ptext name="n" text="Hello World"`,
+			map[string]string{"name": "n", "text": "Hello World"},
+		},
+		{
+			"a literal # is not turned into =",
+			`@ptext color="#FF0000"`,
+			map[string]string{"color": "#FF0000"},
+		},
+		{
+			"# and spaces together",
+			`@ptext text="a # b" color="#0f0"`,
+			map[string]string{"text": "a # b", "color": "#0f0"},
+		},
+		{
+			// The reason "=" needs hiding at all: it must not be mistaken
+			// for the key/value separator while tokenizing.
+			"an = inside quotes stays a value character",
+			`@eval exp="f.a = 1"`,
+			map[string]string{"exp": "f.a = 1"},
+		},
+		{
+			"repeated = inside quotes (the [if] case)",
+			`@if exp="1==1"`,
+			map[string]string{"exp": "1==1"},
+		},
+		{
+			// Unquoted whitespace around an attribute is still ordinary
+			// separator whitespace and must still be trimmed, even though
+			// quoted whitespace is now preserved.
+			"quoted padding kept, unquoted padding trimmed",
+			`@ptext text = "  padded  "`,
+			map[string]string{"text": "  padded  "},
+		},
+		{
+			// Control characters can't be smuggled in to forge an attribute
+			// boundary: makeTag strips them from its input first.
+			"raw stand-in characters in source are stripped, not honored",
+			"@ptext text=\"a\x00b\x01c\"",
+			map[string]string{"text": "abc"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ks := &KS{}
+			result, _, err := ks.ParseScenario(c.src)
+			if err != nil {
+				t.Fatalf("%+v", err)
+			}
+			if len(result) != 1 {
+				t.Fatalf("len(result) = %d, want 1; result=%+v", len(result), result)
+			}
+			tag, ok := result[0].(TagObject)
+			if !ok {
+				t.Fatalf("result[0] = %+v, want a TagObject", result[0])
+			}
+			if !reflect.DeepEqual(tag.Pm, c.want) {
+				t.Errorf("Pm = %+v, want %+v", tag.Pm, c.want)
+			}
+		})
+	}
+}
+
 func TestParserIfEndifMatchDepth(t *testing.T) {
 	src := "[if exp=\"1==1\"]\nfoo\n[endif]"
 	ks := &KS{}
