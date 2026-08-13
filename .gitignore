@@ -10,3 +10,7 @@
 # a real tagged version instead.
 go.work
 go.work.sum
+
+# Local dev env vars (KAG3_TRACE_TAGS etc., see .env.example) — loaded via
+# github.com/joho/godotenv/autoload, personal to each machine.
+.env

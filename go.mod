@@ -8,6 +8,7 @@ require (
 	github.com/ebitengine/gomobile v0.0.0-20250923094054-ea854a63cce1
 	github.com/eihigh/coro v1.0.3
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
+	github.com/joho/godotenv v1.5.1
 	github.com/oov/psd v0.0.0-20260122084234-c463b6a89e2f
 	github.com/raa0121/pfv v0.0.0-20210817114318-3dba8e474eb9
 	github.com/raa0121/ppi v0.0.0-20210818111410-3d972f4fa90c

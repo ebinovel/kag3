@@ -6,8 +6,26 @@ import (
 
 	"github.com/ebinovel/kag3"
 	"github.com/eihigh/coro"
+	_ "github.com/joho/godotenv/autoload"
 )
 
+// The blank godotenv/autoload import above loads a ".env" file (if one
+// exists in the process's current working directory) into real os.Environ
+// entries, for every KAG3_* env var this package and its callers read —
+// not just traceTags right below. It has to live here (or anywhere else in
+// this package) rather than in example/main.go's func main(), because Go
+// initializes every package main imports — including this one — before
+// main() itself ever runs; by the time main()'s first statement executes,
+// var traceTags below and KAG3_E2E_FAST's func init() (tags_message.go)
+// have already read os.Getenv. godotenv/autoload's own init() runs first
+// specifically because this package imports it: Go guarantees an imported
+// package is fully initialized before the importing package's own
+// var-initializers/init() funcs run, which is exactly the ordering needed
+// here. A missing .env is a silent no-op (godotenv.Load's error is
+// deliberately discarded by the autoload variant) — this only ever adds
+// entries a real environment variable of the same name still overrides
+// (godotenv never replaces an already-set variable).
+//
 // traceTags gates execItem's per-item stdout tracing (KAG3_TRACE_TAGS, same
 // opt-in-env-var shape as KAG3_E2E_FAST in tags_message.go). Off by default:
 // the coroutine pump in renderer.go's Update() can call execItem up to 1000
