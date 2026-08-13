@@ -32,7 +32,7 @@ func init() {
 // This deliberately follows the same "Storage is enough to re-derive the
 // image" contract kag3.Character.Storage's own doc comment describes for
 // ordinary files: a save/load resumed in a fresh process (see
-// reconcileViewCharas, tags_save.go) never re-runs [chara_new_psd] itself,
+// reconcileViewCharas, save_apply.go) never re-runs [chara_new_psd] itself,
 // so charas[name].Faces values (also captured verbatim by
 // saveData.CharaFaces) must be able to stand on their own without it. The
 // leading NUL byte can never appear in a real TyranoScript storage=

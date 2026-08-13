@@ -2,7 +2,7 @@
 //
 // Without this, nothing survives a page reload: on GOOS=js Go's os package
 // writes to an in-memory filesystem that dies with the tab, and saveDir
-// (tags_save.go) can't even get that far — os.UserConfigDir and
+// (save_slots.go) can't even get that far — os.UserConfigDir and
 // os.UserHomeDir both fail with no $HOME, so every save errors out.
 //
 // # Why localStorage rather than OPFS
@@ -41,7 +41,7 @@ import (
 
 // storageKeyPrefix namespaces every key by game title, mirroring the
 // kag3/<title>/saves directory layout saveDir builds on other platforms
-// (tags_save.go) — one origin can serve several kag3 games, and they must
+// (save_slots.go) — one origin can serve several kag3 games, and they must
 // not share each other's slots.
 func storageKeyPrefix(r *Renderer) string {
 	name := "kag3"

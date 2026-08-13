@@ -14,7 +14,7 @@ import (
 func drawCharacters(buf *ebiten.Image) {
 	for _, chara := range viewCharas {
 		// A registered=false entry here means a loaded save's character
-		// couldn't be reconciled (see reconcileViewCharas in tags_save.go)
+		// couldn't be reconciled (see reconcileViewCharas in save_apply.go)
 		// — that function is meant to filter these out before they ever
 		// reach viewCharas, but skip defensively rather than crash the
 		// whole renderer if that invariant is ever violated.

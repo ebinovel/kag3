@@ -217,7 +217,7 @@ func finishMovie() {
 //     letting the very next [p] spuriously pass isTextEnded without the
 //     player actually clicking past it. Same fix goToTitle/applySaveData
 //     use for the analogous jump-destination case
-//     (tags_save.go/title_flow.go) — resetOldTick tells the caller to
+//     (save_apply.go/title_flow.go) — resetOldTick tells the caller to
 //     apply it here too.
 func movieShouldFinish(skip, clicked, stopped bool) (finish, resetOldTick bool) {
 	switch {

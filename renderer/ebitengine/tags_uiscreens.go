@@ -34,7 +34,7 @@ func init() {
 // [edit] text field, or a button-triggered confirm dialog (activeDialog
 // with OnConfirm set — see confirmGoToTitle in renderer.go). A [dialog]
 // *tag*'s dialog isn't included here — it blocks the tag coroutine
-// directly via y.Until (see handleDialog in tags_save.go), so it doesn't
+// directly via y.Until (see handleDialog in tags_dialog.go), so it doesn't
 // need this separate freeze mechanism; only the button-triggered kind runs
 // outside the coroutine and needs Update() to hold the story back itself.
 // closeAllModals dismisses every modal overlay anyModalActive tracks except
@@ -82,7 +82,7 @@ func handleShowLoad(ctx *tagCtx) error {
 func openSlotPicker(mode slotPickerMode) {
 	// No capture here: lastSnapshot is kept fresh every frame by
 	// drawScene, always reflecting the scene with no modal on top —
-	// see captureSnapshot's doc comment (tags_save.go) for why capturing
+	// see captureSnapshot's doc comment (save_thumbnail.go) for why capturing
 	// only at this specific moment used to be too late (and wrong) when
 	// this picker was reached through another modal, e.g. the quick
 	// menu's own SAVE item.
@@ -141,7 +141,7 @@ var slotPickerViewportImg *ebiten.Image
 // reusing slotPickerViewportImg (Clear, not a fresh allocation) whenever
 // its size already matches — same reallocate-only-on-resize shape as
 // renderBuffer (renderer.go's Draw) and lastSnapshot (captureSnapshot,
-// tags_save.go). w is slotPickerRowW, a compile-time constant, so in
+// save_thumbnail.go). w is slotPickerRowW, a compile-time constant, so in
 // practice this only ever reallocates on the very first call and on an
 // actual window resize (viewportH derives from the screen height).
 func slotPickerViewportBuf(w, h int) *ebiten.Image {
@@ -175,7 +175,7 @@ func loadSystemImage(r *Renderer, name string) *ebiten.Image {
 }
 
 // slotThumbnailCache holds each slot's decoded savesnap thumbnail
-// (slot_<N>.png, written by saveSlot — see tags_save.go). Unlike
+// (slot_<N>.png, written by saveSlot — see save_slots.go). Unlike
 // systemImageCache this is invalidated per-slot on every successful save
 // (in saveSlot), since the file on disk can change.
 var slotThumbnailCache = map[int]*ebiten.Image{}
@@ -186,7 +186,7 @@ func loadSlotThumbnail(r *Renderer, slot int) *ebiten.Image {
 	}
 	// Decoded from bytes rather than through ebitenutil's fs.FS helper so
 	// both storage backends share one path — slotStore (storage_js.go) has
-	// no filesystem to hand os.DirFS. See readSlotFile (tags_save.go).
+	// no filesystem to hand os.DirFS. See readSlotFile (save_slots.go).
 	b, err := readSlotFile(r, slot, "png")
 	if err != nil {
 		// No thumbnail for this slot (savesnap/save_img was never used
@@ -391,7 +391,7 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 	// (Clear + redraw) rather than allocated fresh every time this modal is
 	// open — same reasoning, and same "reallocate only when the size
 	// actually changes" shape, as renderBuffer (renderer.go's Draw) and
-	// lastSnapshot (captureSnapshot, this file's tags_save.go sibling):
+	// lastSnapshot (captureSnapshot, save_thumbnail.go):
 	// this screen redraws every frame while open, and slotPickerRowW x
 	// viewportH is a full-width, sizable chunk of the message window to
 	// re-allocate for no reason 60 times a second.

@@ -18,7 +18,7 @@ func init() {
 
 // settingsPath resolves where [configsave]/[configload] persist the
 // scenario's own settings variables — alongside save slots (saveDir,
-// tags_save.go), not a new directory-resolution scheme, so KAG3_SAVE_DIR/
+// save_slots.go), not a new directory-resolution scheme, so KAG3_SAVE_DIR/
 // saveBaseDirOverride sandbox this exactly like any other on-disk state a
 // test or an external E2E harness needs to isolate. Only consulted when
 // ConfigStorage isn't set — see its own doc comment.
@@ -51,7 +51,7 @@ var ConfigStorage struct {
 // Config.Title — fine for Android, whose bridge is per-app anyway, but not
 // for storage_js.go, where every game served from one origin shares a
 // single localStorage. Same rationale and lifecycle as slotStore
-// (tags_save.go); nil means "use settingsPath and a real file".
+// (save_slots.go); nil means "use settingsPath and a real file".
 var settingsStore struct {
 	Save func(r *Renderer, data []byte) error
 	Load func(r *Renderer) ([]byte, error)

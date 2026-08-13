@@ -24,8 +24,9 @@ var handlers = map[string]tagHandler{}
 
 // currentScriptIndex mirrors *i whenever a top-level (depth 0) tag is
 // dispatched, i.e. the position within r.scripts of whatever's currently
-// running. Button-role clicks (role="sleepgame", [checkpoint], save/load —
-// see tags_save.go) happen from Update(), outside the tag-execution
+// running. Button-role clicks (role="sleepgame" — tags_system.go,
+// [checkpoint] — tags_save.go, save/load — save_slots.go) happen from
+// Update(), outside the tag-execution
 // coroutine, so they have no *i of their own; this is how they read "where
 // are we right now" to build a resumable position.
 var currentScriptIndex int

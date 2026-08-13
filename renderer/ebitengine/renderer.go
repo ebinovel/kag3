@@ -437,7 +437,7 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	// — see drawMovie's own doc comment (tags_movie.go) for why it still
 	// sits before captureSnapshot/drawModal.
 	drawMovie(buf)
-	// Save slot thumbnails (see captureSnapshot in tags_save.go) are kept
+	// Save slot thumbnails (see captureSnapshot in save_thumbnail.go) are kept
 	// fresh here, every frame, specifically *before* drawModal — buf has
 	// the full scene at this point but none of any modal overlay's own
 	// drawing yet, regardless of which overlay (if any) is about to be

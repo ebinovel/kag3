@@ -165,7 +165,7 @@ func applyBGTag(ctx *tagCtx, target *kag3.Background, tick *int) error {
 	// Storage tracks whatever's currently requested (the *resolved*
 	// images/-relative path, including the bg/ prefix above — NOT the
 	// raw author-written attribute), independent of whether the
-	// transition has visually finished — save/load (see tags_save.go)
+	// transition has visually finished — save/load (see save_apply.go)
 	// uses it to reconstruct the background image in a fresh process,
 	// where NextImage/Image can't be persisted directly, by feeding it
 	// straight back into the same fs.FS lookup (applyBgFromSnapshot)

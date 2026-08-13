@@ -3,7 +3,7 @@ package ebitengine
 import "github.com/ebinovel/kag3"
 
 // goToTitle resets session state and jumps to title.ks, shared by button
-// role="title" and the quick-menu's title item (see tags_save.go).
+// role="title" and the quick-menu's title item (see quickmenu.go).
 func (r *Renderer) goToTitle() {
 	screenChanged = true
 	r.loadScript("title.ks")
@@ -99,7 +99,7 @@ func (r *Renderer) goToTitle() {
 	// resets isWait=false again the moment it actually starts revealing).
 	isWait = true
 	// oldTick reset alongside isWait, for the same reason applySaveData
-	// does (tags_save.go): if the destination's first tag happens to be a
+	// does (save_apply.go): if the destination's first tag happens to be a
 	// [p] (unusual for a title screen, but not impossible depending on
 	// the scenario), its own y.Until(true, isTextEnded) could otherwise
 	// spuriously already be satisfied — oldTick+3>=tick can be true purely

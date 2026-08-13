@@ -67,7 +67,7 @@ func handleOpBarConfig(ctx *tagCtx) error {
 // from the quicksave/quickload group so opRowShowQuickSave=false only
 // removes the latter, matching the source design's own sc-if placement.
 // "Title" is not part of the source design's own mockup — added when the
-// corner menu button/quick menu (tags_sysdesign.go/tags_save.go, the
+// corner menu button/quick menu (tags_sysdesign.go/quickmenu.go, the
 // pre-redesign way to reach title) was removed, so returning to title
 // still has an entry point. Reuses buttonRoles["title"] (confirmGoToTitle,
 // same confirm-dialog flow the old quick menu's BACK TO TITLE row used) —

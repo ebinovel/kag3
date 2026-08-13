@@ -427,7 +427,7 @@ rights to change — hand that to the user rather than trying to enable it. Full
 are in `e2e/README.md`.
 
 kag3 itself has exactly two env var hooks for it, both no-ops unless set: `KAG3_SAVE_DIR` (absolute
-override for `saveDir()`, `tags_save.go` — lets an external test process sandbox saves the way
+override for `saveDir()`, `save_slots.go` — lets an external test process sandbox saves the way
 `saveBaseDirOverride` lets an in-package Go test do) and `KAG3_E2E_FAST` (forces `textNoWait = true`
 at startup via an `init()`, `tags_message.go` — skips glyph-by-glyph text reveal, the biggest E2E
 wall-clock cost).

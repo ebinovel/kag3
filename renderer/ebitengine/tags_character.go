@@ -118,7 +118,7 @@ func handleCharaMod(ctx *tagCtx) error {
 		return nil
 	}
 	// A save/load resumed mid-script (see the save/load gaps note in
-	// tags_save.go) skips whatever [chara_face] declarations came before the
+	// save_data.go) skips whatever [chara_face] declarations came before the
 	// jump point, so a face this character legitimately has in the real
 	// scenario can be missing from the process-lifetime charas registry —
 	// same class of gap charaShow's own "face" handling already guards
@@ -261,7 +261,7 @@ func handleCharaShow(ctx *tagCtx) error {
 		// c ranges over every currently-shown character, not just the one
 		// this call is about (already guarded at the top via name) — a
 		// sibling could in principle be an unreconciled load-restored entry
-		// (see reconcileViewCharas in tags_save.go), so re-check here too.
+		// (see reconcileViewCharas in save_apply.go), so re-check here too.
 		sibling, ok := charas[c.Name]
 		if !ok || sibling.Image == nil {
 			continue

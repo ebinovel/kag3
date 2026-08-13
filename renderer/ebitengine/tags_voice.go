@@ -26,7 +26,7 @@ type voiceConfig struct {
 
 // voiceConfigs is the process-lifetime [voconfig] registry, keyed by the
 // speaker name a "#name" line declares (charaName, tags_character.go).
-// Deliberately not part of SaveData (tags_save.go), matching how no audio
+// Deliberately not part of SaveData (save_data.go), matching how no audio
 // state is: currentBGM, ses and defaultSeVolume (tags_audio.go) have never
 // been saved either, so persisting only this one piece would be the odd one
 // out. Same "transient, in-memory" treatment as charas

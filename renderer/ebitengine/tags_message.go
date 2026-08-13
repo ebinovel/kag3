@@ -97,7 +97,7 @@ func skipActive() bool {
 // readLines is the process-lifetime "already read" registry: every line a
 // player has ever seen, keyed by (storage, source line number) so the same
 // line number in two different .ks files doesn't collide. Never persisted to
-// SaveData (tags_save.go) or reset on goToTitle/applySaveData — same
+// SaveData (save_data.go) or reset on goToTitle/applySaveData — same
 // "transient, in-memory, reset only on process restart" treatment as backlog
 // (tags_message.go's own recordBacklog doc comment), since "have I ever read
 // this" is a per-session/per-install concept in most VN engines, not a
@@ -339,7 +339,7 @@ func handlePositionFilter(ctx *tagCtx) error {
 }
 
 // backlogEntry is one recorded line: the speaker name (charaName at record
-// time, empty for narration/monologue — drawBacklog, tags_save.go, renders
+// time, empty for narration/monologue — drawBacklog, backlog.go, renders
 // that case as "──") and the dialogue text itself, kept separate so the
 // redesigned backlog screen can lay them out in a fixed-width name column
 // distinct from the text column.
@@ -350,7 +350,7 @@ type backlogEntry struct {
 
 // backlog is a plain append-only transcript of dialogue chunks, recorded
 // by recordBacklog whenever [p]/[cm]/[er]/[ct] clears the text buffer. Not
-// part of SaveData (tags_save.go) — purely transient, in-memory, reset like
+// part of SaveData (save_data.go) — purely transient, in-memory, reset like
 // menuOpen/slotPickerActive on process start.
 var (
 	backlog       []backlogEntry
@@ -380,7 +380,7 @@ func trimBacklog(backlog []backlogEntry, max int) []backlogEntry {
 
 // currentMessageText concatenates every segment of r.texts, in line order —
 // whatever's currently on screen in the message window, revealed or not.
-// Shared by recordBacklog and buildSaveData (tags_save.go), which captures
+// Shared by recordBacklog and buildSaveData (save_data.go), which captures
 // it as the save slot's preview text (see the DATA SAVE/LOAD screen).
 func currentMessageText(r *Renderer) string {
 	lineNums := make([]int, 0, len(r.texts))

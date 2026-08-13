@@ -99,7 +99,7 @@ e2e/
 フックが2つ入っている(いずれも未設定時は既存の挙動を完全維持):
 
 - `KAG3_SAVE_DIR`: セーブ先ディレクトリを絶対パスで上書き
-  (`renderer/ebitengine/tags_save.go` の `saveDir()`)
+  (`renderer/ebitengine/save_slots.go` の `saveDir()`)
 - `KAG3_E2E_FAST`: 起動時に `textNoWait` を強制 `true` にする
   (`renderer/ebitengine/tags_message.go`) — 文字送りアニメーションを
   スキップし、E2Eの待ち時間を大幅に削減する

@@ -56,7 +56,7 @@ func newVM() *VM {
 // browser globals instead. $(...) returns a chainable stub whose methods
 // are no-ops and report an empty result (.length = 0), which is a safe
 // default: this engine's own system screens (menu/save/load — see
-// tags_uiscreens.go/tags_save.go) are drawn independently of whatever a
+// quickmenu.go/tags_uiscreens.go) are drawn independently of whatever a
 // legacy script's jQuery calls would have done to a DOM that was never
 // there to begin with.
 // __jqSetImageSrc, if SetJQueryHooks has wired it in, is the one $(...)
@@ -99,7 +99,7 @@ var TG = { config: {}, menu: {} };
 // package-level var initializer rather than a func init() — see that file's
 // own comment on why) — the same "shared package stays platform-agnostic,
 // the platform-specific entrypoint flips one exported var/hook" pattern as
-// SaveDirFunc/ConfigStorage (tags_save.go/tags_config.go). SetConfig below
+// SaveDirFunc/ConfigStorage (save_slots.go/tags_config.go). SetConfig below
 // snapshots it into TG.config.isMobile so config.ks can hide UI that makes
 // no sense on a touch-only, permanently-fullscreen device (e.g. the
 // ウィンドウ/フルスクリーン toggle) without renderer/ebitengine needing to know
@@ -141,8 +141,8 @@ func boolToJSString(b bool) string {
 // SetMenuHooks wires TG.menu.doSave/loadGame/getSaveData — real Tyrano's
 // own save/load API, called from the bundled (but in this example project,
 // never actually invoked) [setsave]/[loading]/[saveinfo] macros in
-// tyrano.ks — to this engine's actual save system (saveSlot/loadSlot/
-// saveSlotInfo in tags_save.go/tags_uiscreens.go), so that if a script ever
+// tyrano.ks — to this engine's actual save system (saveSlot/loadSlot in
+// save_slots.go, saveSlotInfo in tags_uiscreens.go), so that if a script ever
 // does call one of those macros it does something real instead of
 // throwing "TG.menu.doSave is not a function". index is 0-based, matching
 // real Tyrano's array-index convention (tf.array_save[mp.index]); this
@@ -292,7 +292,7 @@ func (v *VM) ClearSF() {
 }
 
 // ExportF/ExportSF snapshot "f"/"sf" as plain Go maps so save/load (see
-// tags_save.go) can round-trip them through JSON. goja.Object.Export()
+// save_data.go/save_apply.go) can round-trip them through JSON. goja.Object.Export()
 // walks the whole object graph, so this only works for JSON-shaped data
 // (strings/numbers/bools/nested maps/slices) — a script that stashes a
 // function or other exotic value in f/sf will lose it on save, same
