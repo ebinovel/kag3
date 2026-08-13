@@ -8,6 +8,51 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
+// TestDrawMessageWindowSkipsBoxWithNoBackImage is the regression test for a
+// real crash: [ct] (handleCT, tags_message.go) replaces textPosition with a
+// fresh struct that keeps Visible=true but zeroes everything else,
+// including BackImage — Width/Height land at 0 too, so nothing re-allocates
+// BackImage until whatever [position] call follows [ct] actually gives it a
+// size. Any frame drawn in that gap used to call
+// textPosition.BackImage.Fill on a nil *ebiten.Image and crash the whole
+// renderer, over a single tag with nothing else wrong in the script.
+func TestDrawMessageWindowSkipsBoxWithNoBackImage(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	defer func() { textPosition = nil }()
+
+	// The exact shape handleCT produces: Visible survives, everything else
+	// (including BackImage) is back at its zero value.
+	textPosition = &kag3.TextPosition{Visible: true}
+	r.texts = map[int][]Text{}
+	r.line = 0
+
+	buf := newTestImage(1920, 1080)
+	drawMessageWindow(r, buf) // must not panic
+}
+
+// TestDrawMessageWindowStillDrawsBoxWhenBackImagePresent guards the ordinary
+// path alongside the regression test above: the switch in drawMessageWindow
+// must still take the BackImage branch (Fill + DrawImage) when one exists,
+// not fall through to the "nothing to draw" case added for the nil-BackImage
+// fix. This package has no precedent for reading pixels back out of an
+// *ebiten.Image in a test (ReadPixels needs a real running game loop, not
+// available here), so this only proves the call sequence doesn't panic —
+// same limit every other draw* test in this package already has.
+func TestDrawMessageWindowStillDrawsBoxWhenBackImagePresent(t *testing.T) {
+	r := newTestRenderer()
+	r.fontFace = newTestFontFace(t)
+	defer func() { textPosition = nil }()
+
+	textPosition = &kag3.TextPosition{Visible: true, Width: 200, Height: 100}
+	textPosition.BackImage = newTestImage(200, 100)
+	r.texts = map[int][]Text{}
+	r.line = 0
+
+	buf := newTestImage(1920, 1080)
+	drawMessageWindow(r, buf) // must not panic
+}
+
 // TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine is the
 // regression test for a real reported bug: when a line's text auto-wraps
 // (the maxWidth check in drawMessageHorizontal) into two or more physical

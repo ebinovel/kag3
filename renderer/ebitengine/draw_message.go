@@ -23,16 +23,35 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	x, y := float64(textPosition.Left), float64(textPosition.Top)
 	op.GeoM.Translate(x, y)
-	if textPosition.FrameImage != nil {
+	switch {
+	case textPosition.FrameImage != nil:
 		op.ColorScale.SetA(float32(textPosition.Opacity))
 		buf.DrawImage(textPosition.FrameImage, op)
-	} else {
+	case textPosition.BackImage != nil:
 		if textPosition.FilterColor != nil {
 			textPosition.BackImage.Fill(*textPosition.FilterColor)
 		} else {
 			textPosition.BackImage.Fill(messageBoxFillColor(r.manager.Config.MessageBoxStyle))
 		}
 		buf.DrawImage(textPosition.BackImage, op)
+	default:
+		// Neither image exists yet — Visible alone (the guard above) isn't
+		// proof the box is actually ready to draw. [ct] (handleCT,
+		// tags_message.go) is the one place that produces this exact
+		// combination on purpose: it replaces textPosition wholesale with a
+		// fresh struct that keeps Visible but zeroes everything else,
+		// including BackImage, as its documented "revert layout to a blank
+		// slate" behavior — Width/Height land at 0 too, so even
+		// handlePosition's own "only allocate once both are nonzero" guard
+		// (tags_layer.go) doesn't reallocate one until whatever [position]
+		// call follows [ct] actually sets a size. Any frame drawn in that
+		// gap used to call BackImage.Fill on a nil *ebiten.Image and crash
+		// the whole renderer over a single tag with nothing else wrong in
+		// the script. Skipping just the box here is enough: nothing below
+		// this switch reads BackImage/FrameImage again, so the rest of the
+		// window (text, ptexts, the operation row) still draws normally,
+		// just without a background box for however many frames it takes
+		// the script to give it one.
 	}
 
 	marginLeft := x + float64(textPosition.MarginLeft)
