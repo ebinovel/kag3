@@ -363,7 +363,19 @@ func recordBacklog(r *Renderer) {
 	}
 	if s := currentMessageText(r); s != "" {
 		backlog = append(backlog, backlogEntry{Name: charaName, Text: s})
+		backlog = trimBacklog(backlog, r.manager.Config.MaxBackLogNum)
 	}
+}
+
+// trimBacklog drops the oldest entries once backlog exceeds max, keeping
+// only the most recent max — otherwise a long play session grows backlog
+// without bound. max<=0 means unlimited, so a config explicitly set to 0
+// isn't silently trimmed to nothing.
+func trimBacklog(backlog []backlogEntry, max int) []backlogEntry {
+	if max > 0 && len(backlog) > max {
+		return backlog[len(backlog)-max:]
+	}
+	return backlog
 }
 
 // currentMessageText concatenates every segment of r.texts, in line order —
