@@ -1040,11 +1040,7 @@ type modalRect struct {
 }
 
 func drawModalRect(buf *ebiten.Image, face *text.GoTextFace, m modalRect) {
-	box := ebiten.NewImage(m.W, m.H)
-	box.Fill(color.RGBA{255, 255, 255, 230})
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(m.X), float64(m.Y))
-	buf.DrawImage(box, op)
+	fillRect(buf, float64(m.X), float64(m.Y), float64(m.W), float64(m.H), color.RGBA{255, 255, 255, 230})
 	tw, th := text.Measure(m.Label, face, 0)
 	top := &text.DrawOptions{}
 	top.ColorScale.ScaleWithColor(color.Black)
@@ -1098,9 +1094,7 @@ func handleDialogClick(screenW, screenH int) {
 func drawDialog(r *Renderer, buf *ebiten.Image) {
 	d := activeDialog
 	w, h := buf.Bounds().Dx(), buf.Bounds().Dy()
-	dim := ebiten.NewImage(w, h)
-	dim.Fill(dialogFilterColor)
-	buf.DrawImage(dim, &ebiten.DrawImageOptions{})
+	fillRect(buf, 0, 0, float64(w), float64(h), dialogFilterColor)
 	tw, th := text.Measure(d.Text, r.fontFace, 0)
 	top := &text.DrawOptions{}
 	top.ColorScale.ScaleWithColor(color.White)
@@ -1550,9 +1544,7 @@ func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 		op.GeoM.Scale(float64(w)/float64(bw), float64(h)/float64(bh))
 		buf.DrawImage(bgImg, op)
 	} else {
-		dim := ebiten.NewImage(w, h)
-		dim.Fill(color.RGBA{0, 0, 0, 160})
-		buf.DrawImage(dim, &ebiten.DrawImageOptions{})
+		fillRect(buf, 0, 0, float64(w), float64(h), color.RGBA{0, 0, 0, 160})
 	}
 
 	if labelImg := loadSystemImage(r, "label_menu.png"); labelImg != nil {

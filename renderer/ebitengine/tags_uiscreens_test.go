@@ -288,6 +288,38 @@ func TestLoadSystemImageCachesAndFallsBackWhenMissing(t *testing.T) {
 	systemImageCache = map[string]*ebiten.Image{}
 }
 
+// TestSlotPickerViewportBufReusesSameSizeReallocatesOnResize covers
+// slotPickerViewportBuf's whole reason for existing: drawSlotPicker used to
+// allocate a fresh slotPickerRowW x viewportH *ebiten.Image every single
+// frame the slot picker was open (a full-width chunk of the message
+// window, freshly allocated 60 times a second) — the same class of GPU
+// memory churn captureSnapshot's own doc comment (tags_save.go) documents
+// actually causing memory-warning stalls on a real, RAM-constrained iOS
+// device. slotPickerViewportBuf follows that same fix shape: reuse
+// (Clear) when the requested size matches what's already allocated,
+// reallocate only when it doesn't.
+func TestSlotPickerViewportBufReusesSameSizeReallocatesOnResize(t *testing.T) {
+	slotPickerViewportImg = nil
+	defer func() { slotPickerViewportImg = nil }()
+
+	first := slotPickerViewportBuf(1500, 600)
+	if first == nil {
+		t.Fatal("expected a non-nil image")
+	}
+	second := slotPickerViewportBuf(1500, 600)
+	if second != first {
+		t.Error("expected the same size requested twice to reuse the same *ebiten.Image, not allocate a new one")
+	}
+
+	third := slotPickerViewportBuf(1500, 400) // viewportH shrinks (e.g. window resize)
+	if third == first {
+		t.Error("expected a different size to allocate a new *ebiten.Image, not keep reusing the old (wrong-sized) one")
+	}
+	if third.Bounds().Dx() != 1500 || third.Bounds().Dy() != 400 {
+		t.Errorf("size after resize = %dx%d, want 1500x400", third.Bounds().Dx(), third.Bounds().Dy())
+	}
+}
+
 func TestDrawSlotPickerWithAndWithoutSystemImages(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()

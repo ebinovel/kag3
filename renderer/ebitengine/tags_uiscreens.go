@@ -132,6 +132,27 @@ const (
 // slotPickerScrollY is how far the row list has been scrolled down (0 = top).
 var slotPickerScrollY int
 
+// slotPickerViewportImg backs slotPickerViewportBuf — see that function's
+// doc comment for why this is reused across frames instead of allocated
+// fresh every draw.
+var slotPickerViewportImg *ebiten.Image
+
+// slotPickerViewportBuf returns a cleared *ebiten.Image of exactly w x h,
+// reusing slotPickerViewportImg (Clear, not a fresh allocation) whenever
+// its size already matches — same reallocate-only-on-resize shape as
+// renderBuffer (renderer.go's Draw) and lastSnapshot (captureSnapshot,
+// tags_save.go). w is slotPickerRowW, a compile-time constant, so in
+// practice this only ever reallocates on the very first call and on an
+// actual window resize (viewportH derives from the screen height).
+func slotPickerViewportBuf(w, h int) *ebiten.Image {
+	if slotPickerViewportImg == nil || slotPickerViewportImg.Bounds().Dx() != w || slotPickerViewportImg.Bounds().Dy() != h {
+		slotPickerViewportImg = ebiten.NewImage(w, h)
+	} else {
+		slotPickerViewportImg.Clear()
+	}
+	return slotPickerViewportImg
+}
+
 // systemImageCache holds every resources/system/images/* file the slot
 // picker (and anything else that calls loadSystemImage) has loaded, so
 // repeated per-frame draws don't re-decode from the embedded FS. A failed
@@ -337,9 +358,7 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 		op.GeoM.Scale(float64(w)/float64(bw), float64(h)/float64(bh))
 		buf.DrawImage(bgImg, op)
 	} else {
-		dim := ebiten.NewImage(w, h)
-		dim.Fill(color.RGBA{0, 0, 0, 180})
-		buf.DrawImage(dim, &ebiten.DrawImageOptions{})
+		fillRect(buf, 0, 0, float64(w), float64(h), color.RGBA{0, 0, 0, 180})
 	}
 
 	titleFile := "label_load.png"
@@ -368,8 +387,15 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 	// Rows are composited into their own buffer first and blitted at a
 	// fixed screen position — the simplest way to clip the scrolling list
 	// to its viewport without a partially-scrolled row bleeding into the
-	// title/back button area above it.
-	viewport := ebiten.NewImage(slotPickerRowW, viewportH)
+	// title/back button area above it. viewport is reused across frames
+	// (Clear + redraw) rather than allocated fresh every time this modal is
+	// open — same reasoning, and same "reallocate only when the size
+	// actually changes" shape, as renderBuffer (renderer.go's Draw) and
+	// lastSnapshot (captureSnapshot, this file's tags_save.go sibling):
+	// this screen redraws every frame while open, and slotPickerRowW x
+	// viewportH is a full-width, sizable chunk of the message window to
+	// re-allocate for no reason 60 times a second.
+	viewport := slotPickerViewportBuf(slotPickerRowW, viewportH)
 	for _, row := range rows {
 		y := row.Y - slotPickerScrollY - viewportY
 		if y+slotPickerRowH <= 0 || y >= viewportH {
@@ -421,11 +447,7 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 // package's hand-drawn UI chrome (see modalRect/drawModalRect).
 func drawSlotPickerScrollbar(buf *ebiten.Image, screenW, viewportY, viewportH, rowCount, scrollY, maxScroll int) {
 	trackX := screenW - slotPickerScrollbarMargin - slotPickerScrollbarW
-	track := ebiten.NewImage(slotPickerScrollbarW, viewportH)
-	track.Fill(color.RGBA{60, 100, 200, 140})
-	trackOp := &ebiten.DrawImageOptions{}
-	trackOp.GeoM.Translate(float64(trackX), float64(viewportY))
-	buf.DrawImage(track, trackOp)
+	fillRect(buf, float64(trackX), float64(viewportY), float64(slotPickerScrollbarW), float64(viewportH), color.RGBA{60, 100, 200, 140})
 
 	contentH := rowCount*(slotPickerRowH+slotPickerRowGap) - slotPickerRowGap
 	thumbH := viewportH * viewportH / contentH
@@ -436,11 +458,7 @@ func drawSlotPickerScrollbar(buf *ebiten.Image, screenW, viewportY, viewportH, r
 		thumbH = viewportH
 	}
 	thumbY := viewportY + (viewportH-thumbH)*scrollY/maxScroll
-	thumb := ebiten.NewImage(slotPickerScrollbarW, thumbH)
-	thumb.Fill(color.RGBA{40, 70, 220, 255})
-	thumbOp := &ebiten.DrawImageOptions{}
-	thumbOp.GeoM.Translate(float64(trackX), float64(thumbY))
-	buf.DrawImage(thumb, thumbOp)
+	fillRect(buf, float64(trackX), float64(thumbY), float64(slotPickerScrollbarW), float64(thumbH), color.RGBA{40, 70, 220, 255})
 }
 
 func (r *Renderer) handleSlotPickerClick() {
@@ -592,11 +610,7 @@ func drawEditBox(r *Renderer, buf *ebiten.Image) {
 	w, h := 690, 75
 	x := r.manager.Config.ScreenWidth/2 - w/2
 	y := r.manager.Config.ScreenHeight - 240
-	box := ebiten.NewImage(w, h)
-	box.Fill(color.RGBA{255, 255, 255, 240})
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
-	buf.DrawImage(box, op)
+	fillRect(buf, float64(x), float64(y), float64(w), float64(h), color.RGBA{255, 255, 255, 240})
 
 	display := string(editState.Value) + "_"
 	if editState.Prompt != "" {
