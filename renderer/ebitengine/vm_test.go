@@ -244,6 +244,29 @@ func TestBrowserShimReproducesConfigKsCrash(t *testing.T) {
 	}
 }
 
+// TestWindowOpenReachesOpenURL strengthens the previous test's mere
+// "doesn't throw" check: window.open(url) must actually reach the shared
+// openURL (openurl.go), the same path [web url=] uses, not just silently
+// swallow the call the way it used to (window = { open: function() {} }).
+func TestWindowOpenReachesOpenURL(t *testing.T) {
+	origLaunch := launchURL
+	defer func() { launchURL = origLaunch }()
+
+	var got string
+	launchURL = func(rawURL string) error {
+		got = rawURL
+		return nil
+	}
+
+	v := newVM()
+	if _, err := v.Eval(`window.open("http://tyrano.jp/home/example");`); err != nil {
+		t.Fatalf("window.open(...) call failed: %v", err)
+	}
+	if got != "http://tyrano.jp/home/example" {
+		t.Errorf("launchURL called with %q, want the url passed to window.open", got)
+	}
+}
+
 // TestSetConfigReproducesConfigKsCrash reproduces the crash reported right
 // after the previous ($/window) one: config.ks's bootstrap [iscript] reads
 // several TG.config.* fields — without SetConfig, TG.config is empty and

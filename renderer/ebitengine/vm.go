@@ -33,6 +33,16 @@ func newVM() *VM {
 	v.rt.Set("sf", v.sf)
 	v.rt.Set("tf", v.tf)
 	v.rt.Set("mp", v.rt.NewObject())
+	// window.open forwards to the shared openURL (openurl.go) — the same
+	// path [web url=] goes through (handleWeb, tags_web.go). No Renderer
+	// state involved (unlike __jqSetImageSrc/SetJQueryHooks, which needs
+	// the live `buttons` list), so this is wired directly here rather than
+	// through a separate SetXxxHook step called after construction.
+	v.rt.Set("__winOpenURL", func(rawURL string) {
+		if err := openURL(rawURL); err != nil {
+			fmt.Println("window.open:", err)
+		}
+	})
 	if _, err := v.rt.RunString(browserShimJS); err != nil {
 		// This is a fixed, hand-written shim, not user script — a failure
 		// here is a bug in this engine, not something to hide from a
@@ -65,6 +75,10 @@ func newVM() *VM {
 // selected" — works entirely through $(".someClass").attr("src", path),
 // swapping a button's displayed graphic. Everything else $ can do stays a
 // harmless no-op (see the browserShimJS doc comment above).
+//
+// window.open *is* implemented, via __winOpenURL (set unconditionally in
+// newVM, above) — the bundled sample's scene1.ks web-demo-link buttons call
+// it directly, and it shares the same openURL (openurl.go) [web url=] uses.
 const browserShimJS = `
 var $ = (function() {
 	var methods = [
@@ -90,7 +104,9 @@ var $ = (function() {
 	}
 	return function(selector) { return stub(selector); };
 })();
-var window = { open: function() {} };
+var window = { open: function(url) {
+	if (typeof __winOpenURL === "function") { __winOpenURL(url); }
+} };
 var TG = { config: {}, menu: {} };
 `
 
