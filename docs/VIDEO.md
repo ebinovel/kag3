@@ -20,6 +20,12 @@ ffmpeg不要**の動画デコードライブラリ)によるフルスクリー�
 壊れた映像を表示する代わりにエラーを返します(ログに出て、その`[movie]`タグ自体は静かに
 スキップされます)。
 
+**Theora(`.ogv`/`.ogg`)も対応していません。** govidにはTheoraデコーダ自体が存在しません
+(AV1のように「解析はできる」段階にすらありません)。本家TyranoScriptのサンプルプロジェクトは
+`.ogv`を使っていることがありますが、kag3では拡張子の時点で明確なエラーになります
+(こちらも静かにスキップされます)。`.ogv`の動画は上記のH.264/VP8/MPEG-1いずれかに
+再エンコードしてください。
+
 **音声トラックは一切デコードされません。** govidは映像のみのライブラリです。動画に音声を
 付けたい場合は、別の音声ファイルを`se=`属性で指定して同時再生してください(下記参照)。
 
@@ -84,6 +90,88 @@ High 4:4:4 Predictiveプロファイル(profile 244)は、エラーにならず*
 ```
 ; 背景ループ動画の例(音声無し・スキップ不要)
 [movie storage="bg_loop.webm" loop=true wait=false skip=false]
+```
+
+## 背景ループ動画: `[bgmovie]` / `[wait_bgmovie]` / `[stop_bgmovie]`
+
+`[movie]`がフルスクリーンの一時再生(スキップ可能・既定でコルーチンをブロック)なのに対し、
+`[bgmovie]`は`[bg]`と同じ「背景として敷きっぱなしにする」用途のタグです。内部的には`[movie]`と
+同じ`openMovie`(デコーダ選択・AV1/Theora拒否・`"videos"`fs.FS未設定時の静かなno-op)を再利用して
+いますが、描画位置(`[bg]`/`[bg2]`より下)・既定のループ設定(`[movie]`とは逆)・タグの分割方法が
+異なります。
+
+```
+[bgmovie storage="bg_loop.webm" se="ambience.ogg" time=800]
+; ...本編...
+[stop_bgmovie]
+```
+
+- `storage=`(必須): 動画ファイル名。`[movie]`と同じ`"videos"`のfs.FSから読み込まれる
+- `se=`: 同時再生する音声ファイル。`"bgmovie"`という専用バッファ名を使う
+  (`[stopse buf="bgmovie"]`等がそのまま効く)
+- `volume=`: 受け付けるが効果は無い(govidは動画自体の音声を一切デコードしないため — `se=`を
+  使うこと)
+- `loop=`(既定`true` — `[movie]`とは逆): 背景動画は`[stop_bgmovie]`されるまで再生し続ける
+- `time=`(既定`500`): フェードインの所要時間(ミリ秒)
+- `wait=`(既定`true`): **再生終了ではなく、フェードイン完了までしかブロックしない** —
+  `[movie wait=true]`と違い、既定の`loop=true`のままだと再生が終わらないため
+- `[wait_bgmovie]`: 再生が自然終了するまでブロックする。`loop=true`(既定)のまま呼ぶと
+  永久に戻ってこないので、その場合はログを出してすぐ返る — 実際に待たせたいなら
+  `[bgmovie loop=false]`と組み合わせること
+- `[stop_bgmovie]`: 再生を即座に停止する。ループ再生を終わらせる唯一の方法
+
+## レイヤー合成動画: `[layermode_movie]`
+
+`[bgmovie]`が背景の"下"に敷くのに対し、`[layermode_movie]`は既存のシーン全体の"上"に、
+合成モード(`mode=`)付きで動画を重ねるタグです。炎・光・パーティクルのような加算/乗算合成の
+オーバーレイ演出を想定しています。
+
+```
+[bg storage="bg.jpg" time=1000]
+[layermode_movie video="fire.webm" mode="screen" opacity=200]
+```
+
+- `name=`: 受け付けるが効果は無い(本家ではCSSのクラス名指定用。このエンジンにDOMは無い)
+- `video=`(必須、注意: `storage=`ではなく`video=`): 動画ファイル名。`"videos"`のfs.FSから
+  読み込まれる
+- `se=`: kag3独自の拡張(本家の属性一覧には無い)。`[movie]`/`[bgmovie]`と同じ理由
+  (govidは音声を一切デコードしない)で、代わりに音声ファイルを同時再生できる。専用バッファ名は
+  `"layermode_movie"`
+- `volume=`: 受け付けるが効果は無い(`[bgmovie]`と同じ理由)
+- `loop=`(既定`true`)
+- `speed=`: **受け付けるが無視される。** govidの`Player`型には`Play`/`Pause`/`SetLoop`/`State`
+  しか無く、再生速度を変えるAPIがそもそも存在しない
+- `mode=`(既定`multiply`): `normal`/`add`/`multiply`/`screen`に対応(`[layermode]`と共通の
+  実装 — 下記参照)。未対応の値はエラーになる
+- `opacity=`(既定`255`、0-255): フェードインの上にかかる固定の不透明度
+- `time=`(既定`500`): フェードインの所要時間(ミリ秒)
+- `wait=`(既定`true`): フェードイン完了までブロック(`[bgmovie]`と同じ扱い)
+
+**停止方法について**: 本家のタグリファレンスには`[layermode_movie]`を止める専用タグ
+(`[stop_layermode_movie]`等)が存在せず、既定で`loop=true`なので何もしなければ延々と
+再生され続けます。kag3では次のいずれかで止まります。
+
+- `[free_layermode]`(`layer=`省略、全解除の形): レイヤーの合成モードを全解除する既存タグを
+  「レイヤーまわりの状態を丸ごとリセットする」タグとして解釈し、`[layermode_movie]`の停止も
+  兼ねさせています。`[free_layermode layer="1"]`のように対象を絞った呼び出しでは止まりません
+- 新しい`[layermode_movie]`の呼び出し(前の再生を差し替える)
+- タイトルに戻る操作
+
+## `[layermode mode=]`の合成モード
+
+`[layermode_movie]`と同じ実装を`[layermode]`(`[image]`/`[graph]`のレイヤーに対する合成モード
+指定)も共有しています。
+
+| `mode=` | 説明 |
+| --- | --- |
+| `normal`(既定) | 通常のアルファ合成 |
+| `add` | 加算合成(Porter-Duffの"lighter") |
+| `multiply` | 乗算合成 |
+| `screen` | スクリーン合成 |
+
+```
+[image layer="1" storage="light.png"]
+[layermode layer="1" mode="add"]
 ```
 
 ## デコード性能

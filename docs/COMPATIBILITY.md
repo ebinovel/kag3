@@ -10,8 +10,8 @@ kag3 が [TyranoScript](https://tyrano.jp/) のどのタグ・機能に対応し
 ## 対応方針
 
 3D・AR・HTML/CSS・パッチ配信は対象外です。これらを除いた実用スコープでは、
-ほぼ全てのタグに対応しています。動画は`[movie]`(全画面再生)のみ対応、
-`[bgmovie]`系(背景としてのループ再生)は今のところ対象外です。
+ほぼ全てのタグに対応しています。動画は`[movie]`(全画面再生)・`[bgmovie]`系(背景としての
+ループ再生)・`[layermode_movie]`(合成モード付きのレイヤー動画)すべてに対応しています。
 
 ## 🎤 読み上げ機能(VOICEVOX CORE) — kag3だけの機能です
 
@@ -47,20 +47,30 @@ PNGを1枚ずつ用意する代わりに、レイヤー分けされた1枚のPSD
 
 ## 🎬 動画再生
 
-`speak_on`/`speak_off`と同様、`movie`はtyrano.jp/tagに載っているタグ名ですが、kag3の実装は
-[github.com/liqmix/govid](https://github.com/liqMix/govid)(純Go・cgo不使用・ffmpeg不要の
-動画デコードライブラリ)によるものです。MP4(H.264)・WebM(VP8)・MPEG-1のフルスクリーン再生に
-対応しています。
+`speak_on`/`speak_off`と同様、`movie`/`bgmovie`/`layermode_movie`はtyrano.jp/tagに載っている
+タグ名ですが、kag3の実装は[github.com/liqmix/govid](https://github.com/liqMix/govid)(純Go・
+cgo不使用・ffmpeg不要の動画デコードライブラリ)によるものです。MP4(H.264)・WebM(VP8)・
+MPEG-1に対応しています。
 
 ```
 [movie storage="op.mp4" se="op.ogg" skip=true]
+[bgmovie storage="bg_loop.webm" loop=true]
+[layermode_movie video="fire.webm" mode="screen"]
 ```
 
+- `[movie]`: フルスクリーンの一時再生(既定でコルーチンをブロック、クリックでスキップ可能)
+- `[bgmovie]`/`[wait_bgmovie]`/`[stop_bgmovie]`: `[bg]`と同じ「背景として敷きっぱなしにする」
+  ループ再生。既定`loop=true`
+- `[layermode_movie]`: 既存のシーンの上に合成モード(`mode=` — `normal`/`add`/`multiply`/
+  `screen`、`[layermode]`と共通実装)付きで重ねるオーバーレイ動画
+
 **govidは映像のみで、動画ファイル自体の音声トラックは一切デコードできません。** 音声が必要な場合は
-`se=`属性で別の音声ファイルを指定し、`[playse]`と同じ`ses[]`経由で同時再生してください。
-AV1コーデックは対応していません(govid自身が「AV1デコーダは未完成」としているため、MP4/WebMが
-AV1エンコードの場合はエラーになります — H.264/VP8/MPEG-1を使ってください)。詳細・エンコード方法は
-[docs/VIDEO.md](VIDEO.md)を参照してください。
+`se=`属性で別の音声ファイルを指定し、`[playse]`と同じ`ses[]`経由で同時再生してください
+(`[layermode_movie se=]`はkag3独自の拡張です — 本家の属性一覧には無く、同じ理由で追加しています)。
+AV1・Theora(`.ogv`/`.ogg`)コーデックは対応していません(govid自身が「AV1デコーダは未完成」
+としており、Theoraデコーダはそもそも存在しないため、いずれもエラーになります —
+H.264/VP8/MPEG-1を使ってください)。詳細・エンコード方法は[docs/VIDEO.md](VIDEO.md)を
+参照してください。
 
 ## カテゴリ別対応状況
 
@@ -69,14 +79,14 @@ AV1エンコードの場合はエラーになります — H.264/VP8/MPEG-1を�
 | メッセージ・テキスト | 全対応 | `l` `p` `graph` `r` `er` `cm` `ct` `current` `fuki_start` `fuki_stop` `fuki_chara` `ptext` `mtext` `ruby` `mark` `endmark` |
 | メッセージ関連の設定 | 全対応 | 既読テキストの追跡・既読のみスキップ(`unreadskip_config`、`config_record_label`)・既読テキストの色分け(`config_record_label color=`)に対応 — 既読判定の粒度については下記「既知の制約」参照 |
 | ラベル・ジャンプ操作 | 全対応 | `jump` `link`/`endlink` `button` `glink` `glink_config` `clickable` |
-| キャラクター操作 | 全対応 | `chara_show` `chara_mod` `chara_move` `chara_layer` 等、パーツ制御まで含め対応。kag3独自拡張の`chara_new_psd`でPSD立ち絵読み込みにも対応(上記「🎨 PSD立ち絵読み込み」参照) |
+| キャラクター操作 | 全対応 | `chara_show` `chara_mod` `chara_move` `chara_layer` `chara_ptext` 等、パーツ制御まで含め対応。kag3独自拡張の`chara_new_psd`でPSD立ち絵読み込みにも対応(上記「🎨 PSD立ち絵読み込み」参照) |
 | 画像・背景・レイヤ操作 | 全対応 | `bg` `bg2` `image` `trans` `locate` `layopt` 等 |
-| 演出・効果・動画 | `bgmovie`系のみ未対応 | `quake` `filter` `mask` などの演出、`movie`(全画面動画再生、govid経由)に対応。詳細は上記「🎬 動画再生」参照。`bgmovie` `wait_bgmovie` `stop_bgmovie` `layermode_movie`(背景としてのループ再生)は対象外(Non-goal) |
+| 演出・効果・動画 | 全対応 | `quake` `filter` `mask` などの演出、`movie`/`bgmovie`系/`layermode_movie`(govid経由の動画再生、`layermode`とmultiply/screen合成モードを共有)に対応。詳細は上記「🎬 動画再生」参照 |
 | アニメーション | 全対応 | `anim` `keyframe` `kanim` `xanim` 系すべて |
 | カメラ操作 | 全対応 | `camera` `reset_camera` `wait_camera` |
 | システム操作 | パッチ配信のみ未対応 | `save`/`load` 系・`rollback`・`dialog` 等は対応。`apply_local_patch` `check_web_patch` は対象外(Non-goal) |
 | システムデザイン変更 | 全対応 | `glyph` 系・`showmenubutton` `sysview` `dialog_config` 系など |
-| メニュー・HTML表示 | HTML関連のみ未対応 | `showsave` `showload` `showmenu` `showlog` は対応。`html` `endhtml` `web` は対象外(Non-goal) |
+| メニュー・HTML表示 | HTML関連のみ未対応 | `showsave` `showload` `showmenu` `showlog` `web`(既定ブラウザでURLを開く)は対応。`html` `endhtml` はHTML/CSS非対応につき対象外(Non-goal) |
 | マクロ・分岐・サブルーチン | 全対応 | `if`/`elsif`/`else`/`endif`、`macro`/`endmacro`(パーサー側で処理)、`call`/`return` 等 |
 | 変数・JS操作・ファイル読込 | `loadcss` のみ未対応 | `iscript`/`endscript`・`eval`・`emb` は [goja](https://github.com/dop251/goja) 埋め込みで評価。`loadcss` はHTML/CSS非対応につき対象外(Non-goal) |
 | オーディオ | 全対応 | BGM/SE の再生・フェード・音量調整まですべて |
@@ -124,12 +134,24 @@ AV1エンコードの場合はエラーになります — H.264/VP8/MPEG-1を�
   実機での音声合成・再生を確認済みです(`config.toml`の3キーの意味がプラットフォームごとに
   異なります)。wasmのみpuregoにjs/wasmターゲットが無いため非対応です。詳細は
   [docs/VOICEVOX.md](VOICEVOX.md)の「対応プラットフォーム」を参照してください。
-- **`[movie]`は動画ファイル自体の音声を再生しません**: 使っているgovidが映像のみのデコード
-  ライブラリのため、音が必要な場合は`se=`属性で別の音声ファイルを用意してください
-  (docs/VIDEO.md参照)。AV1コーデックのMP4/WebMはエラーになります。また`[movie]`は
-  エントリーポイント側が`fs.FS`マップに`"videos"`キーを登録して初めて機能します —
-  未登録のプロジェクトでは静かなno-opになります(`renderer/ebitengine`は他プロジェクトとも
-  共有しているため、この種の設定省略は全て「機能を使わないだけ」として扱われます)。
+- **`[movie]`/`[bgmovie]`/`[layermode_movie]`は動画ファイル自体の音声を再生しません**:
+  使っているgovidが映像のみのデコードライブラリのため、音が必要な場合は`se=`属性で別の音声
+  ファイルを用意してください(docs/VIDEO.md参照)。AV1・Theora(`.ogv`/`.ogg`)コーデックは
+  いずれもエラーになります(AV1はgovidのデコーダが未完成、Theoraはデコーダ自体が存在しない
+  ため)。また、これら動画系タグはすべてエントリーポイント側が`fs.FS`マップに`"videos"`キーを
+  登録して初めて機能します — 未登録のプロジェクトでは静かなno-opになります
+  (`renderer/ebitengine`は他プロジェクトとも共有しているため、この種の設定省略は全て
+  「機能を使わないだけ」として扱われます)。
+- **`[layermode_movie speed=]`は無視されます**: govidの`Player`型には`Play`/`Pause`/
+  `SetLoop`/`State`しか無く、再生速度を変えるAPIがそもそも存在しないためです。
+- **`[layermode_movie]`を停止する専用タグは本家に存在しないため、kag3独自の解釈で対応**:
+  既定`loop=true`なので、放置すると再生され続けます。`[free_layermode]`を`layer=`省略の
+  「全解除」形で呼ぶと、レイヤーの合成モードのリセットと合わせて`[layermode_movie]`も停止する
+  ようにしています(`layer=`を指定した個別解除では止まりません)。詳細はdocs/VIDEO.mdの
+  「レイヤー合成動画」参照。
+- **`[web]`はhttp/https以外のスキームを拒否します**: `.ks`ファイルから`file://`などの
+  スキームを渡してOSのURLハンドラに任意の引数を渡せてしまわないようにするためのセキュリティ
+  上の制限です。`window.open(url)`(`[iscript]`内)も同じ経路・同じ制限を通ります。
 
 ## kag3 独自の拡張タグ
 
