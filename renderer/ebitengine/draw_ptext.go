@@ -70,15 +70,30 @@ func ptextFace(r *Renderer, pt *kag3.PText) *text.GoTextFace {
 }
 
 // ptextContent is the string a named ptext area should currently display:
-// charaName for the one registered via [chara_config ptext=...], its own
-// literal .Text otherwise. Split out from drawPTexts so the name-plate
-// resolution logic is testable without an ebiten screen/font.
+// displayCharaName(charaName) for the one registered via
+// [chara_config ptext=...], its own literal .Text otherwise. Split out from
+// drawPTexts so the name-plate resolution logic is testable without an
+// ebiten screen/font.
 func ptextContent(name string) string {
 	if name == charaNamePText {
-		return charaName
+		return displayCharaName(charaName)
 	}
 	if pt, ok := ptexts[name]; ok {
 		return pt.Text
 	}
 	return ""
+}
+
+// displayCharaName resolves charaName (the internal name every other
+// lookup keys by — playCharaVoice, [speak_config], [fuki_chara], save data)
+// to what the name-plate should actually show: charas[name].JName when the
+// character was registered with jname= ([chara_new]/[chara_new_psd]), the
+// internal name unchanged otherwise (no jname given, or name not a
+// registered character at all — including "" for a monologue line, which
+// ptextContent then treats as empty content and skips the area entirely).
+func displayCharaName(name string) string {
+	if c, ok := charas[name]; ok && c.JName != "" {
+		return c.JName
+	}
+	return name
 }

@@ -812,6 +812,54 @@ func TestDrawPTextsWithBgImageDoesNotPanic(t *testing.T) {
 	drawPTexts(r, buf)
 }
 
+// TestDisplayCharaName covers displayCharaName: [chara_new jname=]/
+// [chara_new_psd jname=] register a display name distinct from the internal
+// name charaName/ptextContent key everything else by (playCharaVoice,
+// [speak_config], [fuki_chara], save data) — the name-plate is the one place
+// that must show jname when present instead of the raw internal name.
+func TestDisplayCharaName(t *testing.T) {
+	origCharas := charas
+	defer func() { charas = origCharas }()
+
+	charas = map[string]*kag3.Character{
+		"akane":   {Name: "akane", JName: "明音"},
+		"noJname": {Name: "noJname"},
+	}
+
+	if got := displayCharaName("akane"); got != "明音" {
+		t.Errorf("displayCharaName(%q) = %q, want %q", "akane", got, "明音")
+	}
+	if got := displayCharaName("noJname"); got != "noJname" {
+		t.Errorf("displayCharaName(%q) = %q, want internal name unchanged", "noJname", got)
+	}
+	if got := displayCharaName("unregistered"); got != "unregistered" {
+		t.Errorf("displayCharaName(%q) = %q, want internal name unchanged", "unregistered", got)
+	}
+	if got := displayCharaName(""); got != "" {
+		t.Errorf("displayCharaName(\"\") = %q, want empty (monologue)", got)
+	}
+}
+
+// TestPtextContentUsesJName covers ptextContent's use of displayCharaName
+// for the name-plate area specifically (draw_ptext.go) — a regression guard
+// for the historical bug where JName (kag3.go) was written by [chara_new]/
+// [chara_new_psd] but never read anywhere, so the name-plate always showed
+// the raw internal name even when jname= was given.
+func TestPtextContentUsesJName(t *testing.T) {
+	origCharas := charas
+	defer func() {
+		charas, charaName, charaNamePText = origCharas, "", ""
+	}()
+
+	charas = map[string]*kag3.Character{"akane": {Name: "akane", JName: "明音"}}
+	charaNamePText = "chara_name_area"
+	charaName = "akane"
+
+	if got := ptextContent("chara_name_area"); got != "明音" {
+		t.Errorf("ptextContent(name-plate) = %q, want jname %q", got, "明音")
+	}
+}
+
 // TestDrawPTextsSkipsBgImageWhenContentEmpty is the monologue-suppression
 // check: an empty resolved content (charaName == "") must skip the
 // background image entirely, not leave an orphaned tab graphic on screen.
