@@ -85,6 +85,7 @@ func (r *Renderer) goToTitle() {
 	// Leaking its decode goroutine otherwise would be a real resource
 	// leak every time a player backs out to title mid-movie.
 	stopMovie()
+	stopBgMovie()
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see

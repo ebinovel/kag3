@@ -217,6 +217,7 @@ func (r *Renderer) Update() {
 	stepSpeechSynthesis()
 	stepAnimations()
 	stepMovie()
+	stepBgMovie()
 	r.revealActiveLine()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
@@ -409,6 +410,7 @@ func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
 }
 
 func (r *Renderer) drawScene(buf *ebiten.Image) {
+	drawBgMovie(buf)
 	drawBackground(buf)
 	drawCharacters(buf)
 	applyFukiPosition()

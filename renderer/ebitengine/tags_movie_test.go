@@ -3,6 +3,7 @@ package ebitengine
 import (
 	"io/fs"
 	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -101,6 +102,28 @@ func TestOpenMovieRejectsAV1MP4(t *testing.T) {
 	closeQuietly(closers...)
 	if err == nil {
 		t.Fatal("expected an error for an AV1-encoded MP4, got nil")
+	}
+}
+
+// TestOpenMovieRejectsOgv covers ogv (Theora) rejection: govid has no
+// Theora decoder at all (unlike AV1, where it at least attempts and
+// produces garbage — Theora isn't attempted whatsoever), so this must be
+// rejected purely by file extension, before any real decode is attempted —
+// hence a dummy, non-video byte slice is enough to prove the point. The
+// error must specifically explain Theora isn't supported (not just fall
+// through to the generic "unsupported extension" default case), since
+// upstream TyranoScript sample projects do sometimes ship .ogv and a bare
+// "unsupported extension" gives no hint that transcoding is the fix.
+func TestOpenMovieRejectsOgv(t *testing.T) {
+	resetMovieState(t)
+	r := newTestRendererWithVideoFS(t, map[string][]byte{"op.ogv": []byte("not a real ogv file")})
+	_, closers, err := openMovie(r, "op.ogv")
+	closeQuietly(closers...)
+	if err == nil {
+		t.Fatal("expected an error for an .ogv file, got nil")
+	}
+	if !strings.Contains(err.Error(), "Theora") {
+		t.Errorf("error = %q, want it to explain Theora isn't supported (not just \"unsupported extension\")", err)
 	}
 }
 

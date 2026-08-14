@@ -160,6 +160,16 @@ func openMovie(r *Renderer, storage string) (*govidebiten.VideoImage, []io.Close
 		}
 		demuxCloser = source
 		player, err = govid.NewAsyncPlayer(source, source, movieDecodeAhead, govid.WithRGBA())
+	case ".ogv", ".ogg":
+		// Rejected outright, before ever touching reader/fileCloser beyond
+		// the open above: govid has no Theora decoder at all (unlike AV1,
+		// where it at least attempts decoding and produces garbage — see
+		// the av1 checks above), so unlike the generic default: case below,
+		// this gets its own message explaining *why*, since upstream
+		// TyranoScript sample projects do sometimes ship .ogv and a bare
+		// "unsupported extension" gives no hint that transcoding is the fix.
+		closeQuietly(fileCloser)
+		return nil, nil, fmt.Errorf("動画 %s: Theora(ogv/ogg)コーデックは対応していません(govidにTheoraデコーダが無いため。docs/VIDEO.md参照。.mp4 / .webm / .mpg / .mpeg に変換してください)", storage)
 	default:
 		closeQuietly(fileCloser)
 		return nil, nil, fmt.Errorf("動画 %s: 拡張子 %q には対応していません(.mp4 / .webm / .mpg / .mpeg のみ)", storage, ext)
