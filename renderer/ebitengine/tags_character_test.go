@@ -456,3 +456,88 @@ func TestHandleCharaModMissingCharacterDoesNotError(t *testing.T) {
 		t.Fatalf("chara_mod dispatch error = %v, want nil (unregistered character should be logged and skipped)", err)
 	}
 }
+
+// TestHandleCharaPTextSetsCharaName covers [chara_ptext name=]'s core
+// effect: it assigns the package-level charaName exactly like a "#name"
+// scenario line does (parser.go's characterPText + macro.go's execItem),
+// letting scripts trigger the name-plate/fuki-positioning update explicitly
+// instead of only via that shorthand.
+func TestHandleCharaPTextSetsCharaName(t *testing.T) {
+	defer func() { charaName = "" }()
+	r := newTestRenderer()
+	tag := kag3.TagObject{Name: "chara_ptext", Pm: map[string]string{"name": "akane"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_ptext dispatch error: %v", err)
+	}
+	if charaName != "akane" {
+		t.Errorf("charaName = %q, want %q", charaName, "akane")
+	}
+}
+
+// TestHandleCharaPTextEmptyNameClearsMonologue covers [chara_ptext name=""]
+// (or name= omitted) clearing charaName the same way a bare "#" line does —
+// ptextContent (draw_ptext.go) then resolves the name-plate to empty and
+// skips drawing it entirely.
+func TestHandleCharaPTextEmptyNameClearsMonologue(t *testing.T) {
+	charaName = "akane"
+	defer func() { charaName = "" }()
+	r := newTestRenderer()
+	tag := kag3.TagObject{Name: "chara_ptext", Pm: map[string]string{}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_ptext dispatch error: %v", err)
+	}
+	if charaName != "" {
+		t.Errorf("charaName = %q, want cleared", charaName)
+	}
+}
+
+// TestHandleCharaPTextFaceSwapsImage covers [chara_ptext face=]: the same
+// face-swap path [chara_mod face=] uses (applyCharaFace), not the
+// differential-parts system ([chara_part]) — matching upstream Tyrano's
+// documented scope ("表情差分パーツ機能（[chara_part]タグ）には対応していません").
+func TestHandleCharaPTextFaceSwapsImage(t *testing.T) {
+	defer func() { charaName = "" }()
+	r := newTestRendererWithImageFS(t, map[string][]byte{
+		"akane.png":       tinyPNG(t),
+		"akane_smile.png": tinyPNG(t),
+	})
+	charas["akane"] = &kag3.Character{
+		Name:    "akane",
+		Storage: "akane.png",
+		Faces:   map[string]string{"default": "akane.png", "smile": "akane_smile.png"},
+	}
+	tag := kag3.TagObject{Name: "chara_ptext", Pm: map[string]string{"name": "akane", "face": "smile"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_ptext dispatch error: %v", err)
+	}
+	if charas["akane"].Storage != "akane_smile.png" {
+		t.Errorf("charas[akane].Storage = %q, want %q", charas["akane"].Storage, "akane_smile.png")
+	}
+}
+
+// TestHandleCharaPTextMissingFaceDoesNotError mirrors
+// TestHandleCharaModMissingFaceDoesNotError: a face= that was never
+// registered via [chara_face] must be logged and skipped, not crash the
+// coroutine (a real gap after a save/load resume — see that test's own
+// comment for the full scenario this guards against).
+func TestHandleCharaPTextMissingFaceDoesNotError(t *testing.T) {
+	defer func() { charaName = "" }()
+	r := newTestRendererWithImageFS(t, map[string][]byte{"akane.png": tinyPNG(t)})
+	charas["akane"] = &kag3.Character{
+		Name:    "akane",
+		Storage: "akane.png",
+		Faces:   map[string]string{"default": "akane.png"},
+	}
+	origImage := charas["akane"].Image
+	tag := kag3.TagObject{Name: "chara_ptext", Pm: map[string]string{"name": "akane", "face": "happy"}}
+	i := 0
+	if err := dispatchTag(r, fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("chara_ptext dispatch error = %v, want nil (missing face should be logged and skipped)", err)
+	}
+	if charas["akane"].Image != origImage {
+		t.Error("charas[akane].Image changed even though the requested face was never registered")
+	}
+}

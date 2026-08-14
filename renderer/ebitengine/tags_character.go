@@ -21,6 +21,7 @@ func init() {
 	register("chara_layer_mod", handleCharaLayer)
 	register("chara_part", handleCharaPart)
 	register("chara_part_reset", handleCharaPartReset)
+	register("chara_ptext", handleCharaPText)
 }
 
 var (
@@ -109,26 +110,35 @@ func handleCharaFace(ctx *tagCtx) error {
 }
 
 func handleCharaMod(ctx *tagCtx) error {
-	r := ctx.r
-	object := ctx.tag
-	name := object.Pm["name"]
+	return applyCharaFace(ctx.r, ctx.tag.Pm["name"], ctx.tag.Pm["face"])
+}
+
+// applyCharaFace swaps name's standing image to whatever [chara_face]
+// registered under face, keeping Storage in sync — the face-change logic
+// shared by [chara_mod face=] and [chara_ptext face=]. Deliberately doesn't
+// touch Parts/ActivePart ([chara_part]'s differential-parts system):
+// upstream Tyrano's own [chara_ptext] docs say as much explicitly
+// ("表情差分パーツ機能（[chara_part]タグ）には対応していません"), and [chara_mod]
+// never has either.
+//
+// A save/load resumed mid-script (see the save/load gaps note in
+// save_data.go) skips whatever [chara_face] declarations came before the
+// jump point, so a face this character legitimately has in the real
+// scenario can be missing from the process-lifetime charas registry — same
+// class of gap charaShow's own "face" handling already guards against
+// (renderer.go's [chara_show face=...] case). Both failure cases below log
+// and leave whatever's currently showing untouched rather than opening an
+// empty path and crashing the whole coroutine (see initScript's loop: any
+// error from a tag handler panics).
+func applyCharaFace(r *Renderer, name, face string) error {
 	chara, err := mustChara(name)
 	if err != nil {
-		fmt.Printf("chara_mod: %s は登録されていないためスキップします\n", name)
+		fmt.Printf("chara face 変更: %s は登録されていないためスキップします\n", name)
 		return nil
 	}
-	// A save/load resumed mid-script (see the save/load gaps note in
-	// save_data.go) skips whatever [chara_face] declarations came before the
-	// jump point, so a face this character legitimately has in the real
-	// scenario can be missing from the process-lifetime charas registry —
-	// same class of gap charaShow's own "face" handling already guards
-	// against (renderer.go's [chara_show face=...] case). Log and keep
-	// whatever's currently showing rather than opening an empty path and
-	// crashing the whole coroutine (see initScript's loop: any error from a
-	// tag handler panics).
-	storage, ok := chara.Faces[object.Pm["face"]]
+	storage, ok := chara.Faces[face]
 	if !ok {
-		fmt.Printf("chara_mod: %s の表情 %s は登録されていないためスキップします\n", name, object.Pm["face"])
+		fmt.Printf("chara face 変更: %s の表情 %s は登録されていないためスキップします\n", name, face)
 		return nil
 	}
 	charaImage, err := loadImage(r, "", storage)
@@ -140,6 +150,26 @@ func handleCharaMod(ctx *tagCtx) error {
 	// after a face change restores the same face rather than the original
 	// [chara_new] default.
 	chara.Storage = storage
+	return nil
+}
+
+// handleCharaPText implements [chara_ptext name= face=]: assigns charaName
+// exactly like a "#name" scenario line does (parser.go's characterPText +
+// macro.go's execItem), including the same auto-voice hookup via
+// playCharaVoice — this tag just lets a script trigger that update
+// explicitly instead of only via the "#name" shorthand. name="" (or
+// omitted) clears the speaker, the same monologue state a bare "#" line
+// produces: ptextContent (draw_ptext.go) then resolves the name-plate to
+// empty and skips drawing it entirely. face=, if given, additionally swaps
+// the standing image via applyCharaFace, same as [chara_mod face=].
+func handleCharaPText(ctx *tagCtx) error {
+	r := ctx.r
+	name := ctx.tag.Pm["name"]
+	charaName = name
+	r.playCharaVoice(charaName)
+	if face, ok := ctx.tag.Pm["face"]; ok {
+		return applyCharaFace(r, name, face)
+	}
 	return nil
 }
 
