@@ -86,6 +86,7 @@ func (r *Renderer) goToTitle() {
 	// leak every time a player backs out to title mid-movie.
 	stopMovie()
 	stopBgMovie()
+	stopLayerMovie()
 	closeAllModals()
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see

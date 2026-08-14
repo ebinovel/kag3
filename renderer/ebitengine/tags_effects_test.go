@@ -149,10 +149,60 @@ func TestLayerModeAddAndFree(t *testing.T) {
 }
 
 func TestLayerModeUnsupportedModeErrors(t *testing.T) {
-	tag := kag3.TagObject{Name: "layermode", Pm: map[string]string{"layer": "1", "mode": "multiply"}}
+	tag := kag3.TagObject{Name: "layermode", Pm: map[string]string{"layer": "1", "mode": "bogus"}}
 	i := 0
 	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err == nil {
 		t.Error("expected an error for an unsupported layermode mode")
+	}
+}
+
+// TestLayerModeMultiplySetsExpectedBlend covers [layermode mode="multiply"]:
+// c_out = DestinationColor×c_src + Zero×c_dst = c_src × c_dst, the standard
+// Photoshop-style multiply formula. Destination alpha is deliberately left
+// untouched (Zero×α_src + One×α_dst = α_dst) — this only recolors RGB, same
+// as every other blend mode this engine composites onto an already-opaque
+// scene buffer.
+func TestLayerModeMultiplySetsExpectedBlend(t *testing.T) {
+	layerBlend = map[string]ebiten.Blend{}
+	tag := kag3.TagObject{Name: "layermode", Pm: map[string]string{"layer": "1", "mode": "multiply"}}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("layermode dispatch error: %v", err)
+	}
+	want := ebiten.Blend{
+		BlendFactorSourceRGB:        ebiten.BlendFactorDestinationColor,
+		BlendFactorSourceAlpha:      ebiten.BlendFactorZero,
+		BlendFactorDestinationRGB:   ebiten.BlendFactorZero,
+		BlendFactorDestinationAlpha: ebiten.BlendFactorOne,
+		BlendOperationRGB:           ebiten.BlendOperationAdd,
+		BlendOperationAlpha:         ebiten.BlendOperationAdd,
+	}
+	if got := layerBlend["1"]; got != want {
+		t.Errorf("layerBlend[1] = %+v, want %+v", got, want)
+	}
+}
+
+// TestLayerModeScreenSetsExpectedBlend covers [layermode mode="screen"]:
+// c_out = One×c_src + OneMinusSourceColor×c_dst = c_src + c_dst×(1-c_src),
+// the standard screen formula (equivalent to
+// 1-(1-c_src)×(1-c_dst) = c_src+c_dst-c_src×c_dst).
+func TestLayerModeScreenSetsExpectedBlend(t *testing.T) {
+	layerBlend = map[string]ebiten.Blend{}
+	tag := kag3.TagObject{Name: "layermode", Pm: map[string]string{"layer": "1", "mode": "screen"}}
+	i := 0
+	if err := dispatchTag(newTestRenderer(), fakeYield(), tag, &i, 0); err != nil {
+		t.Fatalf("layermode dispatch error: %v", err)
+	}
+	want := ebiten.Blend{
+		BlendFactorSourceRGB:        ebiten.BlendFactorOne,
+		BlendFactorSourceAlpha:      ebiten.BlendFactorZero,
+		BlendFactorDestinationRGB:   ebiten.BlendFactorOneMinusSourceColor,
+		BlendFactorDestinationAlpha: ebiten.BlendFactorOne,
+		BlendOperationRGB:           ebiten.BlendOperationAdd,
+		BlendOperationAlpha:         ebiten.BlendOperationAdd,
+	}
+	if got := layerBlend["1"]; got != want {
+		t.Errorf("layerBlend[1] = %+v, want %+v", got, want)
 	}
 }
 

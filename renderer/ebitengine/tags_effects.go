@@ -189,24 +189,76 @@ func handleVibrateStop(ctx *tagCtx) error {
 	return nil
 }
 
-// layerBlend holds a per-[image]-layer blend mode, applied in drawScene's
-// image-drawing loop. Only "normal" (the default) and "add" are supported —
-// ebiten has no built-in multiply/screen preset, and building one from raw
-// blend factors for tags this rarely used isn't worth the added surface
-// right now.
+// layerBlend holds a per-[image]-layer blend mode, applied in drawImages
+// (draw_image.go) and, for [layermode_movie]'s own layer, drawLayerMovie
+// (tags_layermode_movie.go). ebiten has no built-in multiply/screen preset,
+// so those two are built from raw blend factors (see blendMultiply/
+// blendScreen below) — "normal" (the default) and "add" (Porter-Duff
+// 'lighter', ebiten.BlendLighter) round out every mode [layermode_movie]'s
+// own upstream docs list.
 var layerBlend = map[string]ebiten.Blend{}
+
+// blendMultiply is the standard Photoshop-style multiply blend:
+// c_out = DestinationColor×c_src + Zero×c_dst = c_src × c_dst. Destination
+// alpha is deliberately left untouched (Zero×α_src + One×α_dst = α_dst) —
+// this only recolors RGB, same as every other blend mode here composites
+// onto an already-opaque scene buffer.
+var blendMultiply = ebiten.Blend{
+	BlendFactorSourceRGB:        ebiten.BlendFactorDestinationColor,
+	BlendFactorSourceAlpha:      ebiten.BlendFactorZero,
+	BlendFactorDestinationRGB:   ebiten.BlendFactorZero,
+	BlendFactorDestinationAlpha: ebiten.BlendFactorOne,
+	BlendOperationRGB:           ebiten.BlendOperationAdd,
+	BlendOperationAlpha:         ebiten.BlendOperationAdd,
+}
+
+// blendScreen is the standard screen blend:
+// c_out = One×c_src + OneMinusSourceColor×c_dst = c_src + c_dst×(1-c_src),
+// equivalent to 1-(1-c_src)×(1-c_dst). Destination alpha is left untouched,
+// same reasoning as blendMultiply above.
+var blendScreen = ebiten.Blend{
+	BlendFactorSourceRGB:        ebiten.BlendFactorOne,
+	BlendFactorSourceAlpha:      ebiten.BlendFactorZero,
+	BlendFactorDestinationRGB:   ebiten.BlendFactorOneMinusSourceColor,
+	BlendFactorDestinationAlpha: ebiten.BlendFactorOne,
+	BlendOperationRGB:           ebiten.BlendOperationAdd,
+	BlendOperationAlpha:         ebiten.BlendOperationAdd,
+}
+
+// resolveBlendMode maps a mode= string — shared by [layermode] and
+// [layermode_movie] (tags_layermode_movie.go) — to the ebiten.Blend it
+// selects. "normal"/"" resolves to the zero-value ebiten.Blend{}, which is
+// ordinary alpha compositing (BlendFactorDefault's own resolution, see
+// ebiten's blend.go) — the same as never setting DrawImageOptions.Blend at
+// all. ok is false for an unrecognized mode.
+func resolveBlendMode(mode string) (blend ebiten.Blend, ok bool) {
+	switch mode {
+	case "add":
+		return ebiten.BlendLighter, true
+	case "multiply":
+		return blendMultiply, true
+	case "screen":
+		return blendScreen, true
+	case "normal", "":
+		return ebiten.Blend{}, true
+	default:
+		return ebiten.Blend{}, false
+	}
+}
 
 func handleLayerMode(ctx *tagCtx) error {
 	object := ctx.tag
 	layer := object.Pm["layer"]
-	switch mode := object.Pm["mode"]; mode {
-	case "add":
-		layerBlend[layer] = ebiten.BlendLighter
-	case "normal", "":
-		delete(layerBlend, layer)
-	default:
+	mode := object.Pm["mode"]
+	if _, ok := resolveBlendMode(mode); !ok {
 		return fmt.Errorf("未対応の値です %s", mode)
 	}
+	if mode == "normal" || mode == "" {
+		delete(layerBlend, layer)
+		return nil
+	}
+	blend, _ := resolveBlendMode(mode)
+	layerBlend[layer] = blend
 	return nil
 }
 
@@ -214,6 +266,11 @@ func handleFreeLayerMode(ctx *tagCtx) error {
 	layer := ctx.tag.Pm["layer"]
 	if layer == "" {
 		layerBlend = map[string]ebiten.Blend{}
+		// See stopLayerMovie's own doc comment (tags_layermode_movie.go)
+		// for why the "reset everything" form of this tag also stops an
+		// active [layermode_movie] — there's no dedicated stop tag for it
+		// in the official tag list.
+		stopLayerMovie()
 		return nil
 	}
 	delete(layerBlend, layer)

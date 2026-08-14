@@ -218,6 +218,7 @@ func (r *Renderer) Update() {
 	stepAnimations()
 	stepMovie()
 	stepBgMovie()
+	stepLayerMovie()
 	r.revealActiveLine()
 	for i := 0; i < 1000; i++ {
 		if !co.Next() {
@@ -437,8 +438,13 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	// Fullscreen video, drawn last among ordinary scene content so it
 	// covers everything drawn above (message window, buttons, ptexts...)
 	// — see drawMovie's own doc comment (tags_movie.go) for why it still
-	// sits before captureSnapshot/drawModal.
+	// sits before captureSnapshot/drawModal. drawLayerMovie ([layermode_movie])
+	// sits right alongside it for the same reason — upstream Tyrano
+	// composites a "layer" video over everything already on screen, the
+	// opposite placement from [bgmovie]'s drawBgMovie (behind
+	// drawBackground, above).
 	drawMovie(buf)
+	drawLayerMovie(buf)
 	// Save slot thumbnails (see captureSnapshot in save_thumbnail.go) are kept
 	// fresh here, every frame, specifically *before* drawModal — buf has
 	// the full scene at this point but none of any modal overlay's own
