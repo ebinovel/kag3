@@ -228,6 +228,13 @@ func TestRestoreSFReinitializesMissingSystemNamespace(t *testing.T) {
 // without a $ shim this throws "ReferenceError: $ is not defined" and kills
 // the whole renderer.
 func TestBrowserShimReproducesConfigKsCrash(t *testing.T) {
+	// window.open reaches the shared openURL (openurl.go), which by default
+	// really launches the OS browser (launchURL = openURLPlatform) — swap it
+	// out so this test doesn't pop an actual browser tab.
+	origLaunch := launchURL
+	defer func() { launchURL = origLaunch }()
+	launchURL = func(rawURL string) error { return nil }
+
 	v := newVM()
 	if _, err := v.Eval(`$(".layer_camera").empty(); $("#bgmovie").remove();`); err != nil {
 		t.Errorf("jQuery-style $(...) call failed: %v", err)
