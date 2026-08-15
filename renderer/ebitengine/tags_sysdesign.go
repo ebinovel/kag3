@@ -67,13 +67,37 @@ func handleHideMenuButton(ctx *tagCtx) error {
 // menuButtonRect — only this corner-inset margin needed scaling).
 const menuButtonMargin = 30
 
+// menuButtonReferenceScreenWidth is the ScreenWidth
+// resources/system/images/button_menu.png (96x96) and menuButtonMargin were
+// actually tuned for — the たそがれ図書室 example's 1920x1080. A game
+// running at any other ScreenWidth (e.g. example_tyrano_official_backup's
+// 1280x720 default) gets this shared system-chrome asset scaled down
+// proportionally in menuButtonScale below, rather than drawn at its literal
+// pixel size — otherwise the exact same 96x96 icon reads visibly larger
+// against a smaller canvas (found by comparing against real TyranoScript's
+// own rendering, which sizes this chrome relative to the screen rather than
+// as a fixed pixel count). At 1920x1080 this scale is exactly 1, so the
+// たそがれ図書室 example's own look is unchanged.
+const menuButtonReferenceScreenWidth = 1920
+
+// menuButtonScale returns the factor menuButtonRect/drawMenuButton apply to
+// button_menu.png's native size and menuButtonMargin — see
+// menuButtonReferenceScreenWidth's doc comment for why this exists at all.
+func menuButtonScale(r *Renderer) float64 {
+	return float64(r.manager.Config.ScreenWidth) / menuButtonReferenceScreenWidth
+}
+
 func menuButtonRect(r *Renderer) (x, y, w, h int) {
 	if menuButtonImg == nil {
 		return 0, 0, 0, 0
 	}
-	w, h = menuButtonImg.Bounds().Dx(), menuButtonImg.Bounds().Dy()
-	x = r.manager.Config.ScreenWidth - w - menuButtonMargin
-	y = r.manager.Config.ScreenHeight - h - menuButtonMargin
+	scale := menuButtonScale(r)
+	imgW, imgH := menuButtonImg.Bounds().Dx(), menuButtonImg.Bounds().Dy()
+	w = int(float64(imgW) * scale)
+	h = int(float64(imgH) * scale)
+	margin := int(float64(menuButtonMargin) * scale)
+	x = r.manager.Config.ScreenWidth - w - margin
+	y = r.manager.Config.ScreenHeight - h - margin
 	return
 }
 
@@ -82,7 +106,9 @@ func drawMenuButton(r *Renderer, buf *ebiten.Image) {
 		return
 	}
 	x, y, _, _ := menuButtonRect(r)
+	scale := menuButtonScale(r)
 	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64(x), float64(y))
 	buf.DrawImage(menuButtonImg, op)
 }

@@ -20,7 +20,15 @@ import (
 // tests can exercise real image decoding without a checked-in fixture.
 func tinyPNG(t *testing.T) []byte {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	return sizedPNG(t, 1, 1)
+}
+
+// sizedPNG encodes a wxh PNG in memory — for tests where the decoded
+// image's actual pixel dimensions matter (e.g. menuButtonRect's
+// screen-resolution-relative scaling), unlike tinyPNG's fixed 1x1.
+func sizedPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		t.Fatalf("failed to encode test PNG: %v", err)

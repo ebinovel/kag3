@@ -69,11 +69,50 @@ func TestMenuButtonRectBottomRightCorner(t *testing.T) {
 		t.Fatalf("showmenubutton dispatch error: %v", err)
 	}
 	x, y, w, h := menuButtonRect(r)
-	if x+w+menuButtonMargin != r.manager.Config.ScreenWidth {
-		t.Errorf("x=%d w=%d, want flush against the right margin (screen width %d)", x, w, r.manager.Config.ScreenWidth)
+	// menuButtonMargin itself gets menuButtonScale'd along with the button's
+	// size (see menuButtonReferenceScreenWidth's doc comment) — this test's
+	// Renderer runs at 1280x720 (newTestRendererWithSystemImageFS), not the
+	// 1920x1080 menuButtonMargin's literal value assumes.
+	margin := int(float64(menuButtonMargin) * menuButtonScale(r))
+	if x+w+margin != r.manager.Config.ScreenWidth {
+		t.Errorf("x=%d w=%d margin=%d, want flush against the right margin (screen width %d)", x, w, margin, r.manager.Config.ScreenWidth)
 	}
-	if y+h+menuButtonMargin != r.manager.Config.ScreenHeight {
-		t.Errorf("y=%d h=%d, want flush against the bottom margin (screen height %d)", y, h, r.manager.Config.ScreenHeight)
+	if y+h+margin != r.manager.Config.ScreenHeight {
+		t.Errorf("y=%d h=%d margin=%d, want flush against the bottom margin (screen height %d)", y, h, margin, r.manager.Config.ScreenHeight)
+	}
+}
+
+// TestMenuButtonRectScalesWithScreenWidth guards against the bundled
+// resources/system/images/button_menu.png (96x96, tuned for the
+// たそがれ図書室 example's 1920x1080) looking oversized on a game running at
+// a smaller ScreenWidth — e.g. example_tyrano_official_backup's 1280x720
+// default, found to be visibly too large next to real TyranoScript's own
+// rendering. At the reference 1920x1080 the button must
+// stay pixel-exact (96x96, unscaled) so the たそがれ図書室 example's look
+// doesn't change at all.
+func TestMenuButtonRectScalesWithScreenWidth(t *testing.T) {
+	resetMenuButtonState()
+	r := newTestRendererWithSystemImageFS(t, map[string][]byte{"button_menu.png": sizedPNG(t, 96, 96)})
+	r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight = 1920, 1080
+	i := 0
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "showmenubutton"}, &i, 0); err != nil {
+		t.Fatalf("showmenubutton dispatch error: %v", err)
+	}
+	if _, _, w, h := menuButtonRect(r); w != 96 || h != 96 {
+		t.Errorf("at 1920x1080 (reference resolution): w,h = %d,%d, want 96,96 (unscaled)", w, h)
+	}
+
+	resetMenuButtonState()
+	r = newTestRendererWithSystemImageFS(t, map[string][]byte{"button_menu.png": sizedPNG(t, 96, 96)})
+	// newTestRendererWithSystemImageFS already sets 1280x720, matching
+	// example_tyrano_official_backup's own default.
+	if err := dispatchTag(r, fakeYield(), kag3.TagObject{Name: "showmenubutton"}, &i, 0); err != nil {
+		t.Fatalf("showmenubutton dispatch error: %v", err)
+	}
+	wantW := 96 * 1280 / 1920 // 64
+	wantH := 96 * 720 / 1080  // 64
+	if _, _, w, h := menuButtonRect(r); w != wantW || h != wantH {
+		t.Errorf("at 1280x720: w,h = %d,%d, want %d,%d (scaled down to match the resolution this button was originally tuned for)", w, h, wantW, wantH)
 	}
 }
 
