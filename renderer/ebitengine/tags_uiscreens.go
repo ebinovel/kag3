@@ -327,16 +327,21 @@ func clampSlotPickerScroll(r *Renderer, rowCount int) {
 
 // backButtonRect is real Tyrano's circular "BACK" button
 // (menu_button_close.png), fixed at the top-right corner regardless of
-// scroll.
+// scroll. Shared by the quick menu (quickmenu.go) and this slot picker, so
+// both draw an identical, identically-scaled button — see
+// systemChromeScale's doc comment (system_chrome.go) for why slotPickerBackMargin
+// and the button's own native size get scaled here rather than drawn as-is.
 func backButtonRect(r *Renderer) modalRect {
 	size := 100
 	if img := loadSystemImage(r, "menu_button_close.png"); img != nil {
 		size = img.Bounds().Dx()
 	}
+	s := systemChromeScale(r)
+	scaledSize := int(float64(size) * s)
 	return modalRect{
-		X: r.manager.Config.ScreenWidth - size - slotPickerBackMargin,
-		Y: slotPickerBackY,
-		W: size, H: size,
+		X: r.manager.Config.ScreenWidth - scaledSize - int(float64(slotPickerBackMargin)*s),
+		Y: int(float64(slotPickerBackY) * s),
+		W: scaledSize, H: scaledSize,
 	}
 }
 
@@ -375,6 +380,7 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 	mX, mY, _, _, touch := pointerState()
 	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY, touch)); backImg != nil {
 		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(systemChromeScale(r), systemChromeScale(r))
 		op.GeoM.Translate(float64(back.X), float64(back.Y))
 		buf.DrawImage(backImg, op)
 	}

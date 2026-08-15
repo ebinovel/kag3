@@ -192,11 +192,16 @@ func TestBackButtonRectSizeFallsBackWithoutImage(t *testing.T) {
 	r := newTestRenderer()
 	r.manager.Config = &kag3.Config{ScreenWidth: 1280, ScreenHeight: 720}
 	r.fses = map[string]fs.FS{"system/images": fstest.MapFS{}}
+	// backButtonRect scales its fallback 100x100 (and slotPickerBackMargin)
+	// by systemChromeScale — this Renderer runs at 1280x720, not the
+	// 1920x1080 those literal values were tuned for (system_chrome.go).
+	wantSize := int(100 * systemChromeScale(r))
+	wantMargin := int(float64(slotPickerBackMargin) * systemChromeScale(r))
 	rect := backButtonRect(r)
-	if rect.W != 100 || rect.H != 100 {
-		t.Errorf("backButtonRect fallback size = %dx%d, want 100x100", rect.W, rect.H)
+	if rect.W != wantSize || rect.H != wantSize {
+		t.Errorf("backButtonRect fallback size = %dx%d, want %dx%d", rect.W, rect.H, wantSize, wantSize)
 	}
-	if rect.X != 1280-100-slotPickerBackMargin {
+	if rect.X != 1280-wantSize-wantMargin {
 		t.Errorf("backButtonRect.X = %d, want flush against the right margin", rect.X)
 	}
 }
@@ -212,9 +217,11 @@ func TestBackButtonImageNameSwapsOnHover(t *testing.T) {
 }
 
 func TestQuickMenuButtonsOrderAndImages(t *testing.T) {
-	btns := quickMenuButtons()
+	r := newTestRenderer()
+	r.manager.Config = &kag3.Config{ScreenWidth: 1920, ScreenHeight: 1080}
+	btns := quickMenuButtons(r)
 	if len(btns) != 5 {
-		t.Fatalf("len(quickMenuButtons()) = %d, want 5", len(btns))
+		t.Fatalf("len(quickMenuButtons(r)) = %d, want 5", len(btns))
 	}
 	want := []struct{ normal, hover string }{
 		{"menu_button_save.png", "menu_button_save2.png"},
@@ -360,7 +367,7 @@ func TestDrawQuickMenuWithAndWithoutSystemImages(t *testing.T) {
 		"label_menu.png":        &fstest.MapFile{Data: tinyPNG(t)},
 		"menu_button_close.png": &fstest.MapFile{Data: tinyPNG(t)},
 	}
-	for _, btn := range quickMenuButtons() {
+	for _, btn := range quickMenuButtons(r) {
 		mapFS[btn.Normal] = &fstest.MapFile{Data: tinyPNG(t)}
 		mapFS[btn.Hover] = &fstest.MapFile{Data: tinyPNG(t)}
 	}

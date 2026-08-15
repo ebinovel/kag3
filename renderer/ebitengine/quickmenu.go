@@ -27,6 +27,11 @@ import (
 // save/load/skip/auto/backlog buttons directly on screen too, so this
 // doesn't need a "閉じる" item of its own — the top-right BACK button
 // covers that, consistently with the slot picker.
+//
+// These are the raw 1920x1080-tuned values — every call site scales them by
+// systemChromeScale(r) (system_chrome.go) before use, so a game running at
+// a different ScreenWidth (e.g. example_tyrano_official_backup's 1280x720)
+// doesn't get this chrome drawn at an oversized literal pixel size.
 const (
 	quickMenuLabelX, quickMenuLabelY    = 15, 15
 	quickMenuButtonX, quickMenuButtonY0 = 570, 285
@@ -47,7 +52,8 @@ type quickMenuButtonSpec struct {
 	X, Y, W, H    int
 }
 
-func quickMenuButtons() []quickMenuButtonSpec {
+func quickMenuButtons(r *Renderer) []quickMenuButtonSpec {
+	s := systemChromeScale(r)
 	names := [...][2]string{
 		{"menu_button_save.png", "menu_button_save2.png"},
 		{"menu_button_load.png", "menu_button_load2.png"},
@@ -57,10 +63,11 @@ func quickMenuButtons() []quickMenuButtonSpec {
 	}
 	items := make([]quickMenuButtonSpec, len(names))
 	for i, n := range names {
+		y0 := quickMenuButtonY0 + i*(quickMenuButtonH+quickMenuButtonGap)
 		items[i] = quickMenuButtonSpec{
 			Normal: n[0], Hover: n[1],
-			X: quickMenuButtonX, Y: quickMenuButtonY0 + i*(quickMenuButtonH+quickMenuButtonGap),
-			W: quickMenuButtonW, H: quickMenuButtonH,
+			X: int(float64(quickMenuButtonX) * s), Y: int(float64(y0) * s),
+			W: int(float64(quickMenuButtonW) * s), H: int(float64(quickMenuButtonH) * s),
 		}
 	}
 	return items
@@ -79,6 +86,7 @@ func quickMenuButtonImageName(btn quickMenuButtonSpec, mX, mY int, touch bool) s
 
 func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 	w, h := buf.Bounds().Dx(), buf.Bounds().Dy()
+	s := systemChromeScale(r)
 	if bgImg := loadSystemImage(r, "bg_base.png"); bgImg != nil {
 		op := &ebiten.DrawImageOptions{}
 		bw, bh := bgImg.Bounds().Dx(), bgImg.Bounds().Dy()
@@ -90,7 +98,8 @@ func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 
 	if labelImg := loadSystemImage(r, "label_menu.png"); labelImg != nil {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(quickMenuLabelX, quickMenuLabelY)
+		op.GeoM.Scale(s, s)
+		op.GeoM.Translate(quickMenuLabelX*s, quickMenuLabelY*s)
 		buf.DrawImage(labelImg, op)
 	}
 
@@ -98,13 +107,15 @@ func drawQuickMenu(r *Renderer, buf *ebiten.Image) {
 	mX, mY, _, _, touch := pointerState()
 	if backImg := loadSystemImage(r, backButtonImageName(back, mX, mY, touch)); backImg != nil {
 		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(s, s)
 		op.GeoM.Translate(float64(back.X), float64(back.Y))
 		buf.DrawImage(backImg, op)
 	}
 
-	for _, btn := range quickMenuButtons() {
+	for _, btn := range quickMenuButtons(r) {
 		if img := loadSystemImage(r, quickMenuButtonImageName(btn, mX, mY, touch)); img != nil {
 			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(s, s)
 			op.GeoM.Translate(float64(btn.X), float64(btn.Y))
 			buf.DrawImage(img, op)
 		}
@@ -126,7 +137,7 @@ func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
 		return
 	}
 
-	for idx, btn := range quickMenuButtons() {
+	for idx, btn := range quickMenuButtons(r) {
 		if !isColisionTouch(mX, mY, btn.X, btn.Y, btn.W, btn.H, touch) {
 			continue
 		}

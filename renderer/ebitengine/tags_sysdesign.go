@@ -67,24 +67,13 @@ func handleHideMenuButton(ctx *tagCtx) error {
 // menuButtonRect — only this corner-inset margin needed scaling).
 const menuButtonMargin = 30
 
-// menuButtonReferenceScreenWidth is the ScreenWidth
-// resources/system/images/button_menu.png (96x96) and menuButtonMargin were
-// actually tuned for — the たそがれ図書室 example's 1920x1080. A game
-// running at any other ScreenWidth (e.g. example_tyrano_official_backup's
-// 1280x720 default) gets this shared system-chrome asset scaled down
-// proportionally in menuButtonScale below, rather than drawn at its literal
-// pixel size — otherwise the exact same 96x96 icon reads visibly larger
-// against a smaller canvas (found by comparing against real TyranoScript's
-// own rendering, which sizes this chrome relative to the screen rather than
-// as a fixed pixel count). At 1920x1080 this scale is exactly 1, so the
-// たそがれ図書室 example's own look is unchanged.
-const menuButtonReferenceScreenWidth = 1920
-
-// menuButtonScale returns the factor menuButtonRect/drawMenuButton apply to
-// button_menu.png's native size and menuButtonMargin — see
-// menuButtonReferenceScreenWidth's doc comment for why this exists at all.
+// menuButtonScale is systemChromeScale (system_chrome.go) under its
+// original pre-generalization name — kept as a thin alias so
+// menuButtonRect/drawMenuButton's own call sites (and this file's tests)
+// don't need churning every time another system-chrome screen picks up the
+// same scaling.
 func menuButtonScale(r *Renderer) float64 {
-	return float64(r.manager.Config.ScreenWidth) / menuButtonReferenceScreenWidth
+	return systemChromeScale(r)
 }
 
 func menuButtonRect(r *Renderer) (x, y, w, h int) {
