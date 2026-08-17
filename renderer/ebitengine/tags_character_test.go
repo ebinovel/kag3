@@ -352,6 +352,9 @@ func TestHandleCharaNewSetsStorage(t *testing.T) {
 	if charas["akane"].Faces["default"] != "akane.png" {
 		t.Errorf("charas[akane].Faces[default] = %q, want %q", charas["akane"].Faces["default"], "akane.png")
 	}
+	if charas["akane"].Faces["normal"] != "akane.png" {
+		t.Errorf("charas[akane].Faces[normal] = %q, want %q", charas["akane"].Faces["normal"], "akane.png")
+	}
 }
 
 // TestHandleCharaModUpdatesStorage confirms a face swap keeps Storage

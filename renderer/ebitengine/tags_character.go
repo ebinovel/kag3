@@ -72,6 +72,12 @@ func handleCharaNew(ctx *tagCtx) error {
 		Storage: object.Pm["storage"],
 	}
 	charas[name].Faces["default"] = object.Pm["storage"]
+	// Real Tyrano scripts commonly [chara_show face="normal"] without ever
+	// [chara_face]-registering a "normal" variant, expecting it to just be
+	// whatever [chara_new storage=] was — mirror that under "normal" too, not
+	// only "default", so applyCharaShowAttrs's Faces[v] lookup (tags_character.go)
+	// resolves it instead of silently leaving the previous image in place.
+	charas[name].Faces["normal"] = object.Pm["storage"]
 	return nil
 }
 
