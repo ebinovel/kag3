@@ -135,9 +135,26 @@ func NewRenderer(manager *kag3.Manager) (r *Renderer, err error) {
 	return
 }
 
+// AdvanceKeys lets a host app register additional keys that advance
+// dialogue exactly like Enter/click (doNext(), below) — e.g. a game that
+// embeds kag3 for occasional in-story dialogue and wants its own existing
+// "confirm" key (already bound to something else, like Z) to double as the
+// text-advance key here too, instead of teaching players a second one.
+// Empty by default: kag3 on its own only recognizes Enter/click, matching
+// real TyranoScript.
+var AdvanceKeys []ebiten.Key
+
 func doNext() bool {
 	_, _, justPressed, _, _ := pointerState()
-	return justPressed || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
+	if justPressed || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		return true
+	}
+	for _, k := range AdvanceKeys {
+		if inpututil.IsKeyJustPressed(k) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Renderer) Update() {
