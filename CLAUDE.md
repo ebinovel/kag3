@@ -72,9 +72,9 @@ say so explicitly — it won't show up in a commit. `example/` is committed as a
 placeholder/original assets are ready, not gradually — see `.github/workflows/build-android.yml`'s
 own comment for how that's reflected on the CI side in the meantime.
 
-`tmp_genplaceholders/` (a tracked Go program at the repo root, `package main`) generates the
+`genplaceholders/` (a tracked Go program at the repo root, `package main`) generates the
 placeholder art `example/game/resources/` and `resources/system/images/` currently use in place of
-TyranoScript's own copyrighted sample assets — run it (`go run ./tmp_genplaceholders`) to regenerate
+TyranoScript's own copyrighted sample assets — run it (`go run ./genplaceholders`) to regenerate
 that art from scratch on a fresh checkout; it deliberately avoids importing ebitengine (whose `init()`
 touches the windowing system unconditionally) so it also runs headless in CI. `example_tyrano_official_backup/`
 (untracked, ~37MB, includes a prebuilt Windows `.exe`) is a backup of the pre-refactor `example/`
