@@ -40,6 +40,10 @@ var (
 	// cleared the first time clearLinksOnJump actually consumes it.
 	preserveLinksOnJump bool
 	co                  *coro.Coro
+	// isBlockedOnStop is true while the tag coroutine is sitting on a bare
+	// [s] tag (handleS, tags_text.go), waiting for an external
+	// Renderer.StartAtLabel/jump to resume it — see Renderer.IsBlockedOnStop.
+	isBlockedOnStop bool
 )
 
 func init() {

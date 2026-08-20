@@ -64,6 +64,19 @@ func (r *Renderer) StartAtLabel(name string) bool {
 	return true
 }
 
+// IsBlockedOnStop reports whether the tag coroutine is currently sitting on
+// a bare [s] tag (handleS, tags_text.go) — i.e. the script has reached a
+// dead stop and needs an external Renderer.StartAtLabel (or some other
+// caller of the same isJump/jumpIndex mechanism) to resume it. A host app
+// that structures one .ks file as several [s]-terminated sections (jumped
+// between via StartAtLabel — see that method's own doc comment on why this
+// is safe even while the coroutine is mid-script) can poll this once per
+// Update() to detect "this section is done" without needing its own
+// end-of-section signal from the script.
+func (r *Renderer) IsBlockedOnStop() bool {
+	return isBlockedOnStop
+}
+
 // loadScript loads a scenario file and re-points the renderer at it,
 // keeping currentStorage in sync so [call]/[return] can record and resume
 // call frames as plain (storage, index) pairs.

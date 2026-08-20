@@ -84,7 +84,9 @@ func handleTextR(ctx *tagCtx) error {
 }
 
 func handleS(ctx *tagCtx) error {
+	isBlockedOnStop = true
 	ctx.y.Until(true, isJumped)
+	isBlockedOnStop = false
 	return nil
 }
 
