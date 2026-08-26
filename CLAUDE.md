@@ -19,14 +19,12 @@ per-character licensing/crediting requirements that come with it. `docs/VIDEO.md
 supported codecs, the `se=` companion-audio workaround for govid's lack of any audio decoding, and
 why AV1 is rejected outright).
 
-**Temporary state**: kag3 currently depends on nanoda's unmerged 0.16.x support
-([PR #8](https://github.com/aethiopicuschan/nanoda/pull/8)) via a local, gitignored `go.work` that
-points at a sibling `../nanoda` checkout — `go.mod` itself has no `require` for it (workspace mode
-resolves the import without one). This means `renderer/ebitengine` and `example/game`'s TTS wiring
-only build here, on this machine, with that sibling checkout present; anyone else cloning kag3 is
-missing the same `go.work` and the build will fail to resolve `github.com/aethiopicuschan/nanoda/v2`
-entirely. Once that PR merges and is tagged, replace this with a normal
-`go get github.com/aethiopicuschan/nanoda/v2@<tag>` and delete `go.work`/`go.work.sum`.
+**nanoda**: kag3 depends on `github.com/aethiopicuschan/nanoda/v2` as a plain direct `require` in
+`go.mod` (resolving to `v2.0.0`, nanoda's 0.16.x VOICEVOX CORE support). This used to be a temporary,
+gitignored `go.work` pointing at a sibling `../nanoda` checkout until that 0.16 support PR
+([PR #8](https://github.com/aethiopicuschan/nanoda/pull/8)) merged; the `go.work`/`go.work.sum` are
+now deleted, so the build needs nothing beyond normal module resolution. Anyone cloning kag3 gets the
+full TTS wiring (`renderer/ebitengine`, `example/game`) building out of the box.
 
 ## Commands
 
@@ -178,8 +176,8 @@ plainly what has and hasn't been confirmed working:
   `VOICEVOX_LINK_ONNXRUNTIME`, every other platform (including Android) ships only
   `VOICEVOX_LOAD_ONNXRUNTIME` (`voicevox_get_onnxruntime_lib_versioned_filename` +
   `voicevox_onnxruntime_load_once` — manually dlopen a separate library by resolved filename). `nanoda`'s
-  `internal/core/core_0_16_0` package (the local fork at `../nanoda`, see `go.work`/go.mod's `replace`)
-  only ever implemented the LOAD-mode half, so the very first native call
+  `internal/core/core_0_16_0` package (of the local nanoda fork — these fixes are now upstream, merged
+  into the `v2.0.0` kag3 consumes directly) only ever implemented the LOAD-mode half, so the very first native call
   (`core_0_16_0.New`'s `purego.RegisterLibFunc` for `voicevox_get_onnxruntime_lib_versioned_filename`)
   panicked with `dlsym: symbol not found` on iOS — that symbol was never compiled into the iOS binary at
   all. Fixed by splitting the onnxruntime half of `core_0_16_0` into two build-tag-gated files
@@ -407,17 +405,13 @@ see "Repository layout gotcha" above) has no effect on `e2e/` until rebuilt:
 
 ```sh
 go build -o e2e/testdata/kag3example.exe ./example
-cd e2e && GOWORK=off go test ./... -v
+cd e2e && go test ./... -v
 ```
 
-`GOWORK=off` on the test step is required, not optional: `e2e/` is its own module and is **not**
-listed in the repo-root `go.work` (see "Temporary state" above), so with workspace mode active `go`
-refuses the package pattern outright —
-`pattern ./...: directory prefix . does not contain modules listed in go.work or their selected
-dependencies`. Note it applies to the `go test` only. The `go build` above must run *with* the
-workspace (i.e. don't set `GOWORK=off` for it), since `example/` reaches nanoda through exactly that
-`go.work`; setting it there instead fails with `no required module provides package
-github.com/aethiopicuschan/nanoda/v2` plus a pile of missing go.sum entries.
+No `GOWORK=off` needed: that requirement only existed while the repo root had a `go.work` listing
+modules `e2e/` wasn't part of (workspace mode would then refuse the `./...` pattern). The workspace is
+gone now (see "nanoda" above), so a plain `go test` inside `e2e/` runs on its own module. Both steps
+run in plain (non-workspace) module mode now.
 
 If a given run reports WinAppDriver unreachable, or the environment genuinely lacks a real desktop,
 fall back to handing off to the user or saying explicitly that the change needs manual confirmation.

@@ -217,8 +217,8 @@ Android/iOS両方の値を持っています。3キーとも空の場合(そのG
     他の全プラットフォーム(Android含む)が使う`VOICEVOX_LOAD_ONNXRUNTIME`
     (`voicevox_get_onnxruntime_lib_versioned_filename`+`voicevox_onnxruntime_load_once`で
     手動dlopen)は存在しません。これは同梱の`voicevox_core.h`自身がプラットフォームごとの仕様として
-    明記している仕様差です。nanoda(`../nanoda`、`go.work`/`go.mod`の`replace`で参照するローカル
-    フォーク)の`internal/core/core_0_16_0`はLOADモードしか実装していなかったため、
+    明記している仕様差です。nanodaフォーク(当時はローカル`../nanoda`を`go.work`で参照、現在は
+    `go.mod`の直接`require`で`v2.0.0`を参照)の`internal/core/core_0_16_0`はLOADモードしか実装していなかったため、
     `voicevox_get_onnxruntime_lib_versioned_filename`のシンボル解決で
     `dlsym: symbol not found`パニックが発生していました。`core_0_16_0`をビルドタグで分岐する
     2ファイル(`onnxruntime_other.go` `//go:build !ios` / `onnxruntime_ios.go` `//go:build ios`)に

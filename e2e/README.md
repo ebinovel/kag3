@@ -50,25 +50,14 @@ go build -o e2e/testdata/kag3example.exe ./example
 
 # 2. E2E テスト実行
 cd e2e
-$env:GOWORK = "off"
 go test ./... -v
 ```
 
-### `GOWORK=off` が必要な理由
+### `GOWORK=off` は不要になった
 
-`e2e/` は独立モジュールで、リポジトリルートの `go.work` に**含まれていない**。
-そのためワークスペースモードのままだと `go` がパッケージパターンごと拒否する:
-
-```
-pattern ./...: directory prefix . does not contain modules listed in go.work
-or their selected dependencies
-```
-
-**手順2の `go test` にだけ**必要な点に注意。手順1の `go build` は逆に
-ワークスペースが有効でなければならない(`example/` は `go.work` 経由でしか
-nanoda を解決できないため)。ここで `GOWORK=off` を設定してしまうと
-`no required module provides package github.com/aethiopicuschan/nanoda/v2`
-と大量の go.sum エントリ不足で失敗する。
+`e2e/` は独立モジュールですが、リポジトリルートにあった `go.work` は nanoda の 0.16 対応が
+main に入り直接 `require` するようになったため削除されました(CLAUDE.md の「nanoda」節を参照)。
+`go.work` が無い今、手順1・2 とも素の(非ワークスペース)モジュールモードでそのまま動きます。
 
 `TestMain` が WinAppDriver の起動状態を自動確認し、起動していなければ
 `WinAppDriver.exe` を自動起動する(自動起動した場合のみ、テスト終了後に
