@@ -94,14 +94,12 @@ func handleCharaHide(ctx *tagCtx) error {
 
 // handleCharaFace registers one face variant against an already-[chara_new]'d
 // character. Resolved through mustChara like every other [chara_*] handler
-// in this file: this one alone used to index charas directly and nil-deref
-// on any name that isn't registered — a plain typo in name=, or a
-// [chara_face] reached before its own [chara_new] ran, both of which took
-// the whole game down instead of reporting which character was missing.
-// The Faces nil-guard covers a *kag3.Character built without one (only
+// in this file, so an unregistered name — a plain typo in name=, or a
+// [chara_face] reached before its own [chara_new] ran — reports which
+// character is missing instead of nil-dereferencing charas. The Faces
+// nil-guard covers a *kag3.Character built without one (only
 // [chara_new]/[chara_new_psd]/reconcileViewCharas populate it today, but a
-// nil map assignment would be the same class of crash this fix exists to
-// remove).
+// nil map assignment is the same class of crash).
 func handleCharaFace(ctx *tagCtx) error {
 	object := ctx.tag
 	c, err := mustChara(object.Pm["name"])
@@ -134,8 +132,7 @@ func handleCharaMod(ctx *tagCtx) error {
 // class of gap charaShow's own "face" handling already guards against
 // (renderer.go's [chara_show face=...] case). Both failure cases below log
 // and leave whatever's currently showing untouched rather than opening an
-// empty path and crashing the whole coroutine (see initScript's loop: any
-// error from a tag handler panics).
+// empty path and failing the tag outright.
 func applyCharaFace(r *Renderer, name, face string) error {
 	chara, err := mustChara(name)
 	if err != nil {

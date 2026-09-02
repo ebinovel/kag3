@@ -11,7 +11,7 @@ import (
 
 // Reserved slot numbers, mirroring renderer/ebitengine/tags_save.go's
 // manualSaveSlot/quickSaveSlot/autoSaveSlot constants. ManualSaveSlot is
-// what the quick menu's slot picker writes to via its first row (see
+// what the slot picker writes to via its first row (see
 // nav.go's ClickSlotPickerRow1) — the current example has no
 // role="save"/"quicksave" [button] to target QuickSaveSlot/AutoSaveSlot
 // directly, they're listed here only to mirror the renderer-side

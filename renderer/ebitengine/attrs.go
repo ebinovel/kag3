@@ -54,17 +54,10 @@ func getString(pm map[string]string, key string) (string, bool) {
 }
 
 // parseColor accepts either a handful of named colors or a "0xRRGGBB" hex
-// triplet (the two forms every bundled .ks color=/edge=/shadow=/
-// border_color= attribute actually uses). The hex branch used to slice out
-// only the first hex digit of each byte pair (e.g. "0x454D51" -> "4","4","5")
-// and feed it to strconv.Atoi as a *decimal* number — "black" separately
-// returned white (255,255,255) instead of black, and "white"/"pink" weren't
-// recognized as named colors at all, falling into the same broken hex path
-// and erroring (which panics the whole game, since any tag handler error
-// propagates up through initScript's coroutine loop) or reading garbage
-// runes past the string's end. Every one of these is actually used by the
-// bundled example scripts (color="0x454D51"/"0xFAFAFA" for the custom
-// message window, color="pink"/"white" elsewhere), so all were live bugs.
+// triplet — the two forms every bundled .ks color=/edge=/shadow=/
+// border_color= attribute actually uses (color="0x454D51"/"0xFAFAFA" for
+// the custom message window, color="pink"/"white" elsewhere), so both
+// branches are live.
 func parseColor(value string) (r, g, b int, err error) {
 	switch value {
 	case "black":

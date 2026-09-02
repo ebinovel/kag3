@@ -30,12 +30,11 @@ func captureStdout(t *testing.T, fn func()) string {
 	return string(out)
 }
 
-// TestDebugOutputSilentByDefault is the regression test for #20: several tag
-// handlers used to call fmt.Printf unconditionally on every invocation
-// (hitButtons alone dumped the entire r.labels map on every click), rather
-// than being gated behind traceTags (KAG3_TRACE_TAGS) like every other
-// per-item trace in this package (see macro.go). With traceTags=false (the
-// default), none of these should write anything to stdout.
+// TestDebugOutputSilentByDefault pins every tag handler's debug fmt.Printf
+// to the traceTags (KAG3_TRACE_TAGS) gate every other per-item trace in this
+// package uses (see macro.go) — ungated, hitButtons alone dumps the entire
+// r.labels map on every click. With traceTags=false (the default), none of
+// these should write anything to stdout.
 func TestDebugOutputSilentByDefault(t *testing.T) {
 	origTrace := traceTags
 	traceTags = false
@@ -68,10 +67,10 @@ func TestDebugOutputSilentByDefault(t *testing.T) {
 	}
 }
 
-// TestDebugOutputAppearsWhenTraceTagsEnabled confirms the guard added for
-// #20 is a gate, not a removal — with traceTags=true the same calls above
-// still produce their trace output, matching KAG3_TRACE_TAGS's existing
-// contract for the rest of the package.
+// TestDebugOutputAppearsWhenTraceTagsEnabled confirms that guard is a gate,
+// not a removal — with traceTags=true the same calls above still produce
+// their trace output, matching KAG3_TRACE_TAGS's contract for the rest of
+// the package.
 func TestDebugOutputAppearsWhenTraceTagsEnabled(t *testing.T) {
 	origTrace := traceTags
 	traceTags = true

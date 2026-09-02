@@ -9,10 +9,11 @@ func init() {
 	register("clear_checkpoint", handleClearCheckpoint)
 }
 
-// Reserved slot numbers for the button roles that don't carry an explicit
-// slot attribute: real Tyrano's save/load roles open a slot-picker screen
-// (that's Phase 9's showsave/showload), so until that exists role="save"/
-// "load" target one fixed slot and role="quicksave"/"quickload" another.
+// Reserved slot numbers for the save paths that carry no explicit slot
+// attribute: role="quicksave"/"quickload" (role_dispatch.go) and
+// [autosave]/[autoload] below. role="save"/"load" instead open the slot
+// picker (showsave/showload, tags_uiscreens.go), matching real Tyrano;
+// manualSaveSlot is the first of the slots that picker offers.
 const (
 	manualSaveSlot = 1
 	quickSaveSlot  = 0

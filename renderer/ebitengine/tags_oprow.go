@@ -61,17 +61,16 @@ func handleOpBarConfig(ctx *tagCtx) error {
 	return nil
 }
 
-// opRowGroups returns the row's button groups left-to-right, exactly the
-// spec's grouping: [AUTO,SKIP,既読SKIP] | [LOG] | (optional) [Q.SAVE,Q.LOAD]
-// | [SAVE,LOAD,config,Title]. LOG is its own group (always shown) separate
+// opRowGroups returns the row's button groups left-to-right:
+// [AUTO,SKIP,既読SKIP] | [LOG] | (optional) [Q.SAVE,Q.LOAD] |
+// [SAVE,LOAD,config,Title]. LOG is its own group (always shown) separate
 // from the quicksave/quickload group so opRowShowQuickSave=false only
-// removes the latter, matching the source design's own sc-if placement.
-// "Title" is not part of the source design's own mockup — added when the
-// corner menu button/quick menu (tags_sysdesign.go/quickmenu.go, the
-// pre-redesign way to reach title) was removed, so returning to title
-// still has an entry point. Reuses buttonRoles["title"] (confirmGoToTitle,
-// same confirm-dialog flow the old quick menu's BACK TO TITLE row used) —
-// not a new implementation.
+// removes the latter. "Title" is here because this row is the only entry
+// point back to title once a project stops wiring up the corner menu
+// button/quick menu (tags_sysdesign.go/quickmenu.go). It reuses
+// buttonRoles["title"] (confirmGoToTitle), the same confirm-dialog flow
+// that quick menu's BACK TO TITLE row goes through, rather than a second
+// implementation.
 func opRowGroups() [][]opRowButton {
 	groups := [][]opRowButton{
 		{
@@ -196,7 +195,7 @@ func opRowOrigin(totalWidth float64) (startX, y float64) {
 // see/click at all: the redesign is opted into (Config.MessageBoxStyle —
 // renderer/ebitengine is a shared package, so this row must stay invisible
 // for any other project importing kag3 unless it explicitly asks for the
-// メッセージ欄 redesign), box visible, not suppressed, and not hidden
+// redesigned message window), box visible, not suppressed, and not hidden
 // behind the [glink] choice dim overlay (drawChoiceDimOverlay/draw_link.go
 // covers it visually; this guard keeps clicks from landing on it too while
 // hidden).

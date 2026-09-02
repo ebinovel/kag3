@@ -45,8 +45,8 @@ func captureSnapshot(buf *ebiten.Image) {
 	snapshotCaptureCount++
 }
 
-// snapshotCaptureCount counts captureSnapshot calls — test-only hook to
-// prove drawScene actually re-captured this frame now that lastSnapshot is
-// reused in place (see captureSnapshot's own comment) rather than replaced
-// with a fresh, identifiably-different object every time.
+// snapshotCaptureCount counts captureSnapshot calls — a test-only hook to
+// prove drawScene actually re-captured this frame, which object identity
+// can't show: lastSnapshot is reused in place (see captureSnapshot's own
+// comment), never replaced.
 var snapshotCaptureCount int

@@ -57,10 +57,7 @@ func drawPTexts(r *Renderer, screen *ebiten.Image) {
 // ptextFace builds the font face a [ptext] area draws with: its own size=
 // (config.ks's settings screen needs several distinct sizes — 34/26/22/20 —
 // on screen at once) falling back to r.nameFontFace's size when size= was
-// never given, so every pre-existing [ptext] (the character name-plate,
-// chiefly) keeps rendering exactly as before. size= was previously parsed
-// into kag3.PText.Size and then never read anywhere — this is the first
-// consumer of it.
+// never given, which is what the character name-plate relies on.
 func ptextFace(r *Renderer, pt *kag3.PText) *text.GoTextFace {
 	size := float64(pt.Size)
 	if size == 0 {

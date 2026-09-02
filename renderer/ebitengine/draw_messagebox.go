@@ -9,17 +9,16 @@ import (
 
 // ptextBgPaddingX/Y position a [ptext bg=]'s text inside its background
 // image (tags_text.go/renderer.go's drawPTexts) — matches the padding baked
-// into example/game/resources/images/ui/name_tab.png's generation (see the
-// scratch generator script referenced in the design plan; regenerate that
-// image if these change).
+// into example/game/resources/images/ui/name_tab.png, so that image has to
+// be regenerated if these change.
 const (
 	ptextBgPaddingX = 34
 	ptextBgPaddingY = 12
 )
 
 // bodyLineHeightRatio is the redesigned message window's line-height
-// (relative to font size) — applied in drawMessageHorizontal (draw_message.go)
-// where it replaces the previous ~1.0x-tight row advance.
+// (relative to font size) — applied in drawMessageHorizontal
+// (draw_message.go), which otherwise advances rows at a tight 1.0x.
 const bodyLineHeightRatio = 1.72
 
 // messageBoxFillColorNormal/messageBoxFillColorChoice are the message box's
@@ -30,19 +29,19 @@ const bodyLineHeightRatio = 1.72
 var (
 	messageBoxFillColorNormal = color.RGBA{0x10, 0x13, 0x18, 0xc7} // rgba(16,19,24,0.78)
 	messageBoxFillColorChoice = color.RGBA{0x10, 0x13, 0x18, 0x99} // rgba(16,19,24,0.6), dimmed while [glink] choices are up
-	// messageBoxFillColorLegacy is this package's original (pre-メッセージ欄)
-	// box fill — see messageBoxFillColor's doc comment for why this
-	// stays the default.
+	// messageBoxFillColorLegacy is the plain box fill every project that
+	// hasn't opted into MessageBoxStyle="redesigned" gets — see
+	// messageBoxFillColor's doc comment for why this stays the default.
 	messageBoxFillColorLegacy = color.RGBA{0, 0, 0, 128}
 )
 
 // messageBoxFillColor returns the box's default fill. renderer/ebitengine
 // is a shared package (this repo's example is one importer among several,
-// e.g. tsf-action), so the メッセージ欄 redesign's fill color only
-// applies when style == "redesigned" (Config.MessageBoxStyle,
+// e.g. tsf-action), so the redesign's fill color only applies when
+// style == "redesigned" (Config.MessageBoxStyle,
 // example/game/resources/config.toml only) — anything else, including an empty
-// string (a project whose config.toml predates this field entirely), keeps
-// the original flat rgba(0,0,0,0.5) this package always drew before. Within
+// string (a config.toml that never sets the field), keeps the plain flat
+// rgba(0,0,0,0.5) fill. Within
 // "redesigned", the box dims while a set of [glink] choices is currently
 // displayed (the same len(glinks)>0 && !isJump guard drawLinks/drawGLinks
 // use elsewhere).
@@ -69,13 +68,10 @@ const (
 // speedSteps mirrors first.ks's tf.speed_steps ([140, 110, 83, 50, 20]ms,
 // slowest to fastest) — the 5 discrete choices config.ks's own text-speed
 // slider offers (tf.speed_labels: 遅い/やや遅い/標準/やや速い/速い). Kept
-// in sync by hand: this indicator used to scale continuously against a
-// [5,100]ms range that matched neither this array's real extremes
-// (20-140ms) nor its step count (5, not the indicator's old 4 segments),
-// so e.g. selecting config.ks's "標準" (idx 2, 83ms) lit only 1 of 4
-// segments instead of landing in the middle. Update this array (and
-// speedSegCount, which derives from it) if first.ks's tf.speed_steps ever
-// changes.
+// in sync by hand: the indicator snaps to these exact values rather than
+// scaling continuously over an ms range, so a mismatch with first.ks lights
+// the wrong number of segments for a given selection. Update this array
+// (and speedSegCount, which derives from it) if tf.speed_steps ever changes.
 var speedSteps = [...]int{140, 110, 83, 50, 20}
 
 const speedSegCount = len(speedSteps)
@@ -110,9 +106,9 @@ func nearestSpeedStepIndex(ms int) int {
 // filledSpeedSegments reports how many of the bar's segments should be
 // lit: 1 + the index of whichever speedSteps entry textSpeedMs is
 // currently closest to. More filled = faster (lower textSpeedMs) — a
-// battery/power-level reading, not a "distance" one; this is a judgment
-// call (the mockup doesn't specify direction) and this is the one place
-// to flip it if it reads backwards on screen.
+// battery/power-level reading, not a "distance" one. Nothing else fixes
+// that direction, so this is the one place to flip it if it reads
+// backwards on screen.
 func filledSpeedSegments() int {
 	return nearestSpeedStepIndex(textSpeedMs) + 1
 }
@@ -123,7 +119,7 @@ func filledSpeedSegments() int {
 // what's actually drawn. ok is false when the indicator isn't shown at all
 // (matches drawTextSpeedIndicator's own early return).
 func textSpeedIndicatorOrigin(r *Renderer) (segX, y float64, ok bool) {
-	// Part of the メッセージ欄 redesign, gated the same way as the
+	// Part of the redesigned message window, gated the same way as the
 	// operation row (opRowActive, tags_oprow.go) — renderer/ebitengine is a
 	// shared package, so this indicator must stay off for any project that
 	// hasn't opted into MessageBoxStyle="redesigned".

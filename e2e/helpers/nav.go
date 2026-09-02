@@ -46,9 +46,8 @@ func ClickLogical(sess *driver.Session, lx, ly int) error {
 // title.ks's [button x= y=] top-left coordinates (already in the
 // 1920x1080 logical space — config.toml sets ScreenWidth=1920/
 // ScreenHeight=1080, and title.ks's x=/y= are written directly against
-// that) plus half each graphic's *actual* size. Unlike the old placeholder
-// art (a shared 360x74 for every button), the current title/button_*.png
-// set is trimmed per-label — each button a different width — confirmed via
+// that) plus half each graphic's *actual* size. The title/button_*.png set
+// is trimmed per-label, so each button has a different width — confirmed via
 // `file example/game/resources/images/title/button_*.png`:
 // button_start.png 144x74, button_load.png 110x74, button_demo.png 76x74,
 // button_config.png 176x74 (height is 74 for all four). title.ks lays all
@@ -90,19 +89,17 @@ func Advance(sess *driver.Session) error {
 }
 
 // Deprecated: the quick menu (opened via the hamburger button, bottom-right
-// corner) was how "たそがれ図書室" used to expose save/load/title-return —
-// scene1.ks/demo_save.ks no longer call @showmenubutton (the redesigned
-// message window's own operation row, OpRow* below, covers the same
-// ground), so this corner button never appears in the bundled example
-// anymore and ClickMenuButton is a no-op there. [showmenubutton]/
-// role="menu" themselves are still implemented engine-side (not deleted —
-// see tags_sysdesign.go/tags_save.go), so these helpers are kept for any
-// script that still calls them directly, but flows_test.go no longer uses
-// them. See renderer/ebitengine/tags_sysdesign.go's menuButtonRect (the
-// 96x96 button_menu.png icon — upscaled ×1.5 from 64x64 — at
-// (ScreenWidth-96-30, ScreenHeight-96-30) = (1794,954) with
-// ScreenWidth/Height=1920x1080) and tags_save.go's quickMenuButtons() (five
-// 780x105 rows — upscaled ×1.5 from 520x70 — at a fixed X=570,
+// corner) exposes save/load/title-return, but scene1.ks/demo_save.ks don't
+// call @showmenubutton — the redesigned message window's own operation row
+// (OpRow* below) covers the same ground — so this corner button never
+// appears in the bundled example and ClickMenuButton is a no-op there.
+// [showmenubutton]/role="menu" are still implemented engine-side (see
+// tags_sysdesign.go/tags_save.go), so these helpers stay for any script that
+// calls them directly; flows_test.go doesn't. See
+// renderer/ebitengine/tags_sysdesign.go's menuButtonRect (the 96x96
+// button_menu.png icon at (ScreenWidth-96-30, ScreenHeight-96-30) =
+// (1794,954) with ScreenWidth/Height=1920x1080) and tags_save.go's
+// quickMenuButtons() (five 780x105 rows at a fixed X=570,
 // Y=285+i*(105+38) for i=0..4: SAVE/LOAD/HIDE MESSAGE/SKIP/BACK TO TITLE —
 // these five don't depend on ScreenWidth/Height at all).
 const (
@@ -141,8 +138,8 @@ func ClickQuickMenuTitle(sess *driver.Session) error {
 }
 
 // The redesigned message window's persistent operation row (tags_oprow.go)
-// replaces the quick menu above as the actual entry point scene1.ks now
-// exposes for SAVE/LOAD/Title. Centers computed via opRowLayout/
+// is the entry point scene1.ks actually exposes for SAVE/LOAD/Title, in
+// place of the quick menu above. Centers computed via opRowLayout/
 // opRowOrigin against scene1.ks's own [position] (left=96 top=736
 // width=1728 height=300 marginright=56) and the built-in font — re-derive
 // (e.g. temporarily add a t.Logf of opRowLayout's output to a Go test in
@@ -151,24 +148,21 @@ func ClickQuickMenuTitle(sess *driver.Session) error {
 // row is right-aligned and its item widths depend on font metrics, so
 // there's no simple formula to hand-derive these from.
 //
-// Last re-derived by exactly that method. The row's items and their
-// horizontal spans, at startX=852.08 / total width=915.92, y spanning
-// 698..720 (so 709 is every item's vertical center):
+// The row's items and their horizontal spans, at startX=852.08 / total
+// width=915.92, y spanning 698..720 (so 709 is every item's vertical
+// center):
 //
 //	AUTO     852..909      SKIP     931..979     既読SKIP 1001..1093
 //	LOG     1146..1188     Q.SAVE  1241..1316    Q.LOAD  1338..1416
 //	SAVE    1469..1520     LOAD    1542..1598    CONFIG  1620..1700
 //	Title   1722..1768
 //
-// SAVE and LOAD were previously listed here as 1530 and 1606 — both of
-// which land in the *gaps between* labels (1520..1542 and 1598..1620), so
-// every click on them missed the row entirely. That went unnoticed because
-// a miss isn't silent-but-harmless: Update() runs doNext() on any click at
-// all, so a missed click still advances the dialogue and still changes the
-// screen, which is the only thing clickGlinkRetry (flows_test.go) checks.
-// The failure therefore surfaced several steps later as "the save file
-// doesn't exist", not as "that click missed". Title (1745) was correct,
-// which is why only the save/load flow failed.
+// A coordinate landing in a *gap between* labels (1520..1542, 1598..1620)
+// misses the row entirely, and that miss is not self-announcing: Update()
+// runs doNext() on any click at all, so a missed click still advances the
+// dialogue and still changes the screen — the only thing clickGlinkRetry
+// (flows_test.go) checks. The failure then surfaces several steps later as
+// "the save file doesn't exist", not as "that click missed".
 const (
 	OpRowSaveX, OpRowSaveY   = 1495, 709
 	OpRowLoadX, OpRowLoadY   = 1570, 709
@@ -193,9 +187,8 @@ func ClickOpRowTitle(sess *driver.Session) error {
 
 // Slot picker layout — see tags_uiscreens.go's slotPickerRowX/Y0/W/H/Gap
 // (X=195 Y0=255 W=1500 H=180 gap=15, fixed regardless of ScreenWidth/
-// Height — ×1.5 from the original 1280x720 layout, with saveslot.png
-// upscaled to match so it isn't stretched) and backButtonRect (150x150
-// menu_button_close.png — upscaled ×1.5 from 100x100 — at
+// Height, and matching saveslot.png's native size so it isn't stretched)
+// and backButtonRect (150x150 menu_button_close.png at
 // (ScreenWidth-150-30, 52) — with ScreenWidth=1920, that's (1740, 52)).
 // Row i (0-indexed) is slot i+1 (slotPickerRows) — row 1 is slot
 // ManualSaveSlot (save.go).
@@ -219,8 +212,8 @@ func ClickSlotPickerBack(sess *driver.Session) error {
 
 // Confirm dialog OK/NG button centers, computed from
 // tags_save.go's dialogButtonRects(screenW, screenH) at the fixed logical
-// 1920x1080 (w/h/gaps ×1.5 from the original 1280x720 layout): w,h=240,75;
-// y=screenH/2+60=600; OK.X=screenW/2-w-30=690; NG.X=screenW/2+30=990. Used
+// 1920x1080: w,h=240,75; y=screenH/2+60=600; OK.X=screenW/2-w-30=690;
+// NG.X=screenW/2+30=990. Used
 // by confirmGoToTitle's "タイトルに戻ります。よろしいですか？" dialog
 // (opened via ClickQuickMenuTitle above) and any other activeDialog with
 // OnConfirm set.

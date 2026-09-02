@@ -51,7 +51,7 @@ func TestExtractMacrosAndReindexLabels(t *testing.T) {
 		t.Fatalf("label 'start' missing after reindex; labels=%+v", labels)
 	}
 	if got.Index != 0 {
-		t.Errorf("start.Index = %d, want 0 (ParseScenario originally computed 3, before macro removal)", got.Index)
+		t.Errorf("start.Index = %d, want 0 (ParseScenario computes 3; extractMacros shifts it)", got.Index)
 	}
 }
 

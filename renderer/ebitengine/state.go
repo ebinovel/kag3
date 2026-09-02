@@ -24,8 +24,8 @@ var (
 	// Update() runs — which can be a later frame than where it was set, e.g.
 	// a title confirm dialog resolves and returns early the same frame
 	// (anyModalActive), so isJump isn't processed until the next Update().
-	// Without this, clearNonFixButtons() had to run unconditionally on every
-	// isJump, which wiped scene1.ks's role_button set (registered without
+	// Without this, clearNonFixButtons() would have to run unconditionally on
+	// every isJump, wiping scene1.ks's role_button set (registered without
 	// fix="true", matching the real bundled sample) on every in-scene
 	// [link]/[glink] click even though nothing about the screen changed.
 	screenChanged bool

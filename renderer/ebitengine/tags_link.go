@@ -161,12 +161,11 @@ func handleButton(ctx *tagCtx) error {
 		button.PreExp = v
 	}
 	// Falling back to the graphic's own size only works when there *is* a
-	// graphic. A [button] carrying neither graphic= nor width=/height= — an
-	// invisible hit zone, the same thing [clickable] registers — used to
-	// nil-deref here and take the whole game down. Such a button stays 0x0
-	// and is simply never hit (isColision against an empty rect can't
-	// match), which is the honest outcome: nothing to draw, nothing to
-	// click, but nothing crashed either.
+	// graphic — a [button] carrying neither graphic= nor width=/height= (an
+	// invisible hit zone, the same thing [clickable] registers) would
+	// otherwise nil-deref here. Such a button stays 0x0 and is simply never
+	// hit (isColision against an empty rect can't match), which is the
+	// honest outcome: nothing to draw, nothing to click.
 	if button.Width == 0 && button.Height == 0 && button.Graphic != nil {
 		button.Width, button.Height = button.Graphic.Bounds().Dx(), button.Graphic.Bounds().Dy()
 	}
@@ -312,13 +311,12 @@ func handleLink(ctx *tagCtx) error {
 			link.KeyForcus = v
 		}
 	}
-	// Bounded scan: this used to be a bare `for {}` that walked *ctx.i
-	// forward until it happened to find an [endlink], so a [link] with no
-	// matching [endlink] — one unclosed tag in one .ks file — ran straight
-	// off the end of r.scripts and killed the whole game with an
-	// index-out-of-range panic. Stopping at the end of the script instead
-	// keeps whatever text was collected and lets the scenario carry on,
-	// matching how every other scan-forward handler here tolerates a
+	// Bounded scan, not a bare `for {}` walking *ctx.i forward until it
+	// happens to find an [endlink]: a [link] with no matching [endlink] —
+	// one unclosed tag in one .ks file — would run straight off the end of
+	// r.scripts with an index-out-of-range panic. Stopping at the end of the
+	// script keeps whatever text was collected and lets the scenario carry
+	// on, matching how every other scan-forward handler here tolerates a
 	// missing terminator (see handleIgnore, tags_flow.go).
 	for *ctx.i < len(r.scripts) {
 		if v, ok := r.scripts[*ctx.i].(kag3.TagObject); ok && v.Name == "endlink" {

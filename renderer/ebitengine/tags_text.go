@@ -201,8 +201,8 @@ func handlePText(ctx *tagCtx) error {
 			// author wants a visible color — matches applyFontAttrs' own
 			// convention just above for [font]/[deffont]. Color is drawn via
 			// op.ColorScale.ScaleWithColor(pt.Color) (renderer.go's
-			// drawPTexts), which scales alpha too; 0 here made every
-			// explicitly-colored [ptext] fully transparent.
+			// drawPTexts), which scales alpha too, so 0 here would
+			// make every explicitly-colored [ptext] transparent.
 			r, g, b, _ := parseColor(value)
 			switch key {
 			case "color":

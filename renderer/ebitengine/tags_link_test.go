@@ -31,10 +31,10 @@ func TestHandleLinkCollectsTextsUntilEndlink(t *testing.T) {
 	}
 }
 
-// TestHandleLinkWithoutEndlinkStopsAtScriptEnd is the regression test for a
-// [link] whose [endlink] is missing entirely: handleLink's scan used to be an
-// unbounded `for {}` that walked off the end of r.scripts and panicked with
-// an index-out-of-range, killing the whole game over one unclosed tag.
+// TestHandleLinkWithoutEndlinkStopsAtScriptEnd covers a [link] whose
+// [endlink] is missing entirely: an unbounded `for {}` scan walks off the
+// end of r.scripts and panics with an index-out-of-range, killing the whole
+// game over one unclosed tag.
 func TestHandleLinkWithoutEndlinkStopsAtScriptEnd(t *testing.T) {
 	defer func() { links = nil }()
 	links = nil
@@ -60,7 +60,7 @@ func TestHandleLinkWithoutEndlinkStopsAtScriptEnd(t *testing.T) {
 // TestHandleButtonWithoutGraphicOrSize covers a [button] carrying neither
 // graphic= nor width=/height= — an invisible hit zone, the same shape
 // [clickable] registers. handleButton's "no size given, use the graphic's
-// own" fallback used to dereference a nil Graphic and crash.
+// own" fallback must not dereference a nil Graphic.
 func TestHandleButtonWithoutGraphicOrSize(t *testing.T) {
 	defer func() { buttons = nil }()
 	buttons = nil

@@ -380,13 +380,12 @@ func TestHandleCharaModUpdatesStorage(t *testing.T) {
 	}
 }
 
-// TestHandleCharaFaceUnregisteredNameReportsError is the regression test for
-// a nil-pointer crash: [chara_face] used to index charas directly
-// (charas[name].Faces[...] = ...), so any name= that wasn't registered — a
-// typo, or a [chara_face] reached before its own [chara_new] — dereferenced
-// nil and took the whole game down with an opaque runtime error instead of
-// naming the missing character. Every other [chara_*] handler resolves
-// through mustChara; this one now does too.
+// TestHandleCharaFaceUnregisteredNameReportsError guards against a
+// nil-pointer crash: indexing charas directly (charas[name].Faces[...] = ...)
+// means any unregistered name= — a typo, or a [chara_face] reached before
+// its own [chara_new] — dereferences nil and fails with an opaque runtime
+// error instead of naming the missing character. [chara_face] must resolve
+// through mustChara like every other [chara_*] handler.
 func TestHandleCharaFaceUnregisteredNameReportsError(t *testing.T) {
 	delete(charas, "nosuch")
 	r := newTestRenderer()
@@ -406,7 +405,7 @@ func TestHandleCharaFaceUnregisteredNameReportsError(t *testing.T) {
 
 // TestHandleCharaFaceRegistersOntoNilFacesMap covers a *kag3.Character built
 // without a Faces map (nothing constructs one that way today, but assigning
-// into a nil map is the same class of crash the fix above removes).
+// into a nil map is the same class of crash as the test above guards).
 func TestHandleCharaFaceRegistersOntoNilFacesMap(t *testing.T) {
 	charas["akane"] = &kag3.Character{Name: "akane"} // Faces deliberately nil
 	defer delete(charas, "akane")

@@ -83,8 +83,9 @@ const scene1ParagraphCount = 22
 // repositioned again — see MessageWindowRegion's doc comment) is compared
 // across two playthroughs: advance partway into scene1.ks (past
 // [chara_show]/[chara_mod] calls, so there's some actual state for
-// goToTitle to fail to reset), return to title via the quick menu, start a
-// fresh playthrough, and check the very first line renders identically.
+// goToTitle to fail to reset), return to title via the operation row's
+// Title label, start a fresh playthrough, and check the very first line
+// renders identically.
 func TestTitleReturnDoesNotLeakPreviousPlaythroughStyle(t *testing.T) {
 	g := helpers.LaunchGame(t)
 

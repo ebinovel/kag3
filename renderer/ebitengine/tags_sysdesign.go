@@ -31,11 +31,10 @@ func init() {
 // tags_oprow.go) has its own persistent operation row covering SAVE/LOAD/
 // SKIP/Title, making this corner button + its quick-menu popup
 // (drawQuickMenu/handleQuickMenuClick below) redundant — example/'s own
-// scenarios no longer call @showmenubutton (see scene1.ks/demo_save.ks).
-// [showmenubutton]/[hidemenubutton] and the quick menu they open are left
-// implemented (not deleted) for any script that still calls them directly
-// — they still work exactly as before, just no longer wired into the
-// bundled example. Rendered as a fixed corner button using the bundled
+// scenarios don't call @showmenubutton (see scene1.ks/demo_save.ks).
+// [showmenubutton]/[hidemenubutton] and the quick menu they open stay
+// implemented for any script that calls them directly, just not wired into
+// the bundled example. Rendered as a fixed corner button using the bundled
 // resources/system/images/button_menu.png, wired to the same quick-menu
 // overlay role="menu" opens — one discoverable entry point to the same
 // feature, not a second menu system.
@@ -62,16 +61,13 @@ func handleHideMenuButton(ctx *tagCtx) error {
 	return nil
 }
 
-// menuButtonMargin is ×1.5 of the original 1280x720-tuned value (button
-// position itself is already screenW/screenH-relative — see
-// menuButtonRect — only this corner-inset margin needed scaling).
+// menuButtonMargin is the button's corner inset, scaled by menuButtonScale
+// like the button itself — its position is otherwise screenW/screenH-
+// relative, see menuButtonRect.
 const menuButtonMargin = 30
 
-// menuButtonScale is systemChromeScale (system_chrome.go) under its
-// original pre-generalization name — kept as a thin alias so
-// menuButtonRect/drawMenuButton's own call sites (and this file's tests)
-// don't need churning every time another system-chrome screen picks up the
-// same scaling.
+// menuButtonScale is a thin alias for systemChromeScale (system_chrome.go),
+// the shared scaling every fixed system-chrome screen uses.
 func menuButtonScale(r *Renderer) float64 {
 	return systemChromeScale(r)
 }
@@ -208,13 +204,12 @@ func handleGlyphAuto(ctx *tagCtx) error { return parseGlyphConfig(ctx.tag.Pm, &g
 // so it sees this frame's isTextEnd/textEndX/textEndY. The mark only ever
 // shows once the *current* line has actually finished revealing
 // (isTextEnd) — skip/auto just pick which color/mark to use while that's
-// true, they don't bypass the isTextEnd check. This used to let skip/auto
-// show continuously regardless of isTextEnd, anchored at textEndX/textEndY
-// (only updated when a line finishes revealing — draw_message.go) — the
-// instant a new line started revealing under isAuto, the mark kept
-// bouncing at the *previous* line's end position for the whole reveal,
-// reading as "the wait indicator never went away" even though the story
-// had already moved on to the next line.
+// true, they don't bypass the isTextEnd check. Letting skip/auto show
+// continuously regardless of isTextEnd leaves the mark bouncing at the
+// *previous* line's end position (textEndX/textEndY only update when a line
+// finishes revealing — draw_message.go) for the whole of the next line's
+// reveal, reading as "the wait indicator never went away" even though the
+// story has already moved on.
 func drawGlyph(buf *ebiten.Image) {
 	if textPosition == nil || !textPosition.Visible || !isTextEnd {
 		return

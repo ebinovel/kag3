@@ -112,14 +112,12 @@ func TestParserIScriptBodyAtSign(t *testing.T) {
 	}
 }
 
-// TestParserSpacedEquals guards against a regression in joinSpacedEquals
-// (parser.go): an earlier version silently dropped any "key = value"
-// attribute (whitespace touching either side of "=") from TagObject.Pm
-// entirely, via an off-by-one in a since-replaced index-arithmetic merge
-// loop. This wasn't a theoretical edge case — the bundled
+// TestParserSpacedEquals guards joinSpacedEquals (parser.go): a "key =
+// value" attribute (whitespace touching either side of "=") must reach
+// TagObject.Pm, not be silently dropped by the merge loop's index
+// arithmetic. Not a theoretical edge case — the bundled
 // example/game/resources/senarios/title.ks has "@wait time = 200" and
-// tyrano.ks has "[freeimage layer = %layer]", both of which silently did
-// nothing before this fix.
+// tyrano.ks has "[freeimage layer = %layer]".
 func TestParserSpacedEquals(t *testing.T) {
 	cases := []struct {
 		name string
@@ -154,11 +152,10 @@ func TestParserSpacedEquals(t *testing.T) {
 	}
 }
 
-// TestParserQuotedValuesPreserved guards the two lossy substitutions
-// makeTag used to perform on quoted attribute values: a space inside quotes
-// was deleted outright, and an "=" inside quotes was swapped for "#" and
-// then mapped back with a blanket ReplaceAll("#", "="), which corrupted any
-// value that legitimately contained a "#".
+// TestParserQuotedValuesPreserved guards makeTag's stand-in substitution for
+// quoted attribute values: a space inside quotes must survive verbatim, and
+// an "=" inside quotes must come back as "=" without disturbing a value that
+// legitimately contains a "#" (see quotedSpace/quotedEquals, parser.go).
 func TestParserQuotedValuesPreserved(t *testing.T) {
 	cases := []struct {
 		name string

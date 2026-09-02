@@ -36,8 +36,7 @@ func init() {
 
 var (
 	// currentBGM is the single background-music track. Real Tyrano supports
-	// multiple bgm slots (Config.DefaultBgmSlotNum); this engine only ever
-	// had one, so Phase 2 keeps that scope.
+	// multiple bgm slots (Config.DefaultBgmSlotNum); this engine has one.
 	currentBGM *kag3.BGM
 	// ses holds concurrently-playing sound effects keyed by "buf".
 	ses = map[string]*kag3.BGM{}

@@ -122,15 +122,14 @@ func TestBGSaveLoadRoundTripsResolvedStorage(t *testing.T) {
 	}
 }
 
-// TestBGStorageFallsBackWhenNoBgSubfolderMatch is the regression test for a
-// real crash: config.ks's [bg storage="&tf.img_path+'bg_config.png'"]
-// (tf.img_path="config/") names images/config/bg_config.png, a path
-// entirely outside images/bg/ — the unconditional path.Join("bg", storage)
-// this used to do rewrote it into images/bg/config/bg_config.png, which
-// never exists, and NewImageFromFileSystem's error there was fatal (the
-// whole coroutine/renderer panics, not just a missing background). The
-// bg/-prefixed path must only be used when it actually resolves to a real
-// file; otherwise storage= is used exactly as the author wrote it.
+// TestBGStorageFallsBackWhenNoBgSubfolderMatch guards the bg/ prefixing
+// against a real crash: config.ks's [bg storage="&tf.img_path+'bg_config.png'"]
+// (tf.img_path="config/") names images/config/bg_config.png, a path entirely
+// outside images/bg/. An unconditional path.Join("bg", storage) rewrites it
+// into images/bg/config/bg_config.png, which never exists, and
+// NewImageFromFileSystem's error there fails the whole tag. The bg/-prefixed
+// path must only be used when it actually resolves to a real file;
+// otherwise storage= is used exactly as the author wrote it.
 func TestBGStorageFallsBackWhenNoBgSubfolderMatch(t *testing.T) {
 	resetBG(t)
 	r := newTestRendererWithImageFS(t, map[string][]byte{

@@ -62,9 +62,9 @@ func handleWaitCancel(ctx *tagCtx) error {
 
 // handleWT waits for the current background transition to finish. bg.IsEnd
 // (the flag [bg wait=true] itself blocks on) is never actually set by the
-// transition-drawing code yet — that's Phase 4 — so this approximates
-// "finished" the same way the renderer times the transition visually:
-// elapsed ticks against bg.Time from bgTick.
+// transition-drawing code, so this approximates "finished" the same way the
+// renderer times the transition visually: elapsed ticks against bg.Time
+// from bgTick.
 func handleWT(ctx *tagCtx) error {
 	ctx.y.Until(true, func() bool {
 		return t-bgTick >= bg.Time*ebiten.TPS()/1000

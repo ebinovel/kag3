@@ -7,14 +7,12 @@ import (
 	"github.com/ebinovel/kag3"
 )
 
-// TestFilledSpeedSegmentsMatchesNearestSpeedStep is the regression test for
-// the indicator and config.ks's own text-speed slider disagreeing: this
-// used to scale continuously against a [5,100]ms range that matched
-// neither speedSteps' real extremes (20-140ms) nor its step count (5, not
-// this indicator's old 4 segments) — e.g. selecting config.ks's "標準"
-// (83ms) lit only 1 of 4 segments instead of landing in the middle.
-// filledSpeedSegments must now snap to whichever of the 5 real
-// speedSteps entries textSpeedMs is closest to.
+// TestFilledSpeedSegmentsMatchesNearestSpeedStep guards the indicator
+// against disagreeing with config.ks's own text-speed slider: scaling
+// continuously over an ms range instead matches neither speedSteps' real
+// extremes (20-140ms) nor its step count, so e.g. selecting "標準" (83ms)
+// lights the wrong number of segments. filledSpeedSegments must snap to
+// whichever of the 5 real speedSteps entries textSpeedMs is closest to.
 func TestFilledSpeedSegmentsMatchesNearestSpeedStep(t *testing.T) {
 	defer func() { textSpeedMs = 83 }()
 
@@ -227,11 +225,11 @@ func TestMessageBoxFillColorDimsWhileGLinksActive(t *testing.T) {
 	}
 }
 
-// TestMessageBoxFillColorLegacyIgnoresStyle is the scoping fix for
-// renderer/ebitengine being a shared package: any style other than
-// "redesigned" — including "" (a project whose config.toml predates
-// MessageBoxStyle entirely, e.g. tsf-action) — must draw this package's
-// original flat box, glink dimming included, regardless of glinks/isJump.
+// TestMessageBoxFillColorLegacyIgnoresStyle pins the scoping
+// renderer/ebitengine needs as a shared package: any style other than
+// "redesigned" — including "" (a config.toml that never sets
+// MessageBoxStyle, e.g. tsf-action's) — must draw the plain flat box, glink
+// dimming included, regardless of glinks/isJump.
 func TestMessageBoxFillColorLegacyIgnoresStyle(t *testing.T) {
 	defer func() { glinks, isJump = nil, false }()
 

@@ -197,10 +197,10 @@ func TestJumpStorageClearsNonFixButtons(t *testing.T) {
 // rendered along the way as one string.
 //
 // One string rather than runFlow's per-segment set: execItem merges
-// consecutive untagged text lines into a single segment ("タグを挟まない
-// 連続するテキスト行を1つに連結"), so "first line\nsecond line" arrives as
-// the single segment "first linesecond line" and an exact-match set can't
-// answer "did this line run". Callers assert with strings.Contains instead.
+// consecutive untagged text lines into a single segment, so "first
+// line\nsecond line" arrives as the single segment "first linesecond line"
+// and an exact-match set can't answer "did this line run". Callers assert
+// with strings.Contains instead.
 func runJumpScript(t *testing.T, senarios map[string]string) string {
 	t.Helper()
 	m := newTestManager(t, senarios)
@@ -229,12 +229,11 @@ func runJumpScript(t *testing.T, senarios map[string]string) string {
 	return sb.String()
 }
 
-// TestJumpStorageWithTargetSeeksInNewFile is the regression test for
-// [jump storage="x.ks" target="*label"]: target= used to be honored only in
-// the branch taken when storage= was *absent*, so this combination loaded
-// the new file and then resumed from whatever index the [jump] tag itself
-// had occupied in the old one. replay.ks's own
-// `@jump storage=&... target=&...` is exactly this shape.
+// TestJumpStorageWithTargetSeeksInNewFile covers
+// [jump storage="x.ks" target="*label"]: honoring target= only when
+// storage= is absent makes this combination load the new file and then
+// resume from whatever index the [jump] tag itself occupied in the old one.
+// replay.ks's own `@jump storage=&... target=&...` is exactly this shape.
 func TestJumpStorageWithTargetSeeksInNewFile(t *testing.T) {
 	got := runJumpScript(t, map[string]string{
 		"main.ks": "[jump storage=\"sub.ks\" target=\"*here\"]",

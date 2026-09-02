@@ -76,9 +76,9 @@ func callFramesToSleepStack(frames []callFrame) []sleepFrame {
 	return out
 }
 
-// saveData is the plan's minimal in-memory-first save format: enough to
-// resume script execution and restore variables faithfully, not a pixel-
-// perfect visual snapshot. bg2 (the secondary background layer) and
+// saveData is a minimal in-memory-first save format: enough to resume
+// script execution and restore variables faithfully, not a pixel-perfect
+// visual snapshot. bg2 (the secondary background layer) and
 // characters' differential parts ([chara_layer]) are still out of scope —
 // bg/viewCharas' base appearance is reconstructed via CharaStorage/
 // Bg.Storage below (see reconcileViewCharas and applySaveData), everything
@@ -111,8 +111,8 @@ type saveData struct {
 	// A save resumed mid-script (jumpIndex straight to the saved position)
 	// skips whatever [chara_face] tags ran earlier in the file, so without
 	// this a [chara_mod ... face="happy"] reached after loading would find
-	// nothing but the "default" face reconcileViewCharas used to seed on its
-	// own — see the save/load gaps note above.
+	// nothing but the "default" face reconcileViewCharas seeds on its own —
+	// see the save/load gaps note above.
 	CharaFaces   map[string]map[string]string
 	Bg           bgSaveState
 	TextPosition textPositionSaveState
@@ -121,13 +121,12 @@ type saveData struct {
 	// save time. kag3.TextStyle has no *ebiten.Image fields, so unlike
 	// TextPosition it round-trips through JSON as-is — no separate
 	// "SaveState" struct needed. Without this, loading a save taken while
-	// [font color=...] was in effect showed the *current* session's color
-	// instead (e.g. black after a later [deffont] call), because nothing
-	// reset/restored textStyle on load — applySaveData resumes via
-	// jumpIndex straight into the saved position, skipping whatever [font]
-	// tag was in scope there. nil (nothing set, or an old save predating
-	// this field) is itself a valid, safe value — the renderer's built-in
-	// default look.
+	// [font color=...] was in effect shows the *current* session's color
+	// instead (e.g. black after a later [deffont] call): applySaveData
+	// resumes via jumpIndex straight into the saved position, skipping
+	// whatever [font] tag was in scope there. nil (nothing set, or a save
+	// file carrying no such field) is itself a valid, safe value — the
+	// renderer's built-in default look.
 	TextStyle        *kag3.TextStyle
 	DefaultTextStyle *kag3.TextStyle
 	// MenuButtonVisible is menuButtonVisible (tags_sysdesign.go's
@@ -170,13 +169,12 @@ type saveData struct {
 	// jumpIndex straight at the saved position — almost always a [p]/[s]/
 	// [l] tag itself, not the TextObject(s) before it that actually put
 	// text on screen — so without this, loading (or reloading a
-	// [checkpoint]) always resumed with a *blank* message window: the tag
-	// that was blocking re-runs and blocks again, but the dialogue line(s)
-	// it was blocking *for* are never replayed. A real reported bug: the
-	// player's own save landed on an [s] right after a [link] choice, so
-	// the message text vanished *and* the choice itself did (see Links/
-	// GLinks below) — with nothing left on screen to click, loading looked
-	// like it silently did nothing at all.
+	// [checkpoint]) resumes with a *blank* message window: the blocking tag
+	// re-runs and blocks again, but the dialogue line(s) it was blocking
+	// *for* are never replayed. A save landing on an [s] right after a
+	// [link] choice loses the message text *and* the choice itself (see
+	// Links/GLinks below), leaving nothing on screen to click — the load
+	// looks like it silently did nothing at all.
 	Texts map[int][]Text
 	// Links/GLinks are the links/glinks package-level slices (tags_link.go)
 	// at save time — the actual [link]/[glink] choices visible in the
@@ -232,7 +230,7 @@ func (r *Renderer) buildSaveData() *saveData {
 // copyCharaShows deep-copies viewCharas: stepAnimations (tags_animation.go)
 // mutates a *kag3.CharaShow in place via SetLeft/SetTop/SetOpacity/
 // SetScaleX/SetScaleY/SetRotation while [anim]/[kanim] is running, so a
-// shallow append (sharing the original *CharaShow pointers) let an [anim]
+// shallow append (sharing the original *CharaShow pointers) lets an [anim]
 // running after [checkpoint] silently corrupt the snapshot [rollback] later
 // restores from. CharaShow's fields are all scalars (see its own
 // declaration in kag3.go), so a top-level struct copy is a full deep copy,

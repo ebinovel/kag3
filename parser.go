@@ -160,15 +160,13 @@ func (ks *KS) ParseScenario(scenario string) (result []interface{}, mapLabel map
 // occurrences that came from inside quotes have to be hidden from those
 // two splits and put back afterwards.
 //
-// Control characters, deliberately: this used to substitute the *space*
-// with nothing at all (destroying it outright — `[ptext text="Hello World"]`
-// arrived as "HelloWorld") and the "=" with "#", which was then mapped back
-// with a blanket ReplaceAll("#", "="). That second half quietly corrupted
-// any value legitimately containing a "#": `color="#FF0000"` parsed as
-// "=FF0000". A stand-in only works if it cannot occur in real source text,
-// which "#" plainly can and NUL/SOH cannot — and makeTag strips them from
-// its input up front (see below) so even a pathological .ks file can't
-// smuggle one in to forge an attribute boundary.
+// Control characters, deliberately: a stand-in only works if it cannot
+// occur in real source text. A printable one such as "#" can — mapping it
+// back with a blanket ReplaceAll would corrupt any value legitimately
+// containing it (`color="#FF0000"` parsing as "=FF0000") — while NUL/SOH
+// cannot, and makeTag strips them from its input up front (see below) so
+// even a pathological .ks file can't smuggle one in to forge an attribute
+// boundary.
 const (
 	quotedSpace  = "\x00"
 	quotedEquals = "\x01"
@@ -326,18 +324,11 @@ func characterPText(line string, lineCount int) TextObject {
 // ending in trailing whitespace collapses to one via the split) are
 // dropped rather than treated as a key.
 //
-// This replaces an earlier version of this rejoining step that tried to
-// mutate strs in place while ranging over it — range captures the slice
-// header once at loop start, so reassigning strs mid-loop never affected
-// what the loop actually walked, and the surviving index arithmetic
-// (guarding merges with `len(strs) > i+2` etc.) was tuned to that broken
-// control flow rather than to the merge actually succeeding. In practice
-// it meant any single "key = value" attribute (the exact number of
-// tokens produced was the case this off-by-one landed on) was silently
-// dropped from Pm — confirmed to happen on real content, not just a
-// theoretical edge case: kag3's own example/game/resources/senarios/title.ks
-// has "@wait time = 200" and tyrano.ks has "[freeimage layer = %layer]",
-// both of which previously vanished without any error.
+// Spaced-out attributes are real content, not a theoretical edge case:
+// kag3's own example/game/resources/senarios/title.ks has
+// "@wait time = 200" and tyrano.ks has "[freeimage layer = %layer]".
+// Getting the index arithmetic wrong here drops such an attribute from Pm
+// silently, with no parse error anywhere.
 func joinSpacedEquals(strs []string) []string {
 	if len(strs) == 0 {
 		return strs

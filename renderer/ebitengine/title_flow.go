@@ -22,9 +22,9 @@ func (r *Renderer) goToTitle() {
 	// (r.position in this file) only ever *merges* the attributes a given
 	// tag call specifies, so a field a later [position] call never touches
 	// again (most notably frame=, but also color/margins/vertical/...) stays
-	// whatever the *previous* playthrough last set it to: reported as a
-	// custom end-of-story message-window frame (scene1.ks's
-	// [position frame="frame.png" ...] near the end) still showing behind
+	// whatever the *previous* playthrough last set it to — a custom
+	// end-of-story message-window frame (scene1.ks's
+	// [position frame="frame.png" ...] near the end) would still show behind
 	// scene1.ks's very first line after choosing "はじめから" a second time,
 	// since that early [position] call never specifies frame= to clear it.
 	// A fresh struct matches exactly what NewRenderer starts a brand-new
@@ -36,15 +36,12 @@ func (r *Renderer) goToTitle() {
 	textPosition = &kag3.TextPosition{}
 	textStyle = nil
 	defaultTextStyle = nil
-	// Same category of leftover-UI bug as textPosition/textStyle above,
-	// just discovered later: config.ks's full-screen settings redesign is
-	// the first screen to lean on [ptext] outside a message window (see
-	// drawPTexts, which used to only run while textPosition.Visible was
-	// true, so a stale ptexts map was invisible by accident until that
-	// gate was removed), and role="title" from inside it skips config.ks's
-	// own *backtitle label entirely (buttonRoles["title"] jumps straight
-	// here) — so its labels would otherwise still be drawn on top of
-	// title.ks. Matches NewRenderer's own starting state.
+	// Same category of leftover-UI bug as textPosition/textStyle above:
+	// config.ks's full-screen settings screen leans on [ptext] outside a
+	// message window, and role="title" from inside it skips config.ks's own
+	// *backtitle label entirely (buttonRoles["title"] jumps straight here) —
+	// so its labels would otherwise still be drawn on top of title.ks.
+	// Matches NewRenderer's own starting state.
 	ptexts = make(map[string]*kag3.PText)
 	// imgs, unlike ptexts above, is never auto-cleared by an ordinary
 	// [jump storage=]/[call storage=] either (clearNonFixButtons only ever
@@ -91,11 +88,11 @@ func (r *Renderer) goToTitle() {
 	// true, not false: the tag coroutine may currently be blocked inside a
 	// TextObject's y.Until(false, func() bool { return isWait }) — see
 	// execItem in macro.go — waiting on this exact flag, which is
-	// completely independent of isJump/[s]'s isJumped. Leaving it false
-	// here (the old behavior) meant that if the source screen happened to
-	// be mid-dialogue rather than resting at [s], the coroutine stayed
-	// stuck there forever: isJump never gets a chance to be read until
-	// whatever currently-blocked handler's own predicate resolves, and
+	// completely independent of isJump/[s]'s isJumped. Left false, a source
+	// screen that happens to be mid-dialogue rather than resting at [s]
+	// leaves the coroutine stuck there forever: isJump never gets a chance
+	// to be read until whatever currently-blocked handler's own predicate
+	// resolves, and
 	// isWait=false never does on its own. Setting it true releases that
 	// wait immediately (harmlessly — the destination's own first text line
 	// resets isWait=false again the moment it actually starts revealing).

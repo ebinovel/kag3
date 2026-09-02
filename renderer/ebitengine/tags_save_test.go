@@ -235,13 +235,12 @@ func TestRollbackDoesNotAliasCheckpointTextStyle(t *testing.T) {
 	}
 }
 
-// TestCheckpointRollbackRestoresCharaShowLeft is the regression test for
-// #16: buildSaveData used to append viewCharas' *CharaShow pointers
-// directly into checkpointData rather than copying them, so a [chara_show]/
-// [anim] mutating a character in place (stepAnimations, tags_animation.go)
-// after [checkpoint] silently rewrote the checkpoint too — [rollback] then
-// "restored" the already-mutated value instead of the one actually
-// captured.
+// TestCheckpointRollbackRestoresCharaShowLeft pins buildSaveData to copying
+// viewCharas' *CharaShow values rather than appending the live pointers into
+// checkpointData: shared pointers let a [chara_show]/[anim] mutating a
+// character in place (stepAnimations, tags_animation.go) after [checkpoint]
+// silently rewrite the checkpoint too, so [rollback] "restores" the
+// already-mutated value instead of the one actually captured.
 func TestCheckpointRollbackRestoresCharaShowLeft(t *testing.T) {
 	bg = &kag3.Background{}
 	textPosition = &kag3.TextPosition{}
@@ -270,11 +269,11 @@ func TestCheckpointRollbackRestoresCharaShowLeft(t *testing.T) {
 }
 
 // TestRollbackDoesNotAliasCheckpointCharaShow mirrors
-// TestRollbackDoesNotAliasCheckpointTextStyle for viewCharas: applySaveData
-// used to hand reconcileViewCharas the checkpoint's own *CharaShow pointers
-// unmodified, so a second rollback to the same checkpoint would reflect
-// whatever the first rollback's aftermath (e.g. a post-rollback [anim]) did
-// to them, not the state actually captured.
+// TestRollbackDoesNotAliasCheckpointTextStyle for viewCharas: handing
+// reconcileViewCharas the checkpoint's own *CharaShow pointers unmodified
+// makes a second rollback to the same checkpoint reflect whatever the first
+// rollback's aftermath (e.g. a post-rollback [anim]) did to them, not the
+// state actually captured.
 func TestRollbackDoesNotAliasCheckpointCharaShow(t *testing.T) {
 	bg = &kag3.Background{}
 	textPosition = &kag3.TextPosition{}
@@ -378,16 +377,15 @@ func TestSaveSlotRoundTripRestoresPtexts(t *testing.T) {
 	}
 }
 
-// TestSaveSlotRoundTripReloadsPtextBgImage is the regression test for a
-// real crash: kag3.PText.BgImage ([ptext bg=], tags_text.go) is a raw
-// *ebiten.Image, which used to round-trip straight through the save JSON
-// like every other PText field. json.Unmarshal produced a zero-value
-// Image indistinguishable from a disposed one (not nil), and the first
-// drawPTexts call after any load — even same-process — panicked with
-// "ebiten: the given image to DrawImage must not be disposed". BgImage now
-// carries `json:"-"` and must be reloaded from BgStorage explicitly after
-// Ptexts is restored, the same pattern already used for
-// TextPosition.FrameStorage/FrameImage.
+// TestSaveSlotRoundTripReloadsPtextBgImage guards against a real crash:
+// kag3.PText.BgImage ([ptext bg=], tags_text.go) is a raw *ebiten.Image, and
+// round-tripping it through the save JSON like every other PText field makes
+// json.Unmarshal produce a zero-value Image indistinguishable from a
+// disposed one (not nil), so the first drawPTexts call after any load — even
+// same-process — panics with "ebiten: the given image to DrawImage must not
+// be disposed". BgImage carries `json:"-"` and must be reloaded from
+// BgStorage explicitly after Ptexts is restored, the same pattern already
+// used for TextPosition.FrameStorage/FrameImage.
 func TestSaveSlotRoundTripReloadsPtextBgImage(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()
@@ -413,7 +411,7 @@ func TestSaveSlotRoundTripReloadsPtextBgImage(t *testing.T) {
 	// Simulate the story continuing past the save point (or a fresh
 	// process): BgImage is whatever json.Unmarshal produced for it
 	// (effectively unusable, since it's excluded from JSON), not the live
-	// image the session originally loaded.
+	// image this session loaded.
 	ptexts["chara_name_area"] = &kag3.PText{Name: "chara_name_area", X: 999, Y: 999, Text: "wrong"}
 
 	if err := r.loadSlot(manualSaveSlot); err != nil {
@@ -429,13 +427,12 @@ func TestSaveSlotRoundTripReloadsPtextBgImage(t *testing.T) {
 	}
 }
 
-// TestSaveSlotRoundTripRestoresTextsAndCharaName is the regression test for
-// a real reported bug: applySaveData resumes execution via jumpIndex
+// TestSaveSlotRoundTripRestoresTextsAndCharaName pins the save format to
+// carrying the visible text: applySaveData resumes execution via jumpIndex
 // straight at the saved [p]/[s]/[l] tag, never re-running whatever
-// TextObject(s) before it in the script actually put text on screen — so
-// the message window (and the name-plate, driven separately by charaName)
-// came back completely blank after every load, not just one predating
-// this fix's own save format.
+// TextObject(s) before it in the script actually put text on screen, so
+// without Texts/CharaName the message window (and the name-plate, driven
+// separately by charaName) comes back completely blank after every load.
 func TestSaveSlotRoundTripRestoresTextsAndCharaName(t *testing.T) {
 	saveBaseDirOverride = t.TempDir()
 	defer func() { saveBaseDirOverride = "" }()
@@ -469,11 +466,11 @@ func TestSaveSlotRoundTripRestoresTextsAndCharaName(t *testing.T) {
 	}
 }
 
-// TestApplySaveDataRestoresLinksAndSetsPreserveFlag is the regression test
-// for a real reported bug: a save taken right after a [link] choice (e.g.
-// landing on the [s] that follows a [link]/[endlink] pair) lost the choice
-// itself on load — applySaveData resumes via jumpIndex straight at that
-// [s], never re-running the [link] tags that originally registered it.
+// TestApplySaveDataRestoresLinksAndSetsPreserveFlag covers a save taken
+// right after a [link] choice (e.g. landing on the [s] that follows a
+// [link]/[endlink] pair): applySaveData resumes via jumpIndex straight at
+// that [s], never re-running the [link] tags that registered the choice, so
+// without an explicit restore the choice itself is lost on load.
 // applySaveData must restore links/glinks directly from the save and set
 // preserveLinksOnJump so the very next Update() frame's clearLinksOnJump
 // doesn't immediately wipe them out again (see
@@ -1254,20 +1251,15 @@ func TestDrawBacklogNoPanic(t *testing.T) {
 	drawBacklog(r, buf) // must not panic
 }
 
-// TestUpdateBacklogDragDistinguishesClickFromDrag is the regression test
-// for a real bug: handleBacklogClick's "click outside the backlog closes
-// it" behavior used backlogDragging to decide "was this a click or a
-// drag," but backlogDragging goes true on a plain click's very first
+// TestUpdateBacklogDragDistinguishesClickFromDrag drives the one-frame
+// sequence a plain click produces. Deciding "click or drag" from
+// backlogDragging doesn't work: it goes true on a plain click's very first
 // pressed frame too (pressed starts false, so that frame always takes the
-// "not currently dragging -> start dragging" branch) — before
-// handleBacklogClick's own justPressed check ever ran. That made the
-// dismiss branch permanently unreachable: no click, no matter where it
-// landed, could ever close the backlog by clicking outside it. Confirmed
-// by reproducing the exact one-frame sequence a plain click produces
-// before this fix existed.
-//
-// backlogDidDrag is the fix: it only ever becomes true once the pointer
-// actually moves while held down, which this test drives directly.
+// "not currently dragging -> start dragging" branch), before
+// handleBacklogClick's own justPressed check runs — which makes its "click
+// outside the backlog closes it" branch permanently unreachable.
+// backlogDidDrag only ever becomes true once the pointer actually moves
+// while held down.
 func TestUpdateBacklogDragDistinguishesClickFromDrag(t *testing.T) {
 	savedDragging, savedDidDrag, savedLastY, savedScrollY := backlogDragging, backlogDidDrag, backlogDragLastY, backlogScrollY
 	defer func() {

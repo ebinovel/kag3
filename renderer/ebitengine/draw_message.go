@@ -80,9 +80,9 @@ func drawMessageWindow(r *Renderer, buf *ebiten.Image) {
 		// handlePosition's own "only allocate once both are nonzero" guard
 		// (tags_layer.go) doesn't reallocate one until whatever [position]
 		// call follows [ct] actually sets a size. Any frame drawn in that
-		// gap used to call BackImage.Fill on a nil *ebiten.Image and crash
-		// the whole renderer over a single tag with nothing else wrong in
-		// the script. Skipping just the box here is enough: nothing below
+		// gap would otherwise call BackImage.Fill on a nil *ebiten.Image and
+		// crash the whole renderer over a single tag with nothing else wrong
+		// in the script. Skipping just the box here is enough: nothing below
 		// this switch reads BackImage/FrameImage again, so the rest of the
 		// window (text, ptexts, the operation row) still draws normally,
 		// just without a background box for however many frames it takes
@@ -178,12 +178,10 @@ func drawMessageVertical(r *Renderer, buf *ebiten.Image, x, marginTop float64, l
 // every row to measure within maxWidth, using the same pixel-measured,
 // rune-granularity fitting check as the rest of this file (no word-boundary
 // awareness — matches how CJK text is conventionally wrapped, and this
-// engine has never distinguished words for this purpose). Used in place of
-// inserting a single break at the first point text overflows maxWidth,
-// which only ever produced one extra row no matter how long s was — text
-// more than roughly 2x maxWidth wide (e.g. demo_movie.ks's credit line,
-// several times that) kept overflowing off the right edge of the message
-// box on every row after the first.
+// engine has never distinguished words for this purpose). It loops until
+// every row fits rather than breaking once at the first overflow point:
+// text several times maxWidth wide (e.g. demo_movie.ks's credit line) needs
+// as many breaks as it takes, not one.
 func wrapText(s string, face *text.GoTextFace, lineSpacing, maxWidth float64) string {
 	remaining := []rune(s)
 	var lines []string
@@ -225,9 +223,9 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 		// rowHeight tracks the tallest size any segment on this line
 		// actually resolves to (updated alongside each applyTextStyle
 		// call below) — advancing rowY by a flat beforeTextSize
-		// regardless left a [font size=40] line's descender overlapping
-		// whatever line came right after it, since the next row started
-		// at the *default* line height instead of the enlarged one.
+		// regardless leaves a [font size=40] line's descender overlapping
+		// whatever line comes right after it, since the next row would
+		// start at the *default* line height instead of the enlarged one.
 		rowHeight := beforeTextSize
 		hasText := false
 		for _, v := range segs {
@@ -289,7 +287,7 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					// applyTextStyle first — it's what sets r.fontFace.Size
 					// for *this* segment, and text.Measure/AppendGlyphs
 					// below read r.fontFace directly. Measuring before
-					// calling this used the previous segment's leftover
+					// calling this uses the previous segment's leftover
 					// size instead of this one's, both under- and
 					// over-shooting xOffset (wrong spacing/overlap right
 					// after a size change) and mis-centering this segment's
@@ -354,8 +352,8 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 					// than a single-line segment's, and the horizontal
 					// position is lastLineX (this segment's own last
 					// wrapped row's width) — not marginLeft+xOffset, which
-					// is the *widest* row's width and landed the mark after
-					// line 1 instead of the actual last line, since
+					// is the *widest* row's width and would land the mark
+					// after line 1 instead of the actual last line, since
 					// xOffset accumulates via text.Measure's whole-block
 					// (max-line) width, not "how far the cursor ended up."
 					textEndX = marginLeft + lastLineX
@@ -373,13 +371,12 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				// already fully-revealed line must keep using
 				// whatever [font]/[deffont] color is *currently* in
 				// effect, the same as the active line resolves it —
-				// before this fix it fell straight to plain white
-				// the instant it stopped being the active line,
-				// which on a light/white message-box design (e.g.
-				// scene1.ks's [deffont color="0x454D51"] custom
-				// window) made every earlier line on the same page
-				// effectively invisible against the background as
-				// soon as the next line started revealing.
+				// falling back to plain white the instant a
+				// line stops being the active one makes every
+				// earlier line on the same page effectively
+				// invisible against a light/white message-box
+				// design (e.g. scene1.ks's [deffont
+				// color="0x454D51"] custom window).
 				//
 				// Called first, before text.Measure/AppendGlyphs below —
 				// same reasoning as the active-line branch above:
@@ -410,7 +407,7 @@ func drawMessageHorizontal(r *Renderer, buf *ebiten.Image, marginLeft, marginTop
 				xOffset += w
 			}
 		}
-		lineHeightRatio := 1.0 // this package's original tight row advance
+		lineHeightRatio := 1.0
 		if r.manager.Config.MessageBoxStyle == "redesigned" {
 			lineHeightRatio = bodyLineHeightRatio
 		}

@@ -14,8 +14,8 @@ import (
 // "&expr" / "%name" attribute-expansion syntax inside tag arguments.
 //
 // f/sf/tf live for the Renderer's lifetime (sf is the save-file namespace,
-// persisted across script loads once save/load exists). mp is swapped per
-// macro-call frame via mpStack, pushed/popped through PushMPFrame.
+// persisted across script loads). mp is swapped per macro-call frame via
+// mpStack, pushed/popped through PushMPFrame.
 type VM struct {
 	rt        *goja.Runtime
 	f, sf, tf *goja.Object
@@ -111,7 +111,7 @@ var TG = { config: {}, menu: {} };
 `
 
 // MobilePlatform is false by default (desktop/wasm) and set true by
-// example/mobile's Android-only init (storage_android.go, deliberately a
+// example/mobile's Android/iOS build (platform_mobile.go, deliberately a
 // package-level var initializer rather than a func init() — see that file's
 // own comment on why) — the same "shared package stays platform-agnostic,
 // the platform-specific entrypoint flips one exported var/hook" pattern as
@@ -360,9 +360,9 @@ func (v *VM) RestoreSF(vars map[string]interface{}) {
 	for k, val := range vars {
 		obj.Set(k, val)
 	}
-	// A save made before sf.system existed (or one where a script deleted
-	// it) shouldn't reintroduce the same crash this namespace exists to
-	// avoid — see initSystemNamespace. A missing property comes back as Go
+	// A save whose sf carries no system property (an old file, or one where
+	// a script deleted it) must not reintroduce the crash this namespace
+	// exists to avoid — see initSystemNamespace. A missing property is Go
 	// nil here (goja.Object.Get doesn't return the _undefined sentinel for
 	// keys that were never set at all), so check for both.
 	if system := obj.Get("system"); system == nil || goja.IsUndefined(system) {
@@ -373,7 +373,7 @@ func (v *VM) RestoreSF(vars map[string]interface{}) {
 }
 
 // setButtonImageByClass implements the one real effect of the $ shim's
-// attr("src", ...) — see SetJQueryHooks/browserShimJS in vm.go. Every
+// attr("src", ...) — see SetJQueryHooks/browserShimJS above. Every
 // button whose Name (comma-separated, e.g. "bgmvol,bgmvol_10") contains
 // selector (with its leading "." stripped) as a token gets its Graphic
 // reloaded from path. Config.ks's own volume/speed/skip buttons are

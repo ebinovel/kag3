@@ -11,8 +11,7 @@ import (
 // MessageWindowRegion is the logical-coordinate rect scene1.ks's message
 // box occupies — set once, right at *start before any dialogue
 // (left=96 top=736 width=1728 height=300, the redesigned message window's
-// geometry at 1920x1080 — see the design plan's "画面の背景色を新デザイン
-// に変更" note), and never repositioned again for the rest of the script
+// geometry at 1920x1080), and never repositioned again for the rest of the script
 // (unlike the bundled TyranoScript sample's scene1.ks, which redesigned it
 // partway through — "たそがれ図書室"'s scene1.ks doesn't). Comparing this
 // region across two screenshots is how flow tests check "is the same line
@@ -59,15 +58,13 @@ func (*noSubImageError) Error() string {
 }
 
 // RegionsEqual reports whether a and b are near-identical (see nearlyEqual
-// and stableDiffThreshold, stable.go) — not byte-exact. It used to be, on
-// the reasoning that both captures come from the same process on the same
-// machine in the same test run, so there's no cross-machine font-rendering
-// or GPU-driver variance to tolerate the way a golden-image regression
-// test would need to — but the waiting-for-click glyph mark
-// (drawGlyph/glyphBounceOffset, tags_sysdesign.go) bounces continuously
-// the whole time it's shown, so it lands at a different phase between any
-// two captures even when nothing else on screen changed, and a byte-exact
-// comparison flagged that alone as a difference (same root cause as
+// and stableDiffThreshold, stable.go) — deliberately not byte-exact, even
+// though both captures come from the same process on the same machine in
+// the same test run: the waiting-for-click glyph mark
+// (drawGlyph/glyphBounceOffset, tags_sysdesign.go) bounces continuously the
+// whole time it's shown, so it lands at a different phase between any two
+// captures even when nothing else on screen changed, and a byte-exact
+// comparison flags that alone as a difference (same root cause as
 // WaitStable's fuzzy comparison — see its doc comment).
 func RegionsEqual(a, b image.Image) bool {
 	return nearlyEqual(toRGBA(a), toRGBA(b), stableDiffThreshold)

@@ -145,10 +145,9 @@ func loadPSDFaceGroup(r *Renderer, psdPath, pfvPath, encoding string) (*psdFaceG
 // returned error) on a malformed "faview-mode/" line — a third-party
 // parser's own failure mode having nothing to do with kag3's usual "storage
 // doesn't exist" error convention shouldn't be allowed to take down the
-// whole renderer the way an unguarded panic would (initScript's loop,
-// renderer.go, panics on any tag-handler error — see runSpeechJob,
-// tags_speech.go, for the same defensive shape against a different
-// external call).
+// whole renderer the way an unguarded panic would — see runSpeechJob
+// (tags_speech.go) for the same defensive shape against a different
+// external call.
 func decodePfv(s string) (conf *pfv.Pfv, err error) {
 	defer func() {
 		if p := recover(); p != nil {

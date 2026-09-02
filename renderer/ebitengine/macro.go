@@ -31,9 +31,8 @@ import (
 // the coroutine pump in renderer.go's Update() can call execItem up to 1000
 // times in a single frame, and on iOS stdout goes through gomobile's
 // synchronous os_log redirect — tracing unconditionally there is slow
-// enough on its own to contribute to real-device frame stalls (confirmed:
-// a 2017 iPad Pro 10.5"). Kept, rather than deleted outright, because it's
-// genuinely useful when chasing a scenario-logic bug on desktop.
+// enough on its own to cause real-device frame stalls (measured on a 2017
+// iPad Pro 10.5").
 var traceTags = os.Getenv("KAG3_TRACE_TAGS") != ""
 
 // execItem runs exactly one parsed scenario item (TextObject/TagObject/
@@ -114,7 +113,6 @@ func (r *Renderer) execItem(y coro.Yield, scripts []any, i *int, depth int) erro
 				pendingRuby = ""
 			}
 		}
-		// タグを挟まない連続するテキスト行を1つに連結
 		if len(object.Val) > 0 {
 			for *i+1 < len(scripts) {
 				next, ok := scripts[*i+1].(kag3.TextObject)

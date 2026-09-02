@@ -2,8 +2,8 @@
 // "たそがれ図書室" example scenario, so it's actually runnable/testable
 // before real character art and backgrounds are supplied. Deliberately
 // avoids importing hajimehoshi/ebiten (its init() connects to GLFW/the
-// windowing system unconditionally, which panics in a headless context —
-// see this repo's CI workflow discussion) — pure image/x/image only.
+// windowing system unconditionally, which panics in a headless context such
+// as CI) — pure image/x/image only.
 package main
 
 import (
@@ -26,8 +26,7 @@ const root = "example/game/resources"
 
 // sysRoot is kag3 engine's own bundled default UI assets (repo root, not
 // per-example) — the quick-menu/save-load-slot-picker chrome every kag3
-// game gets unless it overrides these itself. Also TyranoScript sample art
-// originally; see the "menu buttons/backgrounds" section in main below.
+// game gets unless it overrides these itself.
 const sysRoot = "resources/system/images"
 
 func main() {
@@ -73,8 +72,7 @@ func main() {
 	}
 
 	// Title buttons (360x74 PNG, normal + hover each) — all four of
-	// title.ks's buttons, replacing TyranoScript's bundled sample art.
-	// basicfont is ASCII-only (see drawLabelCentered's doc comment), so
+	// title.ks's buttons. basicfont is ASCII-only (see drawLabelCentered's doc comment), so
 	// labels are romaji, not the in-script Japanese button text.
 	titleButtons := []struct {
 		file   string
@@ -95,9 +93,8 @@ func main() {
 	// --- kag3 engine's built-in quick-menu / save-load slot picker chrome
 	// (resources/system/images, repo root — see drawQuickMenu/drawSlotPicker
 	// in renderer/ebitengine/tags_save.go and tags_uiscreens.go for exactly
-	// which filenames are actually loaded; anything not listed there was
-	// confirmed unreferenced and deleted rather than replaced). Sizes must
-	// match the originals exactly — several are drawn unscaled.
+	// which filenames are actually loaded — only those exist here). Sizes
+	// must match what those call sites expect: several are drawn unscaled.
 	must(os.MkdirAll(sysRoot, 0o755))
 
 	savePNG(filepath.Join(sysRoot, "bg_base.png"), solidOpaque(1280, 720, color.RGBA{0x24, 0x1f, 0x33, 0xff}))
@@ -136,12 +133,7 @@ func main() {
 	}
 
 	// --- config.ks's own background/button images (example/game/resources/images/
-	// config) — only the filenames config.ks actually references; the rest
-	// of the original TyranoScript config/ art (arrows, unread-skip toggle
-	// button art never actually wired to a [button], CG/recollection labels
-	// left over from the removed cg.ks/replay.ks, a duplicate
-	// menu_button_close shadowed by the system one above) was unreferenced
-	// and deleted rather than replaced.
+	// config) — only the filenames config.ks actually references.
 	must(os.MkdirAll(filepath.Join(root, "images", "config"), 0o755))
 
 	savePNG(filepath.Join(root, "images", "config", "bg_config.png"),
@@ -158,11 +150,9 @@ func main() {
 	savePNG(filepath.Join(root, "images", "config", "c_skipoff.png"), buttonImage(170, 45, color.RGBA{0x6a, 0x2e, 0x2e, 0xff}, "OFF"))
 	savePNG(filepath.Join(root, "images", "config", "c_skipon.png"), buttonImage(170, 45, color.RGBA{0x3a, 0x8a, 0x5c, 0xff}, "ON"))
 	// set1.png/set2.png (46x46 overlay icons for the BGM/SE/text-speed/auto-
-	// speed number rows — see config.ks's *load_img) were referenced by 21
-	// [image] tags each but never actually shipped in this project at all
-	// (not a TyranoScript-copyright file to replace — just missing).
-	// Generating them here fixes a latent "file not found" on first entry
-	// to the config screen, not just a licensing concern.
+	// speed number rows — see config.ks's *load_img) are each referenced by
+	// 21 [image] tags, so without them the config screen hits "file not
+	// found" on first entry.
 	savePNG(filepath.Join(root, "images", "config", "set1.png"), panel(46, 46, color.RGBA{0xd8, 0xb0, 0x3d, 0xff}))
 	savePNG(filepath.Join(root, "images", "config", "set2.png"), panel(46, 46, color.RGBA{0x4e, 0xae, 0x78, 0xff}))
 

@@ -230,12 +230,12 @@ type PText struct {
 	Gradient  string
 	// BgStorage/BgImage back a [ptext bg="..."] background image, drawn
 	// behind the text at (X, Y) — see drawPTexts (renderer.go). Nil unless
-	// bg= was given; ordinary ptext areas keep drawing text-only exactly as
-	// before. BgImage is excluded from JSON (save/load, tags_save.go) —
-	// same reasoning as TextPosition.BackImage/FrameImage below: an
-	// *ebiten.Image can't round-trip through a JSON save file, and letting
-	// encoding/json serialize/deserialize it anyway produced a zero-value
-	// Image indistinguishable from a disposed one, crashing drawPTexts's
+	// bg= was given; an ordinary ptext area draws text only. BgImage is
+	// excluded from JSON (save/load, tags_save.go) — same reasoning as
+	// TextPosition.BackImage/FrameImage below: an *ebiten.Image can't
+	// round-trip through a JSON save file, and letting encoding/json
+	// serialize/deserialize it anyway yields a zero-value Image
+	// indistinguishable from a disposed one, crashing drawPTexts's
 	// DrawImage on the very first load. applySaveData reloads it from
 	// BgStorage after restoring Ptexts, the same pattern Background.Storage/
 	// TextPosition.FrameStorage already use.

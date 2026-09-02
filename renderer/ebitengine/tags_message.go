@@ -42,11 +42,11 @@ func init() {
 	register("graph", handleGraph)
 }
 
-// current is a simple state tracker for [current layer=...] — kag3 only
-// ever had a single message box (textPosition/r.texts), not real Tyrano's
-// multiple named message layers, so this doesn't yet gate anything; it's
-// tracked honestly rather than silently dropped, in case later tags want
-// to branch on it.
+// current is a simple state tracker for [current layer=...] — kag3 has a
+// single message box (textPosition/r.texts), not real Tyrano's multiple
+// named message layers, so this doesn't yet gate anything; it's tracked
+// honestly rather than silently dropped, in case later tags want to branch
+// on it.
 var currentMessageLayer string
 
 func handleCurrent(ctx *tagCtx) error {
@@ -190,7 +190,7 @@ func handleMessageConfig(ctx *tagCtx) error {
 }
 
 // textSpeedMs/defaultTextSpeedMs drive Draw()'s character-reveal rate via
-// ticksPerChar. 83ms preserves the previous hardcoded "5 ticks at 60 TPS".
+// ticksPerChar. 83ms is "5 ticks at 60 TPS".
 var (
 	textSpeedMs        = 83
 	defaultTextSpeedMs = 83
@@ -295,9 +295,8 @@ var autoWaitMs = 3000
 // fully-revealed line stays on screen before skip auto-advances past it.
 // Kept short (unlike autoWaitMs, which is meant to be read at) since skip
 // exists to blast through already-read text quickly; it's deliberately
-// *not* 0, though — see Update()'s own note on the regression this fixes,
-// where every line advanced within the same frame it appeared, before ever
-// being visibly drawn.
+// *not* 0, though — at 0 a line can advance within the same frame it
+// appeared, before ever being visibly drawn. See Update()'s own note.
 var skipWaitMs = 150
 
 func handleAutoConfig(ctx *tagCtx) error {

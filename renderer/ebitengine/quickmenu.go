@@ -10,20 +10,17 @@ import (
 //
 // Deprecated: reachable only via role="menu" or the (also deprecated)
 // [showmenubutton] corner icon (tags_sysdesign.go) — the redesigned message
-// window's own operation row (tags_oprow.go) now covers everything this
-// popup offered (SAVE/LOAD/SKIP/BACK TO TITLE) except HIDE MESSAGE
-// (case 2 below; still just buttonRoles["window"]'s toggle, reachable via a
-// script-placed [button role="window"] if needed). Left implemented, not
-// deleted, for any script that still opens it directly.
+// window's own operation row (tags_oprow.go) covers everything this popup
+// offers (SAVE/LOAD/SKIP/BACK TO TITLE) except HIDE MESSAGE (case 2 below;
+// just buttonRoles["window"]'s toggle, reachable via a script-placed
+// [button role="window"]). Stays implemented for any script that opens it
+// directly.
 //
 // Laid out to match real Tyrano's own system menu screen (built from the
 // same bundled resources/system/images assets: bg_base.png, label_menu.png,
 // menu_button_close.png for the "BACK" button top-right — same as the slot
 // picker's — and the five menu_button_*/menu_message_close.png pill
-// buttons), at a 1920x1080 canvas (×1.5 from the original 1280x720 layout —
-// both these position/size constants and the underlying
-// resources/system/images/*.png assets were scaled together, see the
-// upscale note in the project history). scene1.ks already places individual
+// buttons), at a 1920x1080 canvas. scene1.ks already places individual
 // save/load/skip/auto/backlog buttons directly on screen too, so this
 // doesn't need a "閉じる" item of its own — the top-right BACK button
 // covers that, consistently with the slot picker.
@@ -142,7 +139,7 @@ func (r *Renderer) handleQuickMenuClick(screenW, screenH int) {
 			continue
 		}
 		switch idx {
-		case 0: // SAVE — Phase 9's slot picker (tags_uiscreens.go)
+		case 0: // SAVE — the slot picker (tags_uiscreens.go)
 			openSlotPicker(slotPickerSave)
 		case 1: // LOAD
 			openSlotPicker(slotPickerLoad)

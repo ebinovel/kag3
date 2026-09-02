@@ -10,13 +10,12 @@ import (
 
 // --- backlog (button role="backlog"/LOG in the operation row) ---
 //
-// Redesigned per the "3a バックログ" mockup: full-screen dim, a header
-// ("BACKLOG"/履歴 + 閉じる✕), a fixed-width name column distinct from the
-// text column (recordBacklog, tags_message.go, now keeps them separate),
-// recency-fade opacity on the oldest few visible rows, a proportional
-// scrollbar, and a footer with scroll/navigation hints. Coordinates are
-// the source design's own 1920x1080 pixel values, unscaled — see the
-// design plan's "画面解像度" note (example/ now runs at 1920x1080).
+// Full-screen dim, a header ("BACKLOG"/履歴 + 閉じる✕), a fixed-width name
+// column distinct from the text column (recordBacklog, tags_message.go,
+// keeps them separate), recency-fade opacity on the oldest few visible
+// rows, a proportional scrollbar, and a footer with scroll/navigation
+// hints. Coordinates are unscaled 1920x1080 pixel values — the canvas
+// example/ runs at.
 
 var (
 	backlogViewing     bool
@@ -76,9 +75,8 @@ var (
 	backlogFooterDimColor    = color.RGBA{0x8a, 0x94, 0x9e, 0xff}
 	backlogFooterTextColor   = color.RGBA{0xd5, 0xdd, 0xe4, 0xff}
 	// backlogFadeSteps are the opacities applied to the oldest few visible
-	// rows (top of the viewport), newest-first fading in from there —
-	// matches the mockup's 0.45/0.6/0.8/1.0 sample. Rows beyond this are
-	// fully opaque.
+	// rows (top of the viewport), newest-first fading in from there. Rows
+	// beyond this are fully opaque.
 	backlogFadeSteps = []float32{0.45, 0.6, 0.8, 1.0}
 )
 
@@ -118,8 +116,7 @@ func backlogFace(r *Renderer, size float64) *text.GoTextFace {
 }
 
 // backlogNameDisplay is the name column's text for entry — "──" (dimmed)
-// for a nameless/narration entry ([pushlog] or a bare "#" line), matching
-// the source design's placeholder-narration style.
+// for a nameless/narration entry ([pushlog] or a bare "#" line).
 func backlogNameDisplay(name string) (string, color.RGBA) {
 	if name == "" {
 		return "──", backlogNarrationColor
@@ -211,9 +208,9 @@ func drawBacklog(r *Renderer, buf *ebiten.Image) {
 			continue
 		}
 		// Fade the first few rows *from the top of the viewport*, not by
-		// absolute recency — matches the mockup's "fades in as you scroll
-		// up toward older lines" read (the bottom-most/newest rows are
-		// always fully opaque regardless of scroll position).
+		// absolute recency, so content fades in as the reader scrolls up
+		// toward older lines — the bottom-most/newest rows stay fully
+		// opaque regardless of scroll position.
 		rowIndexFromViewportTop := int((y - bodyTop) / backlogEntryHeight)
 		alpha := float32(1.0)
 		if rowIndexFromViewportTop >= 0 && rowIndexFromViewportTop < len(backlogFadeSteps) {
@@ -276,18 +273,17 @@ func drawBacklog(r *Renderer, buf *ebiten.Image) {
 //
 // backlogDidDrag exists as a separate flag from backlogDragging
 // specifically because collapsing them doesn't work: a plain click's very
-// first frame already has pressed=true with backlogDragging previously
-// false, so the "not currently dragging -> start dragging" branch below
-// sets backlogDragging = true on that exact frame — before
-// handleBacklogClick's own justPressed check ever runs. Using
-// backlogDragging there to mean "was this a click or a drag" meant every
-// click, including one landing outside the backlog specifically to dismiss
-// it, was misclassified as a drag before dismissal could ever be
-// evaluated: the "click outside closes the backlog" behavior documented on
-// handleBacklogClick below was unreachable. backlogDidDrag instead only
-// ever becomes true once the pointer actually moves while held down, and
-// is reset the moment a fresh press begins — so a click that never moves
-// still reports backlogDidDrag == false on its own justPressed frame.
+// first frame already has pressed=true with backlogDragging still false, so
+// the "not currently dragging -> start dragging" branch below sets
+// backlogDragging = true on that exact frame — before handleBacklogClick's
+// own justPressed check ever runs. Reading backlogDragging there as "was
+// this a click or a drag" therefore misclassifies every click as a drag,
+// including one landing outside the backlog specifically to dismiss it,
+// making handleBacklogClick's "click outside closes the backlog" branch
+// unreachable. backlogDidDrag only ever becomes true once the pointer
+// actually moves while held down, and is reset the moment a fresh press
+// begins — so a click that never moves still reports backlogDidDrag ==
+// false on its own justPressed frame.
 func updateBacklogDrag(pressed bool, mY int) (scrollDelta float64) {
 	if pressed {
 		if !backlogDragging {
@@ -309,10 +305,10 @@ func updateBacklogDrag(pressed bool, mY int) (scrollDelta float64) {
 }
 
 // handleBacklogClick drives the backlog screen's input: wheel/drag-to-scroll,
-// the header's 閉じる✕ button, and any-other-click/right-click to close
-// (preserving the pre-redesign "any click dismisses" behavior for clicks
-// that land outside the close button, except on the very frame the screen
-// opened — that click is the button press that opened it).
+// the header's 閉じる✕ button, and any-other-click/right-click to close —
+// any click landing outside the close button dismisses the screen, except
+// on the very frame it opened, where that click is the button press that
+// opened it.
 func (r *Renderer) handleBacklogClick() {
 	w, h := r.manager.Config.ScreenWidth, r.manager.Config.ScreenHeight
 	footerFace := backlogFace(r, backlogFooterFontSize)

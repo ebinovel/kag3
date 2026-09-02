@@ -2,10 +2,9 @@ package ebitengine
 
 import "testing"
 
-// TestTrimBacklogKeepsMostRecent is the regression test for #14:
-// Config.MaxBackLogNum was declared and defaulted (50) but never actually
-// enforced — recordBacklog appended forever. trimBacklog now caps it,
-// keeping the newest entries.
+// TestTrimBacklogKeepsMostRecent pins Config.MaxBackLogNum to actually
+// being enforced: without trimBacklog, recordBacklog appends forever.
+// Trimming keeps the newest entries.
 func TestTrimBacklogKeepsMostRecent(t *testing.T) {
 	var backlog []backlogEntry
 	for i := 0; i < 5; i++ {

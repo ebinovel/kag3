@@ -152,16 +152,15 @@ var (
 // calls SpeechSynth, the first time it's actually needed (a project with
 // TTS configured but never using [speak_on] never pays for it).
 //
-// Every call used to run on its own freshly spawned goroutine. On this
-// package's iOS backend (speech_ios.go, purego-based — see docs/VOICEVOX.md)
-// that turned out to reliably corrupt the *first* native call ever made on
-// a brand-new goroutine specifically: voicevox_synthesizer_tts would return
-// success (code 0) with a real, non-null output buffer pointer, but its
-// *other* out-parameter (output_wav_length) silently stayed at its
-// zero-initialized value — confirmed via a from-scratch isolation
-// harness (bypassing nanoda/kag3 entirely, calling voicevox_core directly
-// through purego) that a second call *on that same now-"warmed"
-// goroutine* always succeeds correctly, every time. The leading theory is
+// On this package's iOS backend (speech_ios.go, purego-based — see
+// docs/VOICEVOX.md) the *first* native call ever made on a brand-new
+// goroutine is reliably corrupted: voicevox_synthesizer_tts returns success
+// (code 0) with a real, non-null output buffer pointer, but its *other*
+// out-parameter (output_wav_length) silently stays at its zero-initialized
+// value. A from-scratch isolation harness (bypassing nanoda/kag3 entirely,
+// calling voicevox_core directly through purego) confirmed a second call
+// *on that same now-"warmed" goroutine* always succeeds correctly, every
+// time. The leading theory is
 // a purego/Go-runtime interaction around a freshly spawned goroutine's
 // still-growing stack racing the low-level FFI trampoline
 // (runtime_cgocall + a hand-written assembly syscall) — plausible but not
@@ -209,8 +208,7 @@ func speechWorker() {
 // runSpeechJob does the actual synthesis + WAV read for one job,
 // appending its speechResult for stepSpeechSynthesis to drain. Split out
 // of speechWorker's loop body so a panic during one job (recovered here)
-// can't take the whole worker goroutine down with it — the same
-// per-job-recover shape the old per-line goroutine used.
+// can't take the whole worker goroutine down with it.
 func runSpeechJob(job speechJob) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -302,13 +300,11 @@ func stepSpeechSynthesis() {
 		}
 		lastAppliedSpeechSeq = res.seq
 		if res.err != nil {
-			// fmt.Fprintln(os.Stderr, ...), not fmt.Println: on Android
-			// specifically, gomobile's os.Stdout-backed logcat pipe
-			// (internal/mobileinit) was observed not delivering lines at
-			// all during this feature's own bring-up, while the
-			// os.Stderr-backed one worked reliably — see docs/VOICEVOX.md's
-			// Android section. Using stderr for every log line in this
-			// file sidesteps that regardless of platform.
+			// fmt.Fprintln(os.Stderr, ...), not fmt.Println: on Android,
+			// gomobile's os.Stdout-backed logcat pipe (internal/mobileinit)
+			// silently drops lines while the os.Stderr-backed one delivers
+			// reliably — see docs/VOICEVOX.md's Android section. Every log
+			// line in this file uses stderr for that reason.
 			fmt.Fprintln(os.Stderr, "[speech] synthesis failed, skipping:", res.err)
 			continue
 		}

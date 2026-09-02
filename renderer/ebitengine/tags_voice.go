@@ -173,10 +173,10 @@ func (r *Renderer) voiceFS() fs.FS {
 // has armed auto-play. Called from execItem (macro.go) at the single point
 // charaName is assigned.
 //
-// Deliberately returns no error: initScript's loop panics on anything a tag
-// handler returns (see its own comment), and a missing voice asset is
-// nowhere near worth taking the whole game down for — handlePopopo and
-// handleCharaMod (tags_audio.go/tags_character.go) set the same precedent.
+// Deliberately returns no error: a missing voice asset isn't worth even the
+// skipped-tag log line initScript's loop produces for a handler error (see
+// its own comment) — handlePopopo and handleCharaMod (tags_audio.go/
+// tags_character.go) set the same precedent.
 //
 // Playback goes through swapSEPlayer into the shared ses map rather than a
 // registry of its own, which is what makes [stopse], [wse buf=...],

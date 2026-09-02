@@ -28,6 +28,17 @@ func init() {
 	register("unload", handleUnload)
 }
 
+// closeAllModals dismisses every modal overlay anyModalActive tracks except
+// activeDialog (goToTitle's own confirm dialog resolves separately — see its
+// call site): the "reset all UI state" step goToTitle and similar full
+// resets need.
+func closeAllModals() {
+	menuOpen = false
+	backlogViewing = false
+	slotPickerActive = slotPickerNone
+	editState = nil
+}
+
 // anyModalActive reports whether any of the overlays that should freeze
 // normal script advancement (see Update() in renderer.go) is currently up:
 // the quick menu, the backlog viewer, the save/load slot picker, an active
@@ -37,24 +48,13 @@ func init() {
 // directly via y.Until (see handleDialog in tags_dialog.go), so it doesn't
 // need this separate freeze mechanism; only the button-triggered kind runs
 // outside the coroutine and needs Update() to hold the story back itself.
-// closeAllModals dismisses every modal overlay anyModalActive tracks except
-// activeDialog (goToTitle's own confirm dialog resolves separately — see its
-// call site) — the "reset all UI state" step goToTitle and similar full
-// resets need, collapsed from 3-4 separate assignments into one call.
-func closeAllModals() {
-	menuOpen = false
-	backlogViewing = false
-	slotPickerActive = slotPickerNone
-	editState = nil
-}
-
 func anyModalActive() bool {
 	return backlogViewing || menuOpen || slotPickerActive != slotPickerNone ||
 		(editState != nil && editState.Active) ||
 		(activeDialog != nil && activeDialog.OnConfirm != nil)
 }
 
-// --- showsave / showload: a slot picker built on Phase 7's saveSlot/loadSlot ---
+// --- showsave / showload: a slot picker built on saveSlot/loadSlot ---
 
 type slotPickerMode int
 
@@ -83,9 +83,8 @@ func openSlotPicker(mode slotPickerMode) {
 	// No capture here: lastSnapshot is kept fresh every frame by
 	// drawScene, always reflecting the scene with no modal on top —
 	// see captureSnapshot's doc comment (save_thumbnail.go) for why capturing
-	// only at this specific moment used to be too late (and wrong) when
-	// this picker was reached through another modal, e.g. the quick
-	// menu's own SAVE item.
+	// only at this specific moment is too late (and wrong) when this picker
+	// is reached through another modal, e.g. the quick menu's own SAVE item.
 	menuOpen = false
 	slotPickerActive = mode
 	slotPickerOpenedFrame = t
@@ -107,10 +106,8 @@ func handleShowLog(ctx *tagCtx) error {
 // Tyrano's own DATA SAVE/DATA LOAD screen (built from the same bundled
 // resources/system/images assets: bg_base.png, label_save.png/
 // label_load.png, menu_button_close.png, saveslot.png, thumbnail.png) at a
-// 1920x1080 canvas (×1.5 from the original 1280x720 layout — the
-// resources/system/images/*.png assets were upscaled 1.5x alongside these
-// constants). slotPickerRowH/W deliberately equal saveslot.png's native
-// size so it's never stretched.
+// 1920x1080 canvas. slotPickerRowH/W deliberately equal saveslot.png's
+// native size so it's never stretched.
 const (
 	slotPickerTitleX, slotPickerTitleY           = 30, 22
 	slotPickerBackMargin, slotPickerBackY        = 30, 52
@@ -260,7 +257,7 @@ type slotRowInfo struct {
 	StatusText string
 	// Message is the save slot's preview text (currentMessageText at save
 	// time — see saveData.LastMessage), shown under StatusText. Empty for
-	// an empty slot, or a save written before this field existed.
+	// an empty slot, or a save file carrying no such field.
 	Message string
 }
 
@@ -393,14 +390,8 @@ func drawSlotPicker(r *Renderer, buf *ebiten.Image) {
 	// Rows are composited into their own buffer first and blitted at a
 	// fixed screen position — the simplest way to clip the scrolling list
 	// to its viewport without a partially-scrolled row bleeding into the
-	// title/back button area above it. viewport is reused across frames
-	// (Clear + redraw) rather than allocated fresh every time this modal is
-	// open — same reasoning, and same "reallocate only when the size
-	// actually changes" shape, as renderBuffer (renderer.go's Draw) and
-	// lastSnapshot (captureSnapshot, save_thumbnail.go):
-	// this screen redraws every frame while open, and slotPickerRowW x
-	// viewportH is a full-width, sizable chunk of the message window to
-	// re-allocate for no reason 60 times a second.
+	// title/back button area above it. The buffer is reused across frames
+	// rather than reallocated 60 times a second — see slotPickerViewportBuf.
 	viewport := slotPickerViewportBuf(slotPickerRowW, viewportH)
 	for _, row := range rows {
 		y := row.Y - slotPickerScrollY - viewportY
@@ -610,9 +601,6 @@ func drawEditBox(r *Renderer, buf *ebiten.Image) {
 	if editState == nil || !editState.Active {
 		return
 	}
-	// w/h/the bottom margin are ×1.5 of the original 1280x720-tuned values
-	// (690x75, 240px from the bottom) — x/y positioning itself was already
-	// screenW/screenH-relative and needed no change.
 	w, h := 690, 75
 	x := r.manager.Config.ScreenWidth/2 - w/2
 	y := r.manager.Config.ScreenHeight - 240

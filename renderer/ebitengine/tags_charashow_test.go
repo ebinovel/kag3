@@ -6,12 +6,11 @@ import (
 	"github.com/ebinovel/kag3"
 )
 
-// TestCharaShowReappliesAttributesOnReDisplay is the regression test for
-// #17: handleCharaShow used to parse every attribute (left=, top=, face=,
-// storage=, ...) only inside the charaNew==true branch, so re-showing a
-// character that had been [chara_hide]'d silently ignored every attribute
-// on the re-[chara_show] call — [chara_show name=x left=800] right after
-// [chara_hide name=x] left the character exactly where it was before being
+// TestCharaShowReappliesAttributesOnReDisplay pins handleCharaShow to
+// applying every attribute (left=, top=, face=, storage=, ...) on a
+// re-[chara_show] too, not only in the charaNew==true branch: parsing them
+// only for a first display makes [chara_show name=x left=800] right after
+// [chara_hide name=x] leave the character exactly where it was before being
 // hidden instead of moving it to left=800.
 func TestCharaShowReappliesAttributesOnReDisplay(t *testing.T) {
 	origCharas, origViewCharas := charas, viewCharas

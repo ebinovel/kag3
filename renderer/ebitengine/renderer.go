@@ -71,31 +71,19 @@ type callFrame struct {
 // is the real Tyrano tag that's supposed to hide it again, but kag3 has no
 // per-layer visibility system yet (see handleLayopt's doc comment), so that
 // call is a no-op and the preview box would otherwise stay on screen
-// (wrong size/position, still Visible) after leaving config. Buttons/Bg/
-// TextPosition deliberately aren't part of callFrame: only sleepgame
-// crosses full scenes with visual teardown in between, so only it needs
-// this.
+// (wrong size/position, still Visible) after leaving config.
 //
-// Ptexts/CharaNamePText are the same story, discovered later: drawPTexts
-// used to only run while a message window was visible, so a stale ptexts
-// map from whatever screen opened config.ks (e.g. title.ks's own title/
-// menu labels) was invisible by accident. Once that gate was removed (see
-// drawPTexts's doc comment), those areas started bleeding straight through
-// config.ks's full-screen layout — and clearing them unconditionally on the
-// way in, with no restore, would just move the bug to the other direction
-// (losing scene1.ks's character name-plate on the way back). Snapshotting
-// and restoring them here, the same way TextPosition already is, fixes
-// both directions at once.
+// Ptexts/CharaNamePText and ViewCharas are the same story: neither
+// drawPTexts nor drawCharacters is gated on which screen is active, so a
+// stale ptexts map (title.ks's own title/menu labels) and the story scene's
+// standing characters bleed straight through config.ks's full-screen
+// layout, landing wherever the story scene's positioning put them. Clearing
+// them on the way in without restoring only moves the problem the other way
+// (losing scene1.ks's character name-plate on the way back).
 //
-// ViewCharas is the exact same class of bug, just for standing-character
-// sprites instead of ptexts: drawCharacters (renderer.go's drawScene) has
-// no gate at all tied to which screen is active, so whatever characters
-// were showing in the calling scene keep drawing straight through
-// config.ks's full-screen layout, landing wherever the story scene's
-// character positioning put them (bottom-anchored, centered) — which
-// visually collides with config.ks's own rows since neither screen knows
-// about the other. Same fix shape as Ptexts: snapshot and clear on the way
-// in, restore on the way out.
+// Buttons/Bg/TextPosition deliberately aren't part of callFrame: only
+// sleepgame crosses full scenes with visual teardown in between, so only it
+// needs this.
 type sleepFrame struct {
 	Storage        string
 	Index          int
@@ -189,18 +177,17 @@ func (r *Renderer) Update() {
 	if isAuto && isWait && t-autoStartT >= autoWaitMs*ebiten.TPS()/1000 {
 		oldTick = tick
 	}
-	// Skip mode used to force isWait+oldTick unconditionally, every single
-	// frame, regardless of whether the line had even been drawn yet — a
-	// line could complete its reveal and satisfy [p]'s wait within the same
-	// frame it appeared, before ever showing on screen (reported as skip
-	// feeling instantaneous rather than readable). ticksPerChar()
-	// (tags_message.go) already reveals text faster than normal while
-	// skipActive(), so by the time isWait naturally goes true (the reveal
-	// finished, same mechanism a real click racing the reveal also hits —
-	// draw_message.go), the line has actually been visible for a moment.
-	// From there this mirrors the isAuto branch just above, only much
-	// shorter: autoStartT already tracks "when did isWait last become
-	// true", so skipWaitMs reuses it rather than needing its own clock.
+	// Skip waits for isWait rather than forcing it: forcing it every frame,
+	// regardless of whether the line had been drawn yet, lets a line satisfy
+	// [p]'s wait within the same frame it appeared — skip then feels
+	// instantaneous rather than readable. ticksPerChar() (tags_message.go)
+	// already reveals text faster than normal while skipActive(), so by the
+	// time isWait goes true naturally (the reveal finished, same mechanism a
+	// real click racing the reveal hits — draw_message.go), the line has
+	// actually been visible for a moment. From there this mirrors the isAuto
+	// branch just above, only much shorter: autoStartT already tracks "when
+	// did isWait last become true", so skipWaitMs reuses it rather than
+	// needing its own clock.
 	// skipEffective(), not skipActive() directly, so that unreadSkipEnabled
 	// (既読SKIP / [unreadskip_config mode="read_only"]) can hold an unread
 	// line at normal pace requiring a real click, same as skip being off.
@@ -252,33 +239,26 @@ func (r *Renderer) Update() {
 // ([p]'s isTextEndedOrJumped, [l]'s isClicked, AUTO/SKIP in this very
 // function above).
 //
-// This decision used to be made *only* inside drawMessageWindow/
-// drawMessageHorizontal/drawMessageVertical (draw_message.go) — meaning
-// whether the story could advance at all silently depended on Draw()
-// having actually run this frame. ebitengine calls Update immediately
-// followed by Draw on every platform this project ships to under normal
-// conditions, so that dependency was invisible in practice — but Draw is
-// skipped whenever the window isn't actually being presented (minimized,
-// occluded on some platforms) while Update keeps running regardless.
-// In that window the whole story — AUTO/SKIP included, both of which read
-// isWait a few lines up in this same function — used to freeze completely
-// until the window became visible again. It's also why no test in this
-// package could ever exercise real glyph-by-glyph reveal: nothing in the
-// suite calls Draw.
+// It lives in Update rather than alongside the rest of the reveal
+// bookkeeping in drawMessageWindow/drawMessageHorizontal/drawMessageVertical
+// (draw_message.go): deciding it at draw time makes whether the story can
+// advance at all depend on Draw() having run this frame, and Draw is skipped
+// whenever the window isn't actually being presented (minimized, occluded on
+// some platforms) while Update keeps running regardless — freezing the whole
+// story, AUTO/SKIP included, until the window becomes visible again. It's
+// also why no test in this package can exercise real glyph-by-glyph reveal
+// through Draw: nothing in the suite calls it.
 //
 // Called right before the coroutine is stepped, matching drawMessageWindow's
 // own timing: Draw normally runs immediately after Update, so a line
 // finishing its reveal becomes visible to the coroutine on the very next
-// frame's co.Next() call either way, whether this function or Draw is what
-// actually flips isWait. drawMessageWindow's own isWait/isTextEnd
-// bookkeeping is deliberately left in place, not removed or rerouted
-// through this function — isTextEnd and textEndX/textEndY (the "waiting"
-// mark's screen position, tags_sysdesign.go) are purely a draw-time
-// concern with no bearing on whether the coroutine can proceed, and folding
-// them in here would be a much larger rework (untangling glyph-position
-// tracking from actual glyph drawing) for no correctness gain — this fix's
-// scope is deliberately just the one flag that was actually able to freeze
-// the game.
+// frame's co.Next() call either way. drawMessageWindow's own isWait/isTextEnd
+// bookkeeping is deliberately left in place, not rerouted through this
+// function — isTextEnd and textEndX/textEndY (the "waiting" mark's screen
+// position, tags_sysdesign.go) are purely a draw-time concern with no bearing
+// on whether the coroutine can proceed, and folding them in here would mean
+// untangling glyph-position tracking from actual glyph drawing for no
+// correctness gain.
 func (r *Renderer) revealActiveLine() {
 	if isWait || textPosition == nil || !textPosition.Visible {
 		return
@@ -384,26 +364,24 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 // created under different [font]/[resetfont] states can be on screen at
 // once — an earlier segment must keep rendering the style active when
 // *it* was created even after a later [font] call on the same page moves
-// textStyle on. Preferring the live textStyle instead (this function's
-// prior behavior) reskinned every such earlier segment to match whatever
-// [font] ran last. applyFontAttrs' own doc comment covers the matching
-// write-side half (copies rather than mutates textStyle in place, so an
-// earlier segment's already-captured TextStyle pointer isn't silently
-// rewritten out from under it too).
+// textStyle on. Preferring the live textStyle instead reskins every such
+// earlier segment to match whatever [font] ran last. applyFontAttrs' own doc
+// comment covers the matching write-side half (copies rather than mutates
+// textStyle in place, so an earlier segment's already-captured TextStyle
+// pointer isn't silently rewritten out from under it too).
 //
-// r.fontFace.Size is set unconditionally on every branch below (falling
+// r.fontFace.Size is set unconditionally on every branch below, falling
 // back to beforeTextSize whenever the resolved style leaves Size
-// unspecified/zero) — leaving it untouched when a style's Size happened to
-// be 0 used to let whatever size the *previous* segment last set leak into
-// this one (e.g. [font size=40]...[resetfont][font color=pink] kept
-// drawing the pink text at size 40, since color=pink's own style never set
-// a Size of its own to overwrite it). Callers must call this — which also
-// means r.fontFace.Size is now correct — *before* measuring/laying out the
+// unspecified/zero — leaving it untouched for a style whose Size is 0 lets
+// whatever size the *previous* segment last set leak into this one (e.g.
+// [font size=40]...[resetfont][font color=pink] would keep drawing the pink
+// text at size 40, since color=pink's own style never sets a Size of its own
+// to overwrite it). Callers must call this *before* measuring/laying out the
 // segment's glyphs (text.Measure/text.AppendGlyphs in
 // drawMessageHorizontal), not after: measuring with the *previous*
-// segment's leftover size instead of this one's is what produced both the
-// reported symptoms (overlapping/too-tight spacing right after a size
-// change, and ruby text centered over the wrong width).
+// segment's leftover size instead of this one's produces overlapping/
+// too-tight spacing right after a size change, and ruby text centered over
+// the wrong width.
 func applyTextStyle(r *Renderer, tOp *text.DrawOptions, v Text) {
 	style := v.TextStyle
 	if style == nil {
@@ -439,17 +417,13 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	drawGLinks(r, buf)
 	drawButtons(buf)
 	drawImages(buf)
-	// Drawn after buttons/images (not from inside drawMessageWindow, where
-	// this used to live): a [ptext] area is independent of the message
-	// window (textPosition.Visible gated drawMessageWindow's whole body,
-	// silently hiding every ptext whenever no message box was on screen —
-	// config.ks's full-screen settings redesign has no message window at
-	// all) and toggle-style controls (config.ks's スキップ対象/画面表示 rows)
-	// need their option labels drawn on top of the button graphic beneath
-	// them.
+	// Drawn after buttons/images, and outside drawMessageWindow: a [ptext]
+	// area is independent of the message window (textPosition.Visible gates
+	// drawMessageWindow's whole body, and config.ks's full-screen settings
+	// screen has no message window at all), and toggle-style controls
+	// (config.ks's スキップ対象/画面表示 rows) need their option labels drawn
+	// on top of the button graphic beneath them.
 	drawPTexts(r, buf)
-	//mx, my := ebiten.CursorPosition()
-	//ebitenutil.DebugPrint(buf, fmt.Sprintf("t:%+v bgTick:%+v mouseX:%+v mouseY:%+v", t, bgTick, mx, my))
 	drawMenuButton(r, buf)
 	drawEditBox(r, buf)
 	// Fullscreen video, drawn last among ordinary scene content so it
@@ -466,12 +440,11 @@ func (r *Renderer) drawScene(buf *ebiten.Image) {
 	// fresh here, every frame, specifically *before* drawModal — buf has
 	// the full scene at this point but none of any modal overlay's own
 	// drawing yet, regardless of which overlay (if any) is about to be
-	// added. Capturing at openSlotPicker/saveSlot time instead (an earlier
-	// version of this code did) was too late whenever a save was reached
-	// through another modal first (e.g. the quick menu's own SAVE item):
-	// renderBuffer by then already had *that* modal's last several frames
-	// baked in, so the thumbnail showed the quick menu instead of the
-	// scene underneath it.
+	// added. Capturing at openSlotPicker/saveSlot time instead is too late
+	// whenever a save is reached through another modal first (e.g. the quick
+	// menu's own SAVE item): renderBuffer by then already has that modal's
+	// last several frames baked in, so the thumbnail shows the quick menu
+	// instead of the scene underneath it.
 	captureSnapshot(buf)
 	drawModal(r, buf)
 }

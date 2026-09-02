@@ -115,9 +115,9 @@ func ensureWinAppDriver() (*startedWinAppDriver, error) {
 	cmd := exec.Command(path)
 	// WinAppDriver's console loop prints "Press ENTER to exit." and quits the
 	// instant its stdin reports EOF. os/exec hands a child with a nil Stdin
-	// the null device, which reads EOF immediately — so a WinAppDriver
-	// started here bound its port, printed "listening", and exited again
-	// within milliseconds, leaving the poll below to time out and report the
+	// the null device, which reads EOF immediately — a WinAppDriver started
+	// that way binds its port, prints "listening", and exits again within
+	// milliseconds, leaving the poll below to time out and report the
 	// thoroughly misleading "started ... but never listened". Handing it the
 	// read end of a pipe nothing ever writes to or closes keeps that read
 	// blocked for as long as this test binary lives (confirmed: the same

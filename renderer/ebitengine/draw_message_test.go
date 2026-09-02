@@ -14,9 +14,9 @@ import (
 // fresh struct that keeps Visible=true but zeroes everything else,
 // including BackImage — Width/Height land at 0 too, so nothing re-allocates
 // BackImage until whatever [position] call follows [ct] actually gives it a
-// size. Any frame drawn in that gap used to call
-// textPosition.BackImage.Fill on a nil *ebiten.Image and crash the whole
-// renderer, over a single tag with nothing else wrong in the script.
+// size. Any frame drawn in that gap must not reach
+// textPosition.BackImage.Fill on a nil *ebiten.Image, which crashes the
+// whole renderer over a single tag with nothing else wrong in the script.
 func TestDrawMessageWindowSkipsBoxWithNoBackImage(t *testing.T) {
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
@@ -96,13 +96,12 @@ func TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine(t *testing.T) {
 	}
 }
 
-// TestWrapTextWrapsRepeatedlyForVeryLongText is the regression test for a
-// real reported bug: the auto-wrap in drawMessageHorizontal/drawMessage
-// used to insert a break only at the first point text overflowed maxWidth
-// and stop there, so text more than roughly 2x maxWidth wide (e.g.
-// demo_movie.ks's Wikimedia credit line, several times that) kept
-// overflowing off the right edge of the message box on every row after the
-// first, instead of wrapping onto as many rows as it actually needed.
+// TestWrapTextWrapsRepeatedlyForVeryLongText guards the auto-wrap in
+// drawMessageHorizontal/drawMessage against breaking only at the first
+// overflow point: text more than roughly 2x maxWidth wide (e.g.
+// demo_movie.ks's Wikimedia credit line, several times that) must wrap onto
+// as many rows as it needs, not overflow off the right edge of the message
+// box on every row after the first.
 func TestWrapTextWrapsRepeatedlyForVeryLongText(t *testing.T) {
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
@@ -128,8 +127,8 @@ func TestWrapTextWrapsRepeatedlyForVeryLongText(t *testing.T) {
 	}
 }
 
-// TestDrawMessageHorizontalAppliesLineHeightRatio is the regression test for
-// the redesigned message window's line-height (bodyLineHeightRatio,
+// TestDrawMessageHorizontalAppliesLineHeightRatio covers the redesigned
+// message window's line-height (bodyLineHeightRatio,
 // draw_messagebox.go): advancing from one [p]-separated line (lineNum) to
 // the next must move down by rowHeight*bodyLineHeightRatio, not a bare
 // rowHeight — unlike TestDrawMessageHorizontalWrapPositionsWaitMarkAfterLastLine

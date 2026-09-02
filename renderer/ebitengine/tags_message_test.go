@@ -162,9 +162,9 @@ func TestTicksPerCharUsesSkipSpeedWhileSkipping(t *testing.T) {
 // TestSkipShouldAdvanceWaitsBeforeAdvancing is the other half: even once a
 // line has fully revealed (isWait=true), skip must not immediately treat it
 // as read — it needs skipWaitMs of visible time first, exactly like isAuto
-// waits autoWaitMs (Update(), renderer.go). This is the direct regression
-// test for skip previously forcing isWait+oldTick unconditionally every
-// frame, which could satisfy a line's wait before it was ever drawn.
+// waits autoWaitMs (Update(), renderer.go). Forcing isWait+oldTick
+// unconditionally every frame instead can satisfy a line's wait before it
+// was ever drawn.
 func TestSkipShouldAdvanceWaitsBeforeAdvancing(t *testing.T) {
 	const skipWaitMs = 150
 	ticksNeeded := skipWaitMs * ebiten.TPS() / 1000

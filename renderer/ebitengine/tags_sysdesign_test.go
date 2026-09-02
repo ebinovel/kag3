@@ -112,7 +112,7 @@ func TestMenuButtonRectScalesWithScreenWidth(t *testing.T) {
 	wantW := 96 * 1280 / 1920 // 64
 	wantH := 96 * 720 / 1080  // 64
 	if _, _, w, h := menuButtonRect(r); w != wantW || h != wantH {
-		t.Errorf("at 1280x720: w,h = %d,%d, want %d,%d (scaled down to match the resolution this button was originally tuned for)", w, h, wantW, wantH)
+		t.Errorf("at 1280x720: w,h = %d,%d, want %d,%d (scaled down from the 1920x1080 reference this button is tuned for)", w, h, wantW, wantH)
 	}
 }
 
@@ -206,15 +206,14 @@ func TestDrawGlyphPicksModeByPriority(t *testing.T) {
 	isSkip, isAuto, isTextEnd = false, false, false
 }
 
-// TestDrawGlyphHiddenWhileTextStillRevealingUnderAuto is the regression test
-// for a real reported bug: with isAuto=true, the mark used to draw
-// regardless of isTextEnd, anchored at whatever textEndX/textEndY was left
-// over from the *previous* line — so the instant auto-advance moved to a
-// new line and it started revealing (isTextEnd goes false again until that
-// new line finishes), the mark kept bouncing at the old line's position for
-// the whole reveal, reading as "the wait indicator never went away" even
-// though the story had already advanced. drawGlyph must be a no-op
-// whenever isTextEnd is false, auto or not.
+// TestDrawGlyphHiddenWhileTextStillRevealingUnderAuto pins drawGlyph to
+// being a no-op whenever isTextEnd is false, auto or not. Drawing the mark
+// regardless of isTextEnd under isAuto=true anchors it at whatever
+// textEndX/textEndY is left over from the *previous* line — so the instant
+// auto-advance moves to a new line and it starts revealing (isTextEnd goes
+// false again until that line finishes), the mark keeps bouncing at the old
+// line's position for the whole reveal, reading as "the wait indicator never
+// went away" even though the story has already advanced.
 func TestDrawGlyphHiddenWhileTextStillRevealingUnderAuto(t *testing.T) {
 	// Restores the pre-test textPosition rather than forcing nil — see
 	// TestDrawContinueMarkPicksColorByModePriority's comment

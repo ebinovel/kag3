@@ -127,10 +127,10 @@ func clientRectOnScreen(hwnd uintptr) (image.Rectangle, error) {
 // sitting above kag3 in the stack. SetCursorPos+mouse_event delivers a
 // click to whatever window is topmost at that screen position, not to
 // whichever window merely has keyboard focus — so a click "at kag3's
-// button" was actually landing on the terminal sitting on top of it,
-// which is what made that terminal jump to the front. Plain
-// SetForegroundWindow does not change Z-order, only focus, so it didn't
-// fix this. HWND_TOPMOST does. See unforeground for the matching cleanup.
+// button" lands on the terminal sitting on top of it instead, making that
+// terminal jump to the front. Plain SetForegroundWindow does not change
+// Z-order, only focus, so it doesn't fix this. HWND_TOPMOST does. See
+// unforeground for the matching cleanup.
 func bringToForeground(hwnd uintptr) {
 	procSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
 	time.Sleep(200 * time.Millisecond)

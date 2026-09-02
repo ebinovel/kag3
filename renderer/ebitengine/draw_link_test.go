@@ -27,13 +27,11 @@ func TestDrawGLinksNoPanicWithAndWithoutHover(t *testing.T) {
 	drawGLinks(r, buf) // suppressed while a jump is pending
 }
 
-// TestDrawGLinksLegacyUsesScriptColor is the scoping fix for
-// renderer/ebitengine being a shared package: any style other than
-// "redesigned" — including "" (a project whose config.toml predates
-// MessageBoxStyle entirely, e.g. tsf-action) — must draw this package's
-// original plain glink.Color-filled box, ignoring the redesign's fixed
-// palette, and must not suppress drawing while isJump is pending (the
-// original never checked that either).
+// TestDrawGLinksLegacyUsesScriptColor pins the scoping renderer/ebitengine
+// needs as a shared package: any style other than "redesigned" — including
+// "" (a config.toml that never sets MessageBoxStyle, e.g. tsf-action's) —
+// must draw the plain glink.Color-filled box, ignoring the redesign's fixed
+// palette, and must not suppress drawing while isJump is pending.
 func TestDrawGLinksLegacyUsesScriptColor(t *testing.T) {
 	savedGLinks, savedIsJump := glinks, isJump
 	defer func() { glinks, isJump = savedGLinks, savedIsJump }()
@@ -57,7 +55,7 @@ func TestDrawChoiceDimOverlayOnlyWhenGLinksPresentAndNotJumping(t *testing.T) {
 	defer func() { glinks, isJump = savedGLinks, savedIsJump }()
 
 	r := newTestRenderer()
-	r.manager.Config.MessageBoxStyle = "redesigned" // this overlay didn't exist before the redesign
+	r.manager.Config.MessageBoxStyle = "redesigned" // the overlay only exists under the redesign
 	buf := newTestImage(1920, 1080)
 
 	glinks, isJump = nil, false
@@ -72,8 +70,8 @@ func TestDrawChoiceDimOverlayOnlyWhenGLinksPresentAndNotJumping(t *testing.T) {
 }
 
 // TestDrawChoiceDimOverlayLegacyNeverDraws covers the same shared-package
-// scoping as TestDrawGLinksLegacyUsesScriptColor: this overlay is entirely
-// new to the redesign, so any non-"redesigned" style must never draw it,
+// scoping as TestDrawGLinksLegacyUsesScriptColor: this overlay belongs to
+// the redesign alone, so any non-"redesigned" style must never draw it,
 // even with active glinks.
 func TestDrawChoiceDimOverlayLegacyNeverDraws(t *testing.T) {
 	savedGLinks, savedIsJump := glinks, isJump

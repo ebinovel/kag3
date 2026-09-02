@@ -33,8 +33,8 @@ func drawLinks(r *Renderer, buf *ebiten.Image) {
 // Under Config.MessageBoxStyle == "redesigned" only: glink.Color (a
 // script-set [glink color=...]) is intentionally NOT used — the redesigned
 // choice UI is a fixed, unified look (dark fill + a left-edge accent bar
-// that lights up on hover) rather than a per-glink-configurable flat color,
-// matching the source design's single choice-box style. Hover state is
+// that lights up on hover) rather than a per-glink-configurable flat color:
+// one choice-box style for every choice. Hover state is
 // computed fresh every frame from the cursor position — the same "no
 // cross-frame state" approach backButtonImageName/quickMenuButtonImageName
 // already use elsewhere — rather than tracked in a package var. Any other
@@ -84,11 +84,11 @@ func drawGLinks(r *Renderer, buf *ebiten.Image) {
 	}
 }
 
-// drawGLinksLegacy is this package's original [glink] rendering, byte-for-
-// byte: a script-colored flat rect (glink.Color, from [glink color=...])
-// plus centered text — no hover state, no isJump suppression (unlike
-// drawLinks/the redesigned path above, this never checked isJump; kept
-// exactly as it always behaved rather than "fixed" here).
+// drawGLinksLegacy is the plain [glink] rendering every project that hasn't
+// opted into the redesign gets: a script-colored flat rect (glink.Color,
+// from [glink color=...]) plus centered text — no hover state, and
+// deliberately no isJump suppression, unlike drawLinks and the redesigned
+// path above.
 func drawGLinksLegacy(r *Renderer, buf *ebiten.Image) {
 	for _, glink := range glinks {
 		fillRect(buf, float64(glink.X), float64(glink.Y), float64(glink.Width), float64(glink.Height), *glink.Color)
@@ -100,16 +100,15 @@ func drawGLinksLegacy(r *Renderer, buf *ebiten.Image) {
 }
 
 // choiceDimOverlayColor dims the whole screen behind an active [glink]
-// choice set (rgba(10,12,15,0.5) in the source design).
+// choice set — rgba(10,12,15,0.5).
 var choiceDimOverlayColor = color.RGBA{0x0a, 0x0c, 0x0f, 0x80}
 
 // drawChoiceDimOverlay draws the full-screen dim behind the message box's
 // operation row and [glink] choices — only while choices are actually up
 // (the same len(glinks)>0 && !isJump guard messageBoxFillColor uses), so it
 // never lingers a frame after a choice-triggered jump starts. Part of the
-// メッセージ欄 redesign — this package had no such overlay before it,
-// so it's gated the same way as everything else that redesign added (see
-// messageBoxFillColor's doc comment).
+// redesigned message window, and gated the same way as everything else in
+// it (see messageBoxFillColor's doc comment).
 func drawChoiceDimOverlay(r *Renderer, buf *ebiten.Image) {
 	if r.manager.Config.MessageBoxStyle != "redesigned" {
 		return

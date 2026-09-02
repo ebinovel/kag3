@@ -52,7 +52,6 @@ func hitLinks(r *Renderer) {
 			marginTop := y + textPosition.MarginTop + int(h)*(i+j)
 			if isColisionTouch(mX, mY, marginLeft, marginTop, int(w), int(h), touch) {
 				hoveringClickable = true
-				//fmt.Println("isCollsion", mX, mY)
 				if justPressed {
 					if link.Storage != "" {
 						screenChanged = true
@@ -60,8 +59,8 @@ func hitLinks(r *Renderer) {
 					}
 					// lookupLabel (renderer.go), not a bare Target[1:] —
 					// a [link storage="x.ks"] with no target= at all is
-					// ordinary script, and slicing "" panicked the game on
-					// click. A missing/unknown target now simply means "this
+					// ordinary script, and slicing "" panics on click.
+					// A missing/unknown target simply means "this
 					// link only changes storage", which is exactly what such
 					// a link is asking for.
 					if v, ok := r.lookupLabel(link.Target); ok {
@@ -93,10 +92,10 @@ func hitGLinks(r *Renderer) {
 					screenChanged = true
 					r.loadScript(glink.Storage)
 				}
-				// One lookupLabel call (renderer.go) replaces what used to be
-				// two lookups — raw, then Target[1:] — whose "second hit
-				// wins" ordering was arbitrary, and whose second half
-				// panicked on a [glink] with no target= of its own.
+				// One lookupLabel call (renderer.go), not a raw lookup
+				// followed by a Target[1:] one: that ordering makes
+				// "second hit wins" arbitrary, and the second half
+				// panics on a [glink] with no target= of its own.
 				if v, ok := r.lookupLabel(glink.Target); ok {
 					if traceTags {
 						fmt.Printf("label:%+v\n", v)
@@ -133,15 +132,14 @@ func buttonHitTestable(b *kag3.Button) bool {
 // bookkeeping), dispatching button.Role via buttonRoles (role_dispatch.go),
 // and finally jumping to button.Target. Returns as soon as one button
 // consumes a justPressed click, rather than letting every button in the
-// slice react to the same tap — this used to be harmless when hit-boxes
-// never overlapped, but isColisionTouch's touch padding (renderer.go) can
-// now make two buttons meant to sit flush against each other (e.g.
-// config.ks's 2-choice toggle rows, each half exactly touching the other
-// with zero gap) overlap by touchHitPadding*2 px in the middle. Without
-// this return, a tap landing in that sliver dispatched *both* buttons'
-// exp= in the same frame — whichever button came later in this slice won
-// the tf.set_* assignment, silently overriding the one actually tapped
-// (regression: Android's スキップ対象 toggle showing the wrong highlight).
+// slice react to the same tap: isColisionTouch's touch padding
+// (renderer.go) makes two buttons meant to sit flush against each other
+// (e.g. config.ks's 2-choice toggle rows, each half exactly touching the
+// other with zero gap) overlap by touchHitPadding*2 px in the middle.
+// Without this return, a tap landing in that sliver dispatches *both*
+// buttons' exp= in the same frame — whichever button comes later in this
+// slice wins the tf.set_* assignment, silently overriding the one actually
+// tapped.
 func hitButtons(r *Renderer) {
 	for _, button := range buttons {
 		if !buttonHitTestable(button) {

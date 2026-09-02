@@ -296,15 +296,13 @@ func TestLoadSystemImageCachesAndFallsBackWhenMissing(t *testing.T) {
 }
 
 // TestSlotPickerViewportBufReusesSameSizeReallocatesOnResize covers
-// slotPickerViewportBuf's whole reason for existing: drawSlotPicker used to
-// allocate a fresh slotPickerRowW x viewportH *ebiten.Image every single
-// frame the slot picker was open (a full-width chunk of the message
-// window, freshly allocated 60 times a second) — the same class of GPU
-// memory churn captureSnapshot's own doc comment (tags_save.go) documents
-// actually causing memory-warning stalls on a real, RAM-constrained iOS
-// device. slotPickerViewportBuf follows that same fix shape: reuse
-// (Clear) when the requested size matches what's already allocated,
-// reallocate only when it doesn't.
+// slotPickerViewportBuf's whole reason for existing: allocating a fresh
+// slotPickerRowW x viewportH *ebiten.Image every frame the slot picker is
+// open (a full-width chunk of the message window, 60 times a second) is the
+// same class of GPU memory churn captureSnapshot's own doc comment
+// (save_thumbnail.go) documents causing memory-warning stalls on a real,
+// RAM-constrained iOS device. So: reuse (Clear) when the requested size
+// matches what's already allocated, reallocate only when it doesn't.
 func TestSlotPickerViewportBufReusesSameSizeReallocatesOnResize(t *testing.T) {
 	slotPickerViewportImg = nil
 	defer func() { slotPickerViewportImg = nil }()

@@ -18,17 +18,17 @@ import (
 // This is the single label-resolution path for every caller that turns a
 // target= into a position: [jump] (handleJump, tags_flow.go), [link]/[glink]
 // clicks (hitLinks/hitGLinks, input_hit.go), [button target=]
-// (buttonTargetJump below) and StartAtLabel. Each of those used to inline
-// its own variant, and two problems came with that:
+// (buttonTargetJump below) and StartAtLabel. Inlining a per-caller variant
+// instead invites two problems:
 //
 //   - A bare target[1:] slice panics outright ("slice bounds out of range
 //     [1:0]") when target is empty — reachable from perfectly ordinary
 //     script, e.g. clicking a [link storage="scene2.ks"]...[endlink] that
-//     names no target= at all, since the click handler ran the lookup
+//     names no target= at all, since the click handler runs the lookup
 //     unconditionally before checking anything.
-//   - Several sites looked the target up *twice* (raw, then target[1:]) and
-//     let whichever hit came second win. Labels are only ever stored bare,
-//     so TrimPrefix covers both spellings in one lookup with no such
+//   - Looking the target up *twice* (raw, then target[1:]) and letting
+//     whichever hit comes second win. Labels are only ever stored bare, so
+//     TrimPrefix covers both spellings in one lookup with no such
 //     ambiguity.
 //
 // An empty target (or a bare "*") reports not-found rather than resolving:
@@ -114,10 +114,10 @@ func (r *Renderer) initScript() {
 				break
 			}
 			// A tag handler error (bad attribute value, missing asset, ...)
-			// must not take the whole game down — this used to panic here,
-			// so a single malformed attribute anywhere in a script (e.g.
+			// must not take the whole game down: panicking here means a
+			// single malformed attribute anywhere in a script (e.g.
 			// [delay speed="user"], strconv.Atoi failing on a non-numeric
-			// value) crashed every player instantly, unlike an *unknown* tag
+			// value) crashes every player instantly, unlike an *unknown* tag
 			// name, which dispatchTag already just logs and continues past
 			// (see its own comment). Logging and moving on to the next tag
 			// makes both cases behave the same way. expandMacro's own

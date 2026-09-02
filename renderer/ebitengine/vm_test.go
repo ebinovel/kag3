@@ -74,7 +74,7 @@ func TestVMEvalButtonExpSetsVariableBeforeTargetReads(t *testing.T) {
 	}
 	pm := v.expandParams(map[string]string{"speed": "&tf.set_ch_speed"})
 	if pm["speed"] != "100" {
-		t.Errorf("expanded speed = %q, want %q (strconv.Atoi of this used to panic on \"undefined\")", pm["speed"], "100")
+		t.Errorf("expanded speed = %q, want %q (a tag attribute's strconv.Atoi fails on \"undefined\")", pm["speed"], "100")
 	}
 }
 
@@ -91,12 +91,12 @@ func TestVMEvalButtonExpPreExpBindsResultForExp(t *testing.T) {
 	}
 }
 
-// TestJQuerySetImageSrcSwapsMatchingButtonGraphics reproduces a real
-// report: pressing a config.ks volume/speed/skip button never visibly
-// changed its color. config.ks's own visual feedback for "which one is
-// selected" is entirely $(".class").attr("src", path) — reset the whole
-// group to the "off" graphic, then set just the clicked one's class to
-// "on" — and the $ shim used to no-op every method, including attr.
+// TestJQuerySetImageSrcSwapsMatchingButtonGraphics pins attr("src", ...) to
+// actually swapping a button's graphic: config.ks's own visual feedback for
+// "which volume/speed/skip button is selected" is entirely
+// $(".class").attr("src", path) — reset the whole group to the "off"
+// graphic, then set just the clicked one's class to "on" — so a $ shim that
+// no-ops attr like every other method leaves the button's color unchanged.
 func TestJQuerySetImageSrcSwapsMatchingButtonGraphics(t *testing.T) {
 	r := newTestRenderer()
 	r.fses = map[string]fs.FS{"images": fstest.MapFS{"c_set.png": &fstest.MapFile{Data: tinyPNG(t)}}}
@@ -253,8 +253,8 @@ func TestBrowserShimReproducesConfigKsCrash(t *testing.T) {
 
 // TestWindowOpenReachesOpenURL strengthens the previous test's mere
 // "doesn't throw" check: window.open(url) must actually reach the shared
-// openURL (openurl.go), the same path [web url=] uses, not just silently
-// swallow the call the way it used to (window = { open: function() {} }).
+// openURL (openurl.go), the same path [web url=] uses, rather than being
+// swallowed by a bare no-op stub (window = { open: function() {} }).
 func TestWindowOpenReachesOpenURL(t *testing.T) {
 	origLaunch := launchURL
 	defer func() { launchURL = origLaunch }()

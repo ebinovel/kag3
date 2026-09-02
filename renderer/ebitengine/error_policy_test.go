@@ -6,13 +6,12 @@ import (
 	"github.com/eihigh/coro"
 )
 
-// TestTagHandlerErrorDoesNotPanicAndScriptContinues is the regression test
-// for #19: initScript's loop used to panic(err) on any tag handler error,
-// so one malformed attribute value anywhere in a script — e.g.
-// [delay speed="user"] (handleDelay's strconv.Atoi fails on a non-numeric
-// speed=, tags_message.go) — crashed the whole game, unlike an *unknown*
-// tag name, which dispatchTag already just logs and continues past. The
-// loop now logs and skips the failing tag instead, matching that.
+// TestTagHandlerErrorDoesNotPanicAndScriptContinues pins initScript's loop
+// to logging and skipping a failing tag rather than panicking: one malformed
+// attribute value anywhere in a script — e.g. [delay speed="user"]
+// (handleDelay's strconv.Atoi fails on a non-numeric speed=,
+// tags_message.go) — must not crash the whole game, matching how dispatchTag
+// already treats an *unknown* tag name.
 func TestTagHandlerErrorDoesNotPanicAndScriptContinues(t *testing.T) {
 	m := newTestManager(t, map[string]string{
 		"main.ks": "[delay speed=\"user\"]\nafter delay",

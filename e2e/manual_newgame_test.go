@@ -371,9 +371,8 @@ func TestManualHubDemos(t *testing.T) {
 	// "① テキスト装飾" glink (x=240 y=180 width=690 at 1920x1080 scale).
 	// demo_text.ks uses [l], not [p] — each line accumulates on screen
 	// instead of clearing the previous one, so each shot below has one
-	// more line than the last rather than replacing it (confirmed via a
-	// throwaway diagnostic: each press advances exactly one [l], same
-	// press-count shape as the old [p] version).
+	// more line than the last rather than replacing it. One press still
+	// advances exactly one [l].
 	clickGlinkRetry(t, sess, 240+345, 180+30, "hub to_text")
 	shot("h02z_text_demo_first_line.png")
 	press(1)
@@ -403,8 +402,9 @@ func TestManualHubDemos(t *testing.T) {
 	clickGlinkRetry(t, sess, 540+375, 225+30, "demo_choice dog")
 	shot("h05_dog_chosen.png")
 	// One more press to move past "犬派を選びました。" and reveal the
-	// [link] demo's first line ("［link］は…") — just confirms this line
-	// (previously an unescaped-tag crash risk, now fixed) renders fine.
+	// [link] demo's first line ("［link］は…") — confirms that line, whose
+	// full-width brackets are what keep it from parsing as a tag, renders
+	// fine.
 	press(1)
 	shot("h06_choice_after_dog.png")
 }
@@ -539,14 +539,11 @@ func TestManualHubRemainingDemos(t *testing.T) {
 	shot("r04_save_demo.png")
 }
 
-// TestManualConfigAndMenu is a regression check for the config screen,
-// whose TyranoScript-sourced art (example/game/resources/images/config/,
-// resources/system/images/) was replaced with original placeholders. Also
-// exercises config.ks's *load_img (set1.png/set2.png), which referenced
-// files that never actually existed in this project before today. The
-// quick menu / save-load slot picker this test used to also cover was
-// dropped when the corner menu button (@showmenubutton) was removed from
-// demo_save.ks — see the comment at the end of this test.
+// TestManualConfigAndMenu is a visual check of the config screen and its
+// placeholder art (example/game/resources/images/config/,
+// resources/system/images/), including config.ks's *load_img
+// (set1.png/set2.png). It does not cover the quick menu / save-load slot
+// picker — see the comment at the end of this test for why.
 func TestManualConfigAndMenu(t *testing.T) {
 	outDir := manualScreenshotDir(t)
 	exePath, err := filepath.Abs(helpers.ExamplePath)
@@ -611,13 +608,13 @@ func TestManualConfigAndMenu(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	shot("c03_demo_save.png")
 
-	// The corner quick-menu button (button_menu.png / @showmenubutton) no
-	// longer appears here — demo_save.ks dropped its @showmenubutton call
-	// once the redesigned message window's own operation row covered
-	// SAVE/LOAD/Title (see scene1.ks/demo_save.ks's comments and
-	// helpers.OpRowSaveX/Y in nav.go). demo_save.ks's own [position] wasn't
-	// updated to the 1920x1080 redesign (out of scope), so the operation
-	// row's exact hit-box here differs from scene1.ks's OpRowSaveX/Y —
+	// The corner quick-menu button (button_menu.png / @showmenubutton) never
+	// appears here — demo_save.ks doesn't call @showmenubutton, since the
+	// redesigned message window's own operation row covers SAVE/LOAD/Title
+	// (see scene1.ks/demo_save.ks's comments and helpers.OpRowSaveX/Y in
+	// nav.go). demo_save.ks's own [position] isn't laid out for the
+	// 1920x1080 redesign, so the operation row's exact hit-box here differs
+	// from scene1.ks's OpRowSaveX/Y —
 	// re-derive against demo_save.ks's own [position] if this flow needs
 	// covering again; skipped for now since TestQuickSaveThenLoadRestoresSceneText
 	// (flows_test.go) already exercises the same save/load-slot-picker path

@@ -218,9 +218,8 @@ func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
 	}
 }
 
-// TestIsTextEndedOrJumpedReleasesOnPendingJump is the regression test for a
-// real reported bug found while E2E-testing role="title" mid-dialogue:
-// [p]'s own block (handleP, tags_text.go) waits on isTextEnded, a
+// TestIsTextEndedOrJumpedReleasesOnPendingJump covers role="title" clicked
+// mid-dialogue: [p]'s own block (handleP, tags_text.go) waits on isTextEnded, a
 // completely separate condition from the bare TextObject wait
 // TestGoToTitleEscapesTextWaitingOnIsWait covers above. goToTitle forcing
 // isWait=true and setting isJump=true does nothing to release a coroutine
@@ -228,10 +227,9 @@ func TestGoToTitleEscapesTextWaitingOnIsWait(t *testing.T) {
 // several stack frames below initScript's outer isJump check (macro.go),
 // which is what actually reads isJump, so isJump sitting there true is
 // simply never observed until [p]'s own condition independently becomes
-// true first. Before this fix, that took a *further* real click landing on
-// whatever screen was still showing (not yet the jump's destination),
-// consumed uselessly on the retreating source screen instead of the
-// destination's actual UI. isTextEndedOrJumped (state.go) is what handleP
+// true first — which takes a *further* real click landing on whatever screen
+// is still showing (not yet the jump's destination), consumed uselessly on
+// the retreating source screen. isTextEndedOrJumped (state.go) is what handleP
 // actually blocks on; it must treat a pending isJump as sufficient on its
 // own, independent of isTextEnded's own oldTick/tick bookkeeping.
 func TestIsTextEndedOrJumpedReleasesOnPendingJump(t *testing.T) {

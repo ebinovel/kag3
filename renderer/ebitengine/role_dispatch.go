@@ -8,15 +8,14 @@ import (
 
 // buttonRoles maps a [button role="..."] value to what clicking it does,
 // looked up by hitButtons (input_hit.go) — the registered-map equivalent of
-// dispatch.go's tag handlers, replacing what used to be a switch statement.
-// role="sleepgame" is deliberately absent: its only effect (the
-// return-address push onto r.sleepStack) already happens earlier in
-// hitButtons, before Storage/Role/Target dispatch — an absent map entry is
-// a no-op, same as that switch's empty case was.
+// dispatch.go's tag handlers. role="sleepgame" is deliberately absent: its
+// only effect (the return-address push onto r.sleepStack) already happens
+// earlier in hitButtons, before Storage/Role/Target dispatch, so an absent
+// map entry is the correct no-op.
 var buttonRoles = map[string]func(r *Renderer){
 	// Per tyrano.jp/tag's [button] reference, role="save" opens the
 	// save-slot screen rather than acting on a fixed slot directly —
-	// that's what quicksave is for. Reuses Phase 9's slot picker
+	// that's what quicksave is for. Reuses the slot picker
 	// (tags_uiscreens.go).
 	"save": func(r *Renderer) { openSlotPicker(slotPickerSave) },
 	"load": func(r *Renderer) { openSlotPicker(slotPickerLoad) },

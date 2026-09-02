@@ -5,8 +5,7 @@ package ebitengine
 // that positions/sizes it (the corner menu button in tags_sysdesign.go, the
 // quick menu in quickmenu.go, the save/load slot picker and its BACK button
 // in tags_uiscreens.go) — was actually tuned for: the たそがれ図書室
-// example's 1920x1080 (×1.5 from an original 1280x720 layout — see each
-// call site's own doc comment for that history).
+// example's 1920x1080.
 //
 // A game running at any other ScreenWidth (e.g.
 // example_tyrano_official_backup's 1280x720 default) gets this shared
@@ -15,9 +14,8 @@ package ebitengine
 // same assets read visibly larger against a smaller canvas (found by
 // comparing the corner menu button, then the quick menu it opens, against
 // real TyranoScript's own rendering, which sizes this chrome relative to
-// the screen rather than as a fixed pixel count). At 1920x1080
-// this scale is exactly 1, so the たそがれ図書室 example's own look is
-// completely unchanged.
+// the screen rather than as a fixed pixel count). At 1920x1080 this scale
+// is exactly 1.
 const systemChromeReferenceScreenWidth = 1920
 
 // systemChromeScale is the factor every "system chrome" screen (the corner

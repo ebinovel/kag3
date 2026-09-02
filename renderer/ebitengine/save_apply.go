@@ -11,8 +11,8 @@ import (
 // applyBgFromSnapshot writes s's non-image fields onto bg, then reloads
 // Image from s.Storage (the GPU texture a bgSaveState can't carry through
 // JSON — see bgSaveState's doc comment). A no-op on the image reload when
-// s.Storage is empty (nothing was ever captured, e.g. a save predating this
-// field). The caller decides how to react to a reload failure (applySaveData
+// s.Storage is empty (nothing was ever captured, e.g. a save file carrying
+// no such field). The caller decides how to react to a reload failure (applySaveData
 // logs and continues rather than treating it as fatal, matching every other
 // best-effort asset reload on the load path).
 func applyBgFromSnapshot(r *Renderer, bg *kag3.Background, s bgSaveState) error {
@@ -95,10 +95,10 @@ func applyTextPositionFromSnapshot(r *Renderer, tp *kag3.TextPosition, s textPos
 //
 // charaFaces restores the character's full face registry (see saveData's
 // CharaFaces doc comment) — without it, [chara_mod ... face=...] for any
-// face beyond "default" would find nothing and, before that was guarded
-// (see handleCharaMod), crashed the whole game. A save written before this
-// field existed (or a name reconcileViewCharas had to fall back to
-// charaStorage for some other reason) still gets a working "default" entry.
+// face beyond "default" finds nothing (handleCharaMod guards that rather
+// than crashing). A save file carrying no such field, or a name
+// reconcileViewCharas had to fall back to charaStorage for some other
+// reason, still gets a working "default" entry.
 func reconcileViewCharas(r *Renderer, restored []*kag3.CharaShow, charaStorage map[string]string, charaFaces map[string]map[string]string) []*kag3.CharaShow {
 	kept := restored[:0]
 	for _, c := range restored {
@@ -190,10 +190,10 @@ func (r *Renderer) applySaveData(d *saveData) error {
 		fmt.Printf("save/load: 背景 %s の読み込みに失敗しました: %v\n", d.Bg.Storage, err)
 	}
 	// Width/Height!=0 as the "was this actually captured" signal — same idea
-	// as Bg.Storage!="" inside applyBgFromSnapshot — so loading a save
-	// written before this field existed doesn't stomp a same-process
-	// textPosition that's already correctly configured with zeroed-out
-	// layout (see applyTextPositionFromSnapshot's own no-op guard).
+	// as Bg.Storage!="" inside applyBgFromSnapshot — so loading a save file
+	// that carries no such field doesn't stomp a same-process textPosition
+	// that's already correctly configured with zeroed-out layout (see
+	// applyTextPositionFromSnapshot's own no-op guard).
 	if err := applyTextPositionFromSnapshot(r, textPosition, d.TextPosition); err != nil {
 		fmt.Printf("save/load: メッセージ枠 %s の読み込みに失敗しました: %v\n", d.TextPosition.FrameStorage, err)
 	}
@@ -205,11 +205,9 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	textStyle = copyTextStyle(d.TextStyle)
 	defaultTextStyle = copyTextStyle(d.DefaultTextStyle)
 	menuButtonVisible = d.MenuButtonVisible
-	// nil check (not just "always assign"): a save written before Ptexts
-	// existed decodes it as nil, and assigning that would wipe out whatever
-	// ptext layout the *current* session already has — leave it alone in
-	// that case rather than making an old save regress further than "same
-	// behavior as before this fix".
+	// nil check (not just "always assign"): a save file carrying no Ptexts
+	// decodes it as nil, and assigning that would wipe out whatever ptext
+	// layout the *current* session already has.
 	if d.Ptexts != nil {
 		ptexts = d.Ptexts
 		charaNamePText = d.CharaNamePText
@@ -245,13 +243,13 @@ func (r *Renderer) applySaveData(d *saveData) error {
 			menuButtonImg = img
 		}
 	}
-	// nil check, same reasoning as Ptexts above: a save written before
-	// Texts existed decodes it as nil, and this is the *only* thing that
-	// puts the loaded position's actual dialogue back on screen — without
-	// it, jumpIndex resumes execution at the [p]/[s]/[l] tag itself, which
+	// nil check, same reasoning as Ptexts above: a save file carrying no
+	// Texts decodes it as nil, and this is the *only* thing that puts the
+	// loaded position's actual dialogue back on screen — without it,
+	// jumpIndex resumes execution at the [p]/[s]/[l] tag itself, which
 	// blocks again but never replays whatever TextObject(s) before it in
-	// the script originally revealed the text it was blocking for, so the
-	// message window came back completely blank after every load.
+	// the script originally revealed the text it was blocking for, leaving
+	// the message window completely blank after every load.
 	if d.Texts != nil {
 		r.texts = copyTexts(d.Texts)
 	} else {
@@ -259,10 +257,9 @@ func (r *Renderer) applySaveData(d *saveData) error {
 	}
 	// Same gap, for the [link]/[glink] choices actually visible in the
 	// message window rather than the plain text around them — a save
-	// landing on an [s] right after a [link]/[endlink] pair (a real
-	// reported case) never re-runs handleLink on load, so without this the
-	// choice itself silently never reappeared either, leaving nothing on
-	// screen the player could click at all.
+	// landing on an [s] right after a [link]/[endlink] pair never re-runs
+	// handleLink on load, so without this the choice itself never reappears
+	// either, leaving nothing on screen the player could click at all.
 	if len(d.Links) > 0 || len(d.GLinks) > 0 {
 		links = append([]*kag3.Link(nil), d.Links...)
 		glinks = append([]*kag3.GLink(nil), d.GLinks...)

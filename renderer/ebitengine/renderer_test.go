@@ -11,20 +11,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
-// TestRevealActiveLineAdvancesWithoutDraw is the headline regression test
-// for revealActiveLine (Update()'s own call in this file): it drives the
-// exact scenario that used to be unreachable from a unit test entirely —
-// glyph-by-glyph text reveal completing — without ever calling Draw or
-// anything that reaches drawMessageWindow/drawMessageHorizontal. Before
-// this fix, isWait was flipped *only* inside those draw functions, so
-// "has this line finished revealing" (and therefore whether a bare
-// TextObject's y.Until(false, func() bool { return isWait }) in execItem,
-// macro.go, can ever unblock) silently depended on Draw() having actually
-// run for the frame — invisible under normal play (ebitengine calls Draw
-// right after Update on every platform this ships to), but real whenever
-// Draw is skipped (window minimized/occluded), where the whole story
-// (AUTO/SKIP included, both of which also read isWait) would freeze
-// completely until the window became visible again.
+// TestRevealActiveLineAdvancesWithoutDraw is the headline test for
+// revealActiveLine (Update()'s own call in this file): it drives a
+// glyph-by-glyph text reveal to completion without ever calling Draw or
+// anything that reaches drawMessageWindow/drawMessageHorizontal. Flipping
+// isWait *only* inside those draw functions makes "has this line finished
+// revealing" — and therefore whether a bare TextObject's
+// y.Until(false, func() bool { return isWait }) in execItem (macro.go) can
+// ever unblock — depend on Draw() having run for the frame. That's
+// invisible under normal play (ebitengine calls Draw right after Update on
+// every platform this ships to), but real whenever Draw is skipped (window
+// minimized/occluded), freezing the whole story, AUTO/SKIP included, until
+// the window becomes visible again.
 //
 // Uses "tt" instead of "t" for the *testing.T parameter, same as
 // TestHandleAnimMovesCharaOverTime (tags_animation_test.go) — this test
@@ -54,8 +52,8 @@ func TestRevealActiveLineAdvancesWithoutDraw(tt *testing.T) {
 		tt.Fatal("isWait went true before the reveal's elapsed time reached the line's full length")
 	}
 
-	// Now enough ticks have passed for every glyph — this is the moment
-	// that used to require Draw() to ever notice.
+	// Now enough ticks have passed for every glyph — the moment
+	// revealActiveLine must notice on its own, with no Draw involved.
 	t = textStartT + total*ticksPerChar()
 	r.revealActiveLine()
 	if !isWait {
@@ -429,12 +427,12 @@ func TestButtonTargetJumpPushesCallFrameForReturnToResume(t *testing.T) {
 }
 
 // TestLookupLabel covers the single label-resolution path every target=
-// consumer now shares ([jump], [link]/[glink] clicks, [button target=],
-// StartAtLabel). The empty-target cases are the regression half: each of
-// those call sites used to slice target[1:] inline, which panics with
-// "slice bounds out of range [1:0]" on an empty target — reachable from
-// ordinary script, e.g. clicking a [link storage="x.ks"] that names no
-// target= at all, or a bare [jump] carrying neither attribute.
+// consumer shares ([jump], [link]/[glink] clicks, [button target=],
+// StartAtLabel). The empty-target cases matter most: slicing target[1:]
+// inline instead panics with "slice bounds out of range [1:0]" on an empty
+// target — reachable from ordinary script, e.g. clicking a
+// [link storage="x.ks"] that names no target= at all, or a bare [jump]
+// carrying neither attribute.
 func TestLookupLabel(t *testing.T) {
 	r := newTestRenderer()
 	r.labels = map[string]kag3.LabelInfo{"here": {Name: "here", Index: 7}}
@@ -454,9 +452,9 @@ func TestLookupLabel(t *testing.T) {
 	}
 }
 
-// TestHandleJumpWithoutStorageOrTarget is the [jump] half of the same fix:
-// a bare [jump] used to reach r.labels[jump.Target[1:]] with an empty
-// Target and panic the whole coroutine.
+// TestHandleJumpWithoutStorageOrTarget is the [jump] half of the same
+// guarantee: a bare [jump] must not reach r.labels[jump.Target[1:]] with an
+// empty Target and panic the whole coroutine.
 func TestHandleJumpWithoutStorageOrTarget(t *testing.T) {
 	r := newTestRenderer()
 	r.scripts = []any{kag3.TagObject{Name: "jump", Pm: map[string]string{}}}
@@ -538,14 +536,13 @@ func TestResolveFolderImage(t *testing.T) {
 	})
 }
 
-// TestParseColor is the regression test for a real bug found while fixing
-// black<->white: the "0xRRGGBB" hex branch sliced out only the first digit
-// of each byte pair (e.g. "0x454D51" -> "4","4","5") and fed it to Atoi as
-// *decimal*, and "black" itself returned white. "white"/"pink" — also used
-// by the bundled scripts — weren't recognized as named colors at all and
-// fell into that same broken hex path. Both color="0x454D51"/"0xFAFAFA"
-// (scene1.ks's custom message window) and color="pink"/"white" are real,
-// reachable attribute values in the bundled example scripts.
+// TestParseColor pins both of parseColor's branches: the "0xRRGGBB" hex
+// path must parse each byte pair as hex (slicing a single digit per byte and
+// feeding it to Atoi as *decimal* silently yields a plausible-looking wrong
+// color), and every named color must resolve to itself rather than falling
+// through into the hex path. Both color="0x454D51"/"0xFAFAFA" (scene1.ks's
+// custom message window) and color="pink"/"white" are real, reachable
+// attribute values in the bundled example scripts.
 func TestParseColor(t *testing.T) {
 	cases := []struct {
 		name                string
@@ -582,14 +579,13 @@ func TestParseColor(t *testing.T) {
 	}
 }
 
-// TestApplyTextStyleKeepsCurrentFontColorForInactiveLine is the regression
-// test for「こんな風に。簡単です。」disappearing: drawScene's "already
-// fully-revealed line" branch used to fall straight to v.TextStyle (always
-// nil — Text segments never set it at creation) and default to plain white,
-// ignoring the package-level textStyle entirely. On scene1.ks's custom
-// message window ([deffont color="0x454D51"], a near-white box), that made
-// every earlier line on the page revert to invisible white text the moment
-// it stopped being the currently-revealing line. applyTextStyle must resolve
+// TestApplyTextStyleKeepsCurrentFontColorForInactiveLine guards against
+// 「こんな風に。簡単です。」disappearing: if drawScene's "already
+// fully-revealed line" branch falls straight to v.TextStyle and defaults to
+// plain white, ignoring the package-level textStyle, then on scene1.ks's
+// custom message window ([deffont color="0x454D51"], a near-white box)
+// every earlier line on the page reverts to invisible white text the moment
+// it stops being the currently-revealing line. applyTextStyle must resolve
 // the *same* color regardless of which line is calling it.
 func TestApplyTextStyleKeepsCurrentFontColorForInactiveLine(t *testing.T) {
 	r := newTestRenderer()
@@ -613,14 +609,13 @@ func TestApplyTextStyleKeepsCurrentFontColorForInactiveLine(t *testing.T) {
 	}
 }
 
-// TestApplyTextStyleDoesNotLeakSizeAcrossSegments is the regression test
-// for a real reported bug: after a "[font size=40]...[resetfont][font
-// color=pink]" sequence, the pink text kept rendering (and, worse,
-// measuring — see drawMessageHorizontal) at size 40, because a v.TextStyle
-// whose own Size was left unspecified (0, e.g. a [font] call that only
-// changed color) used to leave r.fontFace.Size completely untouched rather
-// than falling back to beforeTextSize — so it silently kept whatever the
-// *previous* segment's applyTextStyle call last set it to.
+// TestApplyTextStyleDoesNotLeakSizeAcrossSegments pins the size fallback:
+// after a "[font size=40]...[resetfont][font color=pink]" sequence, the pink
+// text must not keep rendering (and, worse, measuring — see
+// drawMessageHorizontal) at size 40. A v.TextStyle whose own Size is
+// unspecified (0, e.g. a [font] call that only changed color) has to fall
+// back to beforeTextSize rather than leaving r.fontFace.Size at whatever the
+// *previous* segment's applyTextStyle call set it to.
 func TestApplyTextStyleDoesNotLeakSizeAcrossSegments(t *testing.T) {
 	r := newTestRenderer()
 	r.fontFace = newTestFontFace(t)
@@ -688,8 +683,7 @@ func TestClearLinksOnJumpKeepsButtonsForSameStorageJump(t *testing.T) {
 
 // TestClearLinksOnJumpClearsNonFixButtonsForScreenChange is the counterpart:
 // a real storage change (a [link storage=...] to a different .ks file,
-// goToTitle, applySaveData) must still sweep non-fix buttons, same as
-// before this fix.
+// goToTitle, applySaveData) must still sweep non-fix buttons.
 func TestClearLinksOnJumpClearsNonFixButtonsForScreenChange(t *testing.T) {
 	buttons = []*kag3.Button{{Name: "a", Fix: true}, {Name: "b", Fix: false}}
 	isJump = true
@@ -793,8 +787,8 @@ func TestStartAtLabelUnknownLabel(t *testing.T) {
 }
 
 // TestDrawPTextsWithBgImageDoesNotPanic covers the [ptext bg=] background
-// image draw path (drawPTexts) added alongside the redesigned message
-// window's name tab — a headless no-panic check, not a pixel comparison,
+// image draw path (drawPTexts), which the redesigned message window's name
+// tab relies on — a headless no-panic check, not a pixel comparison,
 // matching this package's existing test style.
 func TestDrawPTextsWithBgImageDoesNotPanic(t *testing.T) {
 	defer func() { ptexts, charaName, charaNamePText = map[string]*kag3.PText{}, "", "" }()
@@ -841,10 +835,10 @@ func TestDisplayCharaName(t *testing.T) {
 }
 
 // TestPtextContentUsesJName covers ptextContent's use of displayCharaName
-// for the name-plate area specifically (draw_ptext.go) — a regression guard
-// for the historical bug where JName (kag3.go) was written by [chara_new]/
-// [chara_new_psd] but never read anywhere, so the name-plate always showed
-// the raw internal name even when jname= was given.
+// for the name-plate area specifically (draw_ptext.go): JName (kag3.go) is
+// written by [chara_new]/[chara_new_psd], and this is the one place that
+// reads it — without it the name-plate shows the raw internal name even
+// when jname= was given.
 func TestPtextContentUsesJName(t *testing.T) {
 	origCharas := charas
 	defer func() {
